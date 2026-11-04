@@ -47,6 +47,29 @@ def tail(n: int = 50) -> list[dict[str, Any]]:
     return out
 
 
+def operations(limit: int = 50, project: Optional[str] = None) -> list[dict[str, Any]]:
+    """The journal as one row per operation (newest first): {id, op, project, target, mode, host, started, ended, status, seconds, error}.
+    An operation with a start but no end is `running` (or was killed - the process that wrote it is gone if it is old)."""
+    by: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for e in tail(max(200, limit * 6)):
+        oid = str(e.get("id", ""))
+        if not oid:
+            continue
+        row = by.get(oid)
+        if row is None:
+            row = by[oid] = {"id": oid, "op": e.get("op", ""), "project": e.get("project", ""), "target": e.get("target", ""), "mode": e.get("mode", ""),
+                             "host": e.get("host", ""), "started": None, "ended": None, "status": "running", "seconds": None, "error": ""}
+            order.append(oid)
+        if e.get("event") == "start":
+            row["started"] = e.get("ts")
+        elif e.get("event") == "end":
+            row.update(ended=e.get("ts"), status=e.get("status", "ok"), seconds=e.get("seconds"), error=e.get("error", ""))
+    rows = [by[i] for i in order if project is None or by[i]["project"] == project]
+    rows.sort(key=lambda r: r["started"] or r["ended"] or 0, reverse=True)
+    return rows[: max(1, int(limit))]
+
+
 class Operation:
     """`with Operation("deploy", target=..., mode=..., host=..., project=...):` journals start and outcome."""
 

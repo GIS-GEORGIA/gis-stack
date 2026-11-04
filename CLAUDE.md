@@ -112,6 +112,12 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - Feature flag-ები `core/features.py`; ახალი დიდი ფუნქცია = ახალი flag, ნაგულისხმევად გამორთული.
 - `docs/MONITORING.md` — მომხმარებლის აღწერა.
 
+## ვებ დაფა (Phase 3)
+- `webgui/static/dashboard/` (ES modules, build-ის გარეშე) + `templates/dashboard.html`; მკაცრი CSP მხოლოდ `/dashboard` და `/static/dashboard/*`-ზე. **არ გამოიყენო** `innerHTML`, inline `style=`/`on*=`, `eval` — `tests/test_dashboard.py` ამოწმებს. DOM-ს აშენებს `ui.h()` (მონაცემი ტექსტურ node-ად მიდის).
+- ყველა მოთხოვნა `api.js`-ით (CSRF header). ახალი ქართული ტექსტი → `i18n.py` (JS-იც სკანირდება). ახალი view = `views/<x>.js` (`export default {title, async mount(root, {arg, params}) -> {refresh?, destroy?}}`) + რეგისტრაცია `app.js`-ში + nav.
+- სუფთა ლოგიკა (`format`, `chart`, `i18n.createTranslator`, `groupSeries`, `configSummary`, `summarize`) — `tests/js/pure.test.mjs` (`node --test`). რეალური ბრაუზერით შეამოწმე (preview) ვიზუალი/ენის გადართვა; ენის გადართვისას `setText` ქეში უნდა განულდეს.
+- კავშირი (პროექტი/რეჟიმი/SSH) ინახება მხოლოდ `sessionStorage`-ში.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

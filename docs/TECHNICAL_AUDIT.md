@@ -22,7 +22,8 @@
 | R-03 | **Fixed for native (Phase 7)** | `gisstack-backup`: verified pre-restore backup, rename-based replacement, recovery validation, automatic rollback; `existing.run` still uses its own backup flow for foreign programs. Compose/Kubernetes: open. |
 | A-03 | Partly fixed | `services.py` holds the deploy rules shared by CLI, web and Tk (pre-flight, conflicts, existing-programs flow). The UIs still render separately; the versioned API is Phase 10. |
 | A-07, A-08 | Open | Shell logic is still in Jinja; the config is still `dict[str, Any]` (typed model planned). mypy is now strict for the new modules (`disallow_untyped_defs`). |
-| S-07, S-09, S-11, S-12, R-03, R-06, R-07 | Open | S-07/S-09 need decisions (UI assets, signing tool); R-03 is Phase 7; the rest Phase 2. |
+| S-07 | Partly fixed (Phase 3) | The new dashboard runs under a CSP without `unsafe-inline` (no inline script/style, no `innerHTML`); the classic page `/` still needs `unsafe-inline` until it is retired. |
+| S-09, S-11, S-12, R-03, R-06, R-07 | Open | S-07/S-09 need decisions (UI assets, signing tool); R-03 is Phase 7; the rest Phase 2. |
 
 ## 1. Method
 

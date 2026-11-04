@@ -271,6 +271,14 @@ gisstack rotate-credentials geoserver --password-file ~/new.pw       # საკ
 
 ვებ GUI: `gisstack web --allow-host gis.example.ge` (სხვა Host სახელი), `--rotate-token` (ახალი წვდომის ტოკენი), `--server waitress` (production სერვერი).
 
+### ვებ დაფა (feature flag)
+
+```bash
+GISSTACK_FEATURES=dashboard,monitoring gisstack web      # შემდეგ გახსენი /dashboard
+```
+
+აღწერა: [DASHBOARD.md](DASHBOARD.md).
+
 ### მონიტორინგი (feature flag)
 
 ```bash

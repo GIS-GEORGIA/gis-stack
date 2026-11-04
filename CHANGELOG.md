@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### ვებ დაფა (Phase 3, feature flag `dashboard`)
+- `/dashboard`: მთავარი (ჯანმრთელობა, სერვისების ბარათები, CPU/RAM/დისკი, PostgreSQL კავშირები, GeoServer, MapProxy ქეში, ბოლო ბექაფი), ინფრასტრუქტურა (გაშვება/გაჩერება/გადატვირთვა), გვერდი ყოველი პროგრამისთვის,
+  ოპერაციების ჟურნალი, მონიტორინგი (გრაფიკები, ალერტები), ბექაფები (აღდგენის ოსტატი), ლოგები (live), პარამეტრები. ქართული/ინგლისური, ღია/მუქი თემა, მობილური განლაგება, ხელმისაწვდომობა.
+- მკაცრი CSP (`unsafe-inline` გარეშე), `innerHTML`/`eval` არსად; ტესტები ამოწმებს. კლასიკური გვერდი `/` უცვლელია. დოკუმენტაცია: `docs/DASHBOARD.md`.
+- ახალი: `/api/v1/dashboard/{config,summary}`, `/api/v1/journal`, MapProxy ქეშის ზომის მეტრიკა.
+
 ### მონიტორინგი (Phase 8, feature flag `monitoring`)
 - `gisstack monitor collect|watch|show|history|alerts|rules|prune|prometheus`: **რეალური** მაჩვენებლები (`/proc`, `df`, systemd cgroup-ები, `pg_stat_*`, curl-ის დროები, `docker stats`, ბექაფის ასაკი) — სინთეზური/შეფასებითი მონაცემი არსად არის; მიუწვდომელი წყარო ჩანს `collect_errors`-ში.
 - SQLite ისტორია (ring buffer, retention), ზღვრული ალერტები (`for` N ნიმუში, გადაწყვეტა, ერთი ავარია = ერთი შეტყობინება), webhook და e-mail შეტყობინებები (პაროლი მხოლოდ გარემოდან/ფაილიდან).

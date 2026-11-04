@@ -35,6 +35,8 @@ db|legacy|0|212|1|1571|31146|0|7943871
 db|postgres|1|478|0|2104|41452|0|7853759
 longest|0
 waiting_locks|0
+@@cache
+cache 0
 @@probes
 probe postgis:tcp_5432 open 0.0027 tcp
 probe tomcat:http_8080 404 0.003328 alive

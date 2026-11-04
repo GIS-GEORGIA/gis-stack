@@ -72,7 +72,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - **Work:** `/api/v1` with versioned, schema-validated requests and consistent envelope `{data, error, meta}`; token scopes (read / operate / admin) and audit; OpenAPI document generated from schemas; existing `/api/*` routes remain as compatibility aliases for one release. **Plugin interfaces** (not a marketplace): `ServiceProvider`, `MonitoringProvider`, `BackupProvider`, `AuthProvider`, `DataSource` as Python entry points with a small, versioned contract and a conformance test kit.
 - **Exit criteria:** UI uses only the API; API docs are generated and tested.
 
-### Phase 3 — Professional web dashboard · **XL** (feature flag `dashboard`)
+### Phase 3 — Professional web dashboard · **XL** (feature flag `dashboard`) — ✅ first release implemented (read/operate pages; deploy/clean/projects/existing-programs workflows are still in the classic page; GeoServer/PostGIS/MapProxy managers are Phases 4-6)
 - **Approach:** static assets (separate JS/CSS, nonce-based CSP), componentised vanilla JS (no build step) unless the owner decides otherwise; responsive layout, accessibility (labels, focus, ARIA, contrast in both themes), loading/empty/error states, KA/EN via the existing catalog.
 - **Navigation:** Dashboard · Infrastructure · PostgreSQL/PostGIS · GeoServer · QGIS Server · MapProxy · Web Maps · Deployments · Monitoring · Backups · Logs · Settings.
 - **Dashboard:** health, service cards, CPU/RAM/disk, PostgreSQL connections, GeoServer availability, MapProxy cache usage, recent deployments/errors/warnings — all from Phase 8 collectors, with auto/manual refresh.

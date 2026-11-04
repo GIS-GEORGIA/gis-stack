@@ -27,7 +27,7 @@ gisstack = "gisstack.cli:main"
 include = ["gisstack*"]
 
 [tool.setuptools.package-data]
-gisstack = ["templates/**/*", "vendor/**/*", "webgui/templates/*"]
+gisstack = ["templates/**/*", "vendor/**/*", "webgui/templates/*", "webgui/static/**/*"]
 
 [project.optional-dependencies]
 prod = ["waitress>=3.0"]

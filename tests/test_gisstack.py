@@ -863,6 +863,11 @@ class I18nTests(unittest.TestCase):
         html = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
         html = re.sub(r"(?<![:\"'])//[^\n]*", "", html).replace("\\n", "\n")
         yield "index.html", html
+        dash = (root / "webgui/templates/dashboard.html").read_text()
+        yield "dashboard.html", re.sub(r"<!--.*?-->", "", dash, flags=re.S)
+        for js in sorted((root / "webgui/static/dashboard/js").rglob("*.js")):
+            text = re.sub(r"/\*.*?\*/", "", js.read_text(), flags=re.S)
+            yield "dashboard/" + js.name, re.sub(r"(?<![:\"'])//[^\n]*", "", text)
         import ast as _ast
         for f in ("desktop", "catalog", "config", "deploy", "ops", "existing", "discover", "updater", "projects", "webgui/app", "settings", "deps", "cli", "preflight", "journal", "runner", "rotation", "secretsrc", "backup", "monitoring/collect", "monitoring/alerts", "monitoring/notify", "monitoring/store", "monitoring/service", "monitoring/render"):
             tree = _ast.parse((root / f"{f}.py").read_text())

@@ -31,6 +31,7 @@ from flask import Flask, Response, abort, jsonify, make_response, redirect, rend
 from . import security
 from ..core import paths
 from ..core import features
+from .. import journal as journal_mod, transport as transport_mod
 from .. import __version__, backup as backup_mod, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, services, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
@@ -161,8 +162,14 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Cache-Control"] = "no-store"
-        resp.headers["Content-Security-Policy"] = (
-            "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'")
+        if request.path == "/dashboard" or request.path.startswith("/static/dashboard/"):
+            # the dashboard has no inline script or style at all, so nothing needs 'unsafe-inline' (audit S-07)
+            resp.headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+                                                       "font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+        else:
+            resp.headers["Content-Security-Policy"] = (
+                "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'")
+        resp.headers["Referrer-Policy"] = "no-referrer"
         return resp
 
     @app.get("/healthz")
@@ -473,6 +480,66 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
         return _backup_job(lambda: backup_mod.restore(cfg, mode, ssh, str(body.get("id", "")), only=only, dry_run=dry, staging=bool(body.get("staging")),
                                                        confirm=body.get("confirm") is True, pre_backup=body.get("pre_backup", True) is not False,
                                                        rollback=body.get("rollback", True) is not False))
+
+    # ------------------------------------------------------------------ dashboard (feature flag "dashboard")
+    def _need_dashboard() -> Response | None:
+        if not features.enabled("dashboard"):
+            return _env(error="the dashboard is switched off (GISSTACK_FEATURES=dashboard)", code="feature_disabled", status=404)
+        return None
+
+    @app.get("/dashboard")
+    def dashboard_page() -> Response | str:
+        if (off := _need_dashboard()) is not None:
+            return off
+        return render_template("dashboard.html", version=__version__)
+
+    @app.get("/api/v1/dashboard/config")
+    def api_v1_dash_config() -> Response:
+        if (off := _need_dashboard()) is not None:
+            return off
+        return _env({"version": __version__, "features": sorted(features.enabled_set()), "is_root": hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "projects": projects_mod.list_projects(), "settings": settings_mod.view()})
+
+    @app.post("/api/v1/dashboard/summary")
+    def api_v1_dash_summary() -> Response:
+        """Body: {config, mode, ssh}.  One round trip for the overview: live service state, the newest stored metrics and the recent
+        operations.  Every part reports its own error, so one failing source never blanks the page."""
+        if (off := _need_dashboard()) is not None:
+            return off
+        cfg, mode, ssh, target = _ops_args(request.get_json(silent=True) or {})
+        out: dict[str, Any] = {"project": cfg["project"], "target": target, "mode": mode, "domain": cfg["domain"], "errors": {}}
+        try:
+            out["status"] = ops_mod.status(cfg, mode, ssh, target)
+        except deploy_mod.DeployError as e:
+            out["status"], out["errors"]["status"] = None, {"message": str(e), "code": e.code}
+        out["monitoring"] = None
+        if features.enabled("monitoring"):
+            from ..core import paths as _paths
+            from ..monitoring import service as _service
+            from ..monitoring.store import Store, StoreError
+            db = _paths.monitor_db(cfg["project"], transport_mod.host_label(mode, ssh))
+            if db.exists():
+                try:
+                    st = Store(db)
+                    try:
+                        out["monitoring"] = _service.snapshot(st)
+                    finally:
+                        st.close()
+                except StoreError as e:
+                    out["errors"]["monitoring"] = {"message": str(e), "code": e.code}
+        out["operations"] = journal_mod.operations(10, cfg["project"])
+        return _env(out)
+
+    @app.get("/api/v1/journal")
+    def api_v1_journal() -> Response:
+        if (off := _need_dashboard()) is not None:
+            return off
+        project = request.args.get("project") or None
+        try:
+            limit = max(1, min(200, int(request.args.get("limit", 50))))
+        except ValueError:
+            return _env(error="limit must be a number", code="bad_request", status=400)
+        return _env(journal_mod.operations(limit, project))
 
     # ------------------------------------------------------------------ monitoring (feature flag "monitoring")
     def _env(data: Any = None, error: str | None = None, code: str | None = None, status: int = 200, **meta: Any) -> Response:

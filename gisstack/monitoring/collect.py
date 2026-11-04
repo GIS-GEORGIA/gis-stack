@@ -102,6 +102,11 @@ SQL
 fi
 """
 
+_CACHE = r"""
+echo "@@cache"
+for d in /var/lib/gisstack/mapproxy/cache_data; do [ -d "$d" ] && echo "cache $(timeout 15 du -sb "$d" 2>/dev/null | cut -f1)"; done
+"""
+
 _BACKUP = r"""
 echo "@@backup"
 [ -x /usr/local/sbin/gisstack-backup ] && /usr/local/sbin/gisstack-backup list 2>/dev/null | sed 's/^/backup /' || true
@@ -132,6 +137,8 @@ def script(cfg: dict[str, Any], target: str, ids: Optional[list[str]] = None) ->
               'for s in $SVCS; do n=${s%%:*}; P="$(cg_pids "${s#*:}")"; echo "svc $n ${T0[$n]}"; echo "svc1 $n $(ticks "$P")"; done\n') + _AFTER
         if generate.effective_components(cfg, "native").get("postgis"):
             s += _PG
+        if generate.effective_components(cfg, "native").get("mapproxy"):
+            s += _CACHE
         s += _probe_lines(cfg, target, ids) + _BACKUP
     else:
         rt = "podman" if cfg.get("runtime") == "podman" else "docker"
@@ -363,6 +370,11 @@ def build_sample(cfg: dict[str, Any], target: str, text: str, rows: list[dict[st
             sample["postgres"] = pg
         else:
             errors.append("postgres: no answer from psql")
+    cache = next((_num(r[1], -1) for r in sec.get("cache", []) if r and r[0] == "cache" and len(r) > 1), -1)
+    if cache >= 0:
+        sample["mapproxy"] = {"cache_bytes": cache}
+    elif target == "native" and generate.effective_components(cfg, "native").get("mapproxy"):
+        errors.append("mapproxy: cache size unavailable")
     if target != "k8s":
         sample["probes"] = probe_metrics(sec.get("probes", []))
     if target == "native":
@@ -425,6 +437,8 @@ def flatten(sample: dict[str, Any]) -> list[tuple[str, dict[str, str], float]]:
     for p in sample.get("probes") or []:
         add("probe_up", 1.0 if p["up"] else 0.0, probe=p["name"])
         add("probe_seconds", p["seconds"], probe=p["name"])
+    if sample.get("mapproxy"):
+        add("mapproxy_cache_bytes", sample["mapproxy"]["cache_bytes"])
     b = sample.get("backup")
     if b:
         add("backup_count", b.get("count"))

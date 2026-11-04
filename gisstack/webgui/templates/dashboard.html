@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ka" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>GIS Stack · Dashboard</title>
+<link rel="stylesheet" href="/static/dashboard/css/dashboard.css">
+<script type="module" src="/static/dashboard/js/app.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">მთავარ შინაარსზე გადასვლა</a>
+<header class="top" role="banner">
+  <button type="button" id="nav-toggle" class="icon-btn nav-toggle" aria-controls="nav" aria-expanded="false" aria-label="მენიუს გახსნა">☰</button>
+  <div class="brand"><span class="logo" aria-hidden="true">◈</span> <strong>GIS Stack</strong> <small id="ver"></small></div>
+  <button type="button" id="conn-chip" class="chip" aria-haspopup="dialog" title="კავშირის შეცვლა">
+    <span class="dot" id="conn-dot" aria-hidden="true"></span><span id="conn-text">კავშირი არ არის არჩეული</span>
+  </button>
+  <span class="spacer"></span>
+  <div class="refresh" role="group" aria-label="განახლება">
+    <label for="auto-refresh" class="sr-only">ავტომატური განახლება</label>
+    <select id="auto-refresh">
+      <option value="0">ხელით</option>
+      <option value="15">15 წმ</option>
+      <option value="30">30 წმ</option>
+      <option value="60">60 წმ</option>
+    </select>
+    <button type="button" id="btn-refresh" class="btn">⟳ განახლება</button>
+    <small id="updated" aria-live="off"></small>
+  </div>
+  <div class="seg" role="group" aria-label="ენა">
+    <button type="button" data-lang="ka" aria-pressed="false">KA</button><button type="button" data-lang="en" aria-pressed="false">EN</button>
+  </div>
+  <button type="button" id="btn-theme" class="icon-btn" aria-label="თემის შეცვლა">◐</button>
+</header>
+
+<div class="shell">
+  <nav id="nav" class="side" aria-label="ძირითადი ნავიგაცია">
+    <ul id="nav-list"></ul>
+    <hr>
+    <ul>
+      <li><a class="navlink ext" href="/">⚙ ინსტალერი (კლასიკური)</a></li>
+    </ul>
+  </nav>
+  <main id="main" tabindex="-1" aria-live="off"></main>
+</div>
+
+<div id="toasts" class="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+<dialog id="dlg" aria-labelledby="dlg-title"></dialog>
+<noscript><p class="noscript">ამ გვერდს JavaScript სჭირდება.</p></noscript>
+</body>
+</html>
