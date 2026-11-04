@@ -1,0 +1,56 @@
+@@meta ts=1793815406
+@@host
+load 1.35 0.63 0.24
+uptime 91
+cpus 4
+clk_tck 100
+mem MemTotal: 6067380
+mem MemAvailable: 4628476
+mem SwapTotal: 0
+mem SwapFree: 0
+cpu0 11828 0 1671 20530 248 0 37 2086 0 0
+@@procs
+svc postgis 9 26 182972
+svc1 postgis 26
+svc tomcat 1 11702 755152
+svc1 tomcat 11704
+svc geoserver 1 11702 755152
+svc1 geoserver 11704
+svc mapproxy 5 468 318820
+svc1 mapproxy 468
+svc caddy 1 26 47488
+svc1 caddy 26
+cpu1 11846 0 1706 21040 248 0 37 2089 0 0
+@@disk
+disk / 29378688 5446304 23916000
+@@postgres
+up|1
+version|18.6 (Ubuntu 18.6-1.pgdg24.04+2)
+maxconn|100
+conn|active|1
+db|gis|0|129|3|103|155336|0|17323711
+db|gis_failed_20261104172113|0|76|1|1369|125969|0|17323711
+db|gis_old_20261104172021|0|362|5|3949|196488|0|17282751
+db|legacy|0|212|1|1571|31146|0|7943871
+db|postgres|1|478|0|2104|41452|0|7853759
+longest|0
+waiting_locks|0
+@@probes
+probe postgis:tcp_5432 open 0.0027 tcp
+probe tomcat:http_8080 404 0.003328 alive
+probe geoserver:wms_8080 200 0.162233 http
+probe mapproxy:http_8081 200 0.008781 http
+probe geoserver:public 302 0.102511 http
+probe mapproxy:public 200 0.012735 http
+probe caddy:public 200 0.001116 http
+probe webmap:public 200 0.001710 http
+@@backup
+backup 20261104-171855-d9d6038f	complete	manual	2026-11-04T17:18:56Z	103236	config postgres geoserver qgis
+backup 20261104-172101-d02f0d15	complete	manual	2026-11-04T17:21:01Z	103475	config postgres geoserver qgis
+backup 20261104-172133-e01f094d	complete	scheduled	2026-11-04T17:21:33Z	103346	config postgres geoserver qgis
+backup pre-20261104-171910-0e85ebc2	complete	pre-restore	2026-11-04T17:19:10Z	102730	config postgres geoserver qgis
+backup pre-20261104-171945-81d02d51	complete	pre-restore	2026-11-04T17:19:45Z	102730	config postgres geoserver qgis
+backup pre-20261104-172021-beae4df7	complete	pre-restore	2026-11-04T17:20:21Z	38219	postgres geoserver qgis
+backup pre-20261104-172104-08e5f401	complete	pre-restore	2026-11-04T17:21:04Z	64900	config
+backup pre-20261104-172113-df249b61	complete	pre-restore	2026-11-04T17:21:14Z	38488	postgres geoserver
+@@end
