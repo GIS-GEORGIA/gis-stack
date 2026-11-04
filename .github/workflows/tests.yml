@@ -95,6 +95,8 @@ jobs:
         run: |
           printf 'Flask>=3.0\nJinja2>=3.1\nPyYAML>=6.0\n' > /tmp/requirements.txt
           pip-audit -r /tmp/requirements.txt
+      - name: Known vulnerabilities in the pinned MapProxy environment that install.sh builds
+        run: pip-audit --no-deps --disable-pip -r gisstack/templates/native/mapproxy-requirements.txt
       - name: Bandit (medium and high severity)
         run: bandit -r gisstack -ll
 

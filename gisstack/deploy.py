@@ -77,7 +77,7 @@ def _ssh_base(ssh: dict[str, Any]) -> list[str]:
     if not 1 <= port <= 65535:
         raise DeployError("SSH port არასწორია")
     cmd = ["ssh", "-p", str(port), "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
-           "-o", "ConnectTimeout=15"]
+           "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4"]   # a dead link ends in ~1 min, not never
     key = ssh.get("key")
     if key:
         if not Path(key).is_file():

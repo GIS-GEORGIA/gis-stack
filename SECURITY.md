@@ -47,5 +47,23 @@ Actions that delete data (`+purge`) additionally require an explicit confirmatio
 created with their final restrictive mode from the first byte and replaced atomically; `~/.gisstack` and generated bundle
 directories are `0700`; the uploaded bundle on a server is created under `umask 077`.
 
-**Not covered yet (see `docs/ROADMAP.md`, Phase 1b):** passwords still appear in a few process arguments during server
-installation, some downloads are not checksum-verified, the web GUI uses a single static token, and there is no audit log.
+**Secrets in process arguments (S-03).** `install.sh` never puts a password on a command line, where any local user could read it
+from `/proc/<pid>/cmdline`: the PostgreSQL role password reaches `psql` as hex on stdin and is decoded server-side, and the
+GeoServer admin credentials and new password go to `curl --config -` on stdin. Checked by tests (helpers run in real bash against
+a real HTTP server; stub `curl` records its argv) and on an Ubuntu 24.04 VM by sampling `/proc/*/cmdline` during a full install
+(sampling every ~20 ms, so a very short-lived process could in principle be missed; the structural tests are the guarantee).
+
+**Downloads executed as root (S-04).** GeoServer (3.0.2 and 2.28.6) and its extensions and Caddy are verified against SHA-256 values
+pinned in `gisstack/pins.py` and shipped as `config/pins.sha256`; a mismatch aborts, and so does a download without a pin (override:
+`GS_ALLOW_UNVERIFIED=1`, e.g. for a custom `GS_VERSION`). Caddy comes from its GitHub release at a pinned version instead of an
+unverified API download. The MapProxy virtualenv is installed with `pip --require-hashes` from a fully pinned list
+(`templates/native/mapproxy-requirements.txt`, scanned by `pip-audit` in CI). Tomcat is checked against the checksum on Apache's
+own distribution hosts. GeoServer publishes no checksums of its own: the pins were computed from one download on 2026-11-04, so
+they protect against later tampering and mirror corruption, not against a file that was already bad on that day.
+
+SSH connections now use keep-alive (`ServerAliveInterval=15`, `ServerAliveCountMax=4`), so a dead link ends an operation in about
+a minute instead of hanging.
+
+**Not covered yet (see `docs/ROADMAP.md`, Phase 1b-ii):** the web GUI uses a single static token (no session expiry, rate limit,
+`Host` allow-list or audit log), commands have no global deadline or cancellation guarantees, the uploaded bundle stays in the
+server user's home after deployment, and release artefacts are not signed.

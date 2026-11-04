@@ -13,7 +13,7 @@ from typing import Any, Iterable
 
 import jinja2
 
-from . import __version__, catalog, fsutil
+from . import __version__, catalog, fsutil, pins
 
 PKG_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = PKG_DIR / "templates"
@@ -153,6 +153,7 @@ def build_context(cfg: dict[str, Any], target: str) -> dict[str, Any]:
         "webmap_conf": webmap_conf(cfg, comps, basemap_url, bm["attr"]),
         "cfg": cfg,
         "c": comps,
+        "caddy_version": pins.CADDY_VERSION,
         "pg": pg,
         "tomcat": cfg["tomcat"],
         "gs": cfg["geoserver"],
@@ -321,6 +322,12 @@ def generate_bundle(cfg: dict[str, Any], out_dir: str | os.PathLike) -> Path:
         ctx = build_context(cfg, target)
         secret = dest.endswith(("stack.env", "/.env", "secret.yaml"))
         _write(out / dest, env.get_template(tpl).render(**ctx), exe, secret)
+
+    if "native" in targets:       # what install.sh verifies its downloads against
+        _write(out / "native/config/pins.sha256", pins.pins_file())
+        if effective_components(cfg, "native")["mapproxy"]:
+            for name in ("mapproxy-requirements.txt", "mapproxy-requirements-py310.txt"):
+                _write(out / "native/config" / name, (TEMPLATE_DIR / "native" / name).read_text())
 
     if cfg["components"]["webmap"]:
         if "native" in targets:

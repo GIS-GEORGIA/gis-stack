@@ -329,6 +329,7 @@ class RunnerTests(unittest.TestCase):
     def test_ssh_option_validation(self):
         good = {"host": "srv.example.ge", "port": 2222, "user": "tester", "key": ""}
         base = deploy._ssh_base(good)
+        self.assertIn("ServerAliveInterval=15", base)               # S-08: a dead connection must not hang an operation forever
         self.assertEqual(base[-1], "tester@srv.example.ge")
         self.assertIn("2222", base)
         self.assertIn("BatchMode=yes", base)

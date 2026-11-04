@@ -85,6 +85,27 @@ wait_http() {      # wait_http <url> <seconds>
   return 1
 }
 psql_pg() { (cd /tmp && runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 "$@"); }
+
+# Secrets never go on a command line (/proc/<pid>/cmdline is world-readable): they are fed through stdin.
+hexof() { printf '%s' "$1" | od -An -v -tx1 | tr -d ' \n'; }          # bash printf is a builtin: no process argument
+cfgq() { local s=${1//\\/\\\\}; s=${s//\"/\\\"}; printf '%s' "$s"; }   # curl --config / JSON string escaping
+gs_curl() {                       # gs_curl USER PASSWORD [JSON-BODY] URL [curl args]: credentials and body via --config on stdin
+  local u="$1" p="$2" body="$3" url="$4"; shift 4
+  { printf 'user = "%s"\n' "$(cfgq "$u:$p")"
+    if [ -n "$body" ]; then printf 'request = "PUT"\nheader = "Content-Type: application/json"\ndata = "%s"\n' "$(cfgq "$body")"; fi
+  } | curl -fsS --config - "$@" "$url"
+}
+verify_pin() {      # verify_pin FILE NAME: SHA-256 must match the pin shipped in config/pins.sha256 (audit S-04)
+  local f="$1" name="$2" want got
+  want="$(awk -v n="$name" '$2 == n { print $1 }' "$HERE/config/pins.sha256" 2>/dev/null)"
+  if [ -z "$want" ]; then
+    [ "${GS_ALLOW_UNVERIFIED:-0}" = 1 ] || die "no pinned SHA-256 for $name: refusing to install an unverified download (GS_ALLOW_UNVERIFIED=1 overrides, at your own risk)"
+    warn "UNVERIFIED download: $name"; return 0
+  fi
+  got="$(sha256sum "$f" | cut -d' ' -f1)"
+  [ "$got" = "$want" ] || die "SHA-256 mismatch for $name (expected $want, got $got): download discarded"
+}
+gs_newpass_body() { printf '{"newPassword":"%s"}' "$(cfgq "$1")"; }
 ensure_user() {    # ensure_user <name> <home>
   id "$1" >/dev/null 2>&1 || useradd --system --home-dir "$2" --create-home --shell /usr/sbin/nologin "$1"
 }
@@ -165,13 +186,18 @@ step_postgis() {
   fi
 
   log "database $DB_NAME, role $DB_USER, extensions"
-  psql_pg -v dbuser="$DB_USER" -v dbpass="$DB_PASSWORD" -v dbname="$DB_NAME" <<'SQL'
+  # the password reaches psql as hex on stdin (\set), never as an argument; decoded server-side
+  { printf "\\set dbuser_hex '%s'\n\\set dbpass_hex '%s'\n\\set dbname_hex '%s'\n" "$(hexof "$DB_USER")" "$(hexof "$DB_PASSWORD")" "$(hexof "$DB_NAME")"
+    cat <<'SQL'
+SELECT convert_from(decode(:'dbuser_hex', 'hex'), 'UTF8') AS dbuser, convert_from(decode(:'dbpass_hex', 'hex'), 'UTF8') AS dbpass,
+       convert_from(decode(:'dbname_hex', 'hex'), 'UTF8') AS dbname \gset
 SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'dbuser', :'dbpass')
   WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'dbuser') \gexec
 SELECT format('ALTER ROLE %I PASSWORD %L', :'dbuser', :'dbpass') \gexec
 SELECT format('CREATE DATABASE %I OWNER %I', :'dbname', :'dbuser')
   WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'dbname') \gexec
 SQL
+  } | psql_pg
   local out   # no ON_ERROR_STOP: one missing extension must not block the others
   out="$(cd /tmp && runuser -u postgres -- psql -X -d "$DB_NAME" < "$HERE/config/init-extensions.sql" 2>&1)" || true
   echo "$out"
@@ -207,7 +233,10 @@ step_tomcat() {
   if [ ! -d "/opt/apache-tomcat-$ver" ]; then
     local tmp; tmp="$(mktemp -d)"
     curl -fL --retry 3 -o "$tmp/tc.tgz" "$base/$dir/v$ver/bin/apache-tomcat-$ver.tar.gz"
-    curl -fsSL -o "$tmp/tc.tgz.sha512" "$base/$dir/v$ver/bin/apache-tomcat-$ver.tar.gz.sha512"
+    # the checksum comes from Apache's own distribution hosts, not from the (mirror) host that served the tarball
+    curl -fsSL -o "$tmp/tc.tgz.sha512" "https://downloads.apache.org/tomcat/$dir/v$ver/bin/apache-tomcat-$ver.tar.gz.sha512" \
+      || curl -fsSL -o "$tmp/tc.tgz.sha512" "https://archive.apache.org/dist/tomcat/$dir/v$ver/bin/apache-tomcat-$ver.tar.gz.sha512" \
+      || die "cannot fetch the official Tomcat checksum"
     (cd "$tmp" && echo "$(cut -d' ' -f1 tc.tgz.sha512)  tc.tgz" | sha512sum -c -)
     tar -xzf "$tmp/tc.tgz" -C /opt
     rm -rf "$tmp"
@@ -245,6 +274,7 @@ step_geoserver() {
   curl -fL --retry 3 -o "$tmp/gs.zip" "$base/geoserver-${GS_VERSION}-war.zip" \
     || curl -fL --retry 3 -o "$tmp/gs.zip" "$mirror/geoserver-${GS_VERSION}-war.zip" \
     || die "cannot download GeoServer ${GS_VERSION} (set GS_VERSION, or fetch the WAR zip manually)"
+  verify_pin "$tmp/gs.zip" "geoserver-${GS_VERSION}-war.zip"
   unzip -q -o "$tmp/gs.zip" geoserver.war -d "$tmp"
   rm -rf /opt/tomcat/webapps/geoserver
   install -d /opt/tomcat/webapps/geoserver
@@ -253,6 +283,7 @@ step_geoserver() {
     log "GeoServer extension: $ext"
     if curl -fL --retry 3 -o "$tmp/$ext.zip" "$base/extensions/geoserver-${GS_VERSION}-${ext}-plugin.zip" \
        || curl -fL --retry 3 -o "$tmp/$ext.zip" "$mirror/ext-latest/geoserver-${GS_VERSION}-${ext}-plugin.zip"; then
+      verify_pin "$tmp/$ext.zip" "geoserver-${GS_VERSION}-${ext}-plugin.zip"
       unzip -q -o -j "$tmp/$ext.zip" '*.jar' -d /opt/tomcat/webapps/geoserver/WEB-INF/lib/
     else warn "extension not found: $ext"; fi
   done
@@ -264,14 +295,12 @@ step_geoserver() {
   log "waiting for GeoServer (first start can take a few minutes)"
   wait_http "http://127.0.0.1:${TOMCAT_PORT}/geoserver/web/" 300 || die "GeoServer did not come up; see: journalctl -u gisstack-tomcat"
   local url="http://127.0.0.1:${TOMCAT_PORT}/geoserver/rest/security/self/password"
-  if curl -fsS -u "admin:geoserver" -X PUT -H 'Content-Type: application/json' \
-       -d "{\"newPassword\":\"$GS_ADMIN_PASSWORD\"}" "$url" >/dev/null 2>&1; then
+  if gs_curl admin geoserver "$(gs_newpass_body "$GS_ADMIN_PASSWORD")" "$url" >/dev/null 2>&1; then
     log "GeoServer admin password set"
-  elif curl -fsS -u "admin:$GS_ADMIN_PASSWORD" -o /dev/null "http://127.0.0.1:${TOMCAT_PORT}/geoserver/rest/about/version" 2>/dev/null; then
+  elif gs_curl admin "$GS_ADMIN_PASSWORD" "" "http://127.0.0.1:${TOMCAT_PORT}/geoserver/rest/about/version" -o /dev/null 2>/dev/null; then
     log "GeoServer admin password already set"
   elif old="$(sed -n 's|^GeoServer admin: *admin / ||p' /etc/gisstack/credentials.txt 2>/dev/null)"; [ -n "$old" ] \
-       && curl -fsS -u "admin:$old" -X PUT -H 'Content-Type: application/json' \
-            -d "{\"newPassword\":\"$GS_ADMIN_PASSWORD\"}" "$url" >/dev/null 2>&1; then
+       && gs_curl admin "$old" "$(gs_newpass_body "$GS_ADMIN_PASSWORD")" "$url" >/dev/null 2>&1; then
     log "GeoServer admin password changed (was the one from the previous run)"
   else
     warn "could not set GeoServer admin password automatically - change it in the web UI (default admin / geoserver)"
@@ -333,8 +362,13 @@ step_mapproxy() {
   "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || die "MapProxy needs Python 3.10 or newer (found $("$PY" --version)); use the Compose target on this system"
   ensure_user mapproxy /var/lib/gisstack/mapproxy
   "$PY" -m venv --clear /opt/gisstack/mapproxy-venv
-  /opt/gisstack/mapproxy-venv/bin/pip install --quiet --upgrade pip
-  /opt/gisstack/mapproxy-venv/bin/pip install --quiet mapproxy gunicorn pyproj shapely
+  # exact versions with hashes for every file: nothing unpinned is fetched from PyPI (audit S-04)
+  local REQ="$HERE/config/mapproxy-requirements.txt"
+  if ! "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then
+    REQ="$HERE/config/mapproxy-requirements-py310.txt"
+    warn "Python 3.10: using the fallback list with Pillow 12.3.0, which has known vulnerabilities; prefer Python 3.11+ or the Compose target"
+  fi
+  /opt/gisstack/mapproxy-venv/bin/pip install --quiet --require-hashes -r "$REQ"
   install -d /etc/gisstack/mapproxy
   install -m 644 "$HERE"/config/mapproxy/{mapproxy.yaml,seed.yaml,app.py} /etc/gisstack/mapproxy/
   install -d -o mapproxy -g mapproxy /var/lib/gisstack/mapproxy/cache_data
@@ -356,8 +390,13 @@ step_caddy() {
   local carch
   case "$ARCH" in x86_64|amd64) carch=amd64 ;; aarch64|arm64) carch=arm64 ;; *) die "unsupported CPU: $ARCH" ;; esac
   if ! /usr/local/bin/caddy version >/dev/null 2>&1; then   # missing or truncated binary
-    curl -fL --retry 3 -o /usr/local/bin/caddy "https://caddyserver.com/api/download?os=linux&arch=${carch}"
-    chmod 755 /usr/local/bin/caddy
+    local ctmp cname; ctmp="$(mktemp -d)"; cname="caddy_${CADDY_VERSION}_linux_${carch}.tar.gz"
+    curl -fL --retry 3 -o "$ctmp/$cname" "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/$cname" \
+      || die "cannot download Caddy ${CADDY_VERSION}"
+    verify_pin "$ctmp/$cname" "$cname"
+    tar -xzf "$ctmp/$cname" -C "$ctmp" caddy
+    install -m 755 "$ctmp/caddy" /usr/local/bin/caddy
+    rm -rf "$ctmp"
   fi
   ensure_user caddy /var/lib/caddy
   install -d /etc/caddy
