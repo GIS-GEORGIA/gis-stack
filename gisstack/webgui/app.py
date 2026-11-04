@@ -11,11 +11,13 @@ installs a server), so it
 """
 from __future__ import annotations
 
+import contextlib
 import hmac
 import io
 import os
 import secrets
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -567,6 +569,8 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
 
 def main(host: str = "127.0.0.1", port: int = 8765, server: str = "werkzeug", allow_hosts: tuple[str, ...] = (),
          rotate: bool = False) -> None:
+    with contextlib.suppress(AttributeError, ValueError):
+        getattr(sys.stdout, "reconfigure")(line_buffering=True)          # the URL must reach the journal / a pipe at once  # noqa: B009
     token = rotate_token() if rotate else load_or_create_token()
     extra = tuple(allow_hosts) + security.allowed_hosts_from_env()
     if host not in ("127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0", "::") and host not in extra:  # noqa: S104 - comparison, not a bind

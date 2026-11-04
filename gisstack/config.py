@@ -7,9 +7,9 @@ import os
 import re
 import secrets
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from . import catalog, fsutil, validation
+from . import catalog, fsutil, secretsrc, validation
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 _SECRET_RE = re.compile(r"^[A-Za-z0-9_.\-]{8,64}$")
@@ -21,8 +21,36 @@ def _secrets_path(project: str) -> Path:
     return home / "secrets" / f"{project}.json"
 
 
+SCHEMA_VERSION = 1
+# from_version -> function(raw config) -> raw config of the next version.  Add an entry whenever a key is renamed, moved or
+# changes meaning; old files keep working and new files are refused by older programs instead of being misread.
+MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
+    0: lambda raw: raw,          # v0 = files written before schema_version existed; same layout
+}
+
+
+def migrate(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Bring a user config up to SCHEMA_VERSION.  Returns (config, notes).  A file from a newer gisstack is refused."""
+    ver = raw.get("schema_version", 0)
+    if isinstance(ver, bool) or not isinstance(ver, int) or ver < 0:
+        raise ConfigError("schema_version: მთელი რიცხვი უნდა იყოს")
+    if ver > SCHEMA_VERSION:
+        raise ConfigError(f"schema_version {ver} > {SCHEMA_VERSION}: კონფიგურაცია უფრო ახალი gisstack-ისთვისაა, განაახლე პროგრამა")
+    notes: list[str] = []
+    cur, start = dict(raw), ver
+    while ver < SCHEMA_VERSION:
+        cur = dict(MIGRATIONS[ver](cur))
+        ver += 1
+        cur["schema_version"] = ver
+    if start and start < SCHEMA_VERSION:
+        notes.append(f"schema_version {start} -> {SCHEMA_VERSION}: კონფიგურაცია განახლდა")
+    cur["schema_version"] = SCHEMA_VERSION
+    return cur, notes
+
+
 def default_config() -> dict[str, Any]:
     return {
+        "schema_version": SCHEMA_VERSION,
         "project": "gisstack",
         "domain": "localhost",
         "email": "",
@@ -112,10 +140,20 @@ def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,
     template = default_config()
     if user_cfg is not None and not isinstance(user_cfg, dict):
         raise ConfigError("config: must be an object")
-    cfg = _merge(template, user_cfg or {})
+    user_cfg, migration_notes = migrate(user_cfg or {})
+    cfg = _merge(template, user_cfg)
     shape = validation.check_shape(cfg, template)
     if shape:                                 # a malformed file must produce a clear error, never a traceback
         raise ConfigError("\n".join(shape))
+    for name in secretsrc.NAMES:          # secrets supplied through the environment / a secret file, not through the config
+        sec, key = name.split(".")
+        if not cfg[sec].get(key):
+            try:
+                provided = secretsrc.lookup(name)
+            except secretsrc.SecretError as e:
+                raise ConfigError(str(e)) from e
+            if provided:
+                cfg[sec][key] = provided
     errors: list[str] = []
     v_errors, v_warnings = validation.validate(cfg, template, [b["id"] for b in catalog.BASEMAPS])
     errors.extend(dict.fromkeys(v_errors))
@@ -187,7 +225,7 @@ def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,
         if val and not _SECRET_RE.match(str(val)):
             errors.append(f"{label}: 8-64 სიმბოლო, მხოლოდ A-Z a-z 0-9 _ . -")
 
-    meta_warnings: list[str] = list(v_warnings)
+    meta_warnings: list[str] = list(v_warnings) + migration_notes
     if not comps["caddy"] and any(comps[c] for c in ("geoserver", "mapproxy", "webmap", "qgis_server")):
         meta_warnings.append("Caddy გამორთულია: სერვისები პირდაპირ პორტებზე იქნება ხელმისაწვდომი")
     if comps["geoserver"] and comps["tomcat"] and "native" not in cfg["targets"]:
