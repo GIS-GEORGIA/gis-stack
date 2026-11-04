@@ -36,6 +36,7 @@ done
 FULL=0; [ "$(echo $SEL | wc -w)" -eq "$(echo $ALL | wc -w)" ] && FULL=1
 
 for f in /etc/gisstack/stack.env "$HERE/stack.env"; do
+  # shellcheck source=/dev/null
   if [ -f "$f" ]; then set +u; . "$f"; set -u; break; fi
 done
 DB_NAME="${DB_NAME:-gis}"; DB_USER="${DB_USER:-gis}"; PG_VERSION="${PG_VERSION:-17}"

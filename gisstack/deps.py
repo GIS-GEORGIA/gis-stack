@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import Callable
 
 from . import i18n, settings
@@ -27,7 +28,7 @@ def tk_available() -> bool:
 
 def _family() -> str:
     try:
-        text = open("/etc/os-release", encoding="utf-8").read()
+        text = Path("/etc/os-release").read_text(encoding="utf-8")
     except OSError:
         return ""
     ids = " ".join(re.findall(r"^(?:ID|ID_LIKE)=(.*)$", text, re.M)).replace('"', "").lower()
@@ -53,7 +54,7 @@ def tk_package() -> tuple[str, list[str]] | None:
     }.get(fam)
 
 
-def ensure_tk(ask: Callable[[str], str] = input, run: Callable[..., "subprocess.CompletedProcess[str]"] = subprocess.run,
+def ensure_tk(ask: Callable[[str], str] = input, run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
               interactive: bool | None = None, out: Callable[[str], None] = print) -> bool:
     """True when Tkinter can be imported.  If it is missing, say what is needed and install it only after a yes."""
     if tk_available():

@@ -5,6 +5,7 @@ machine or over SSH.  Everything is read with ordinary tools (systemctl, ss, cur
 agent has to be installed on the server."""
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -236,10 +237,8 @@ def parse_native(out: str) -> dict[str, Any]:
             mode, cur = "ss", None
         elif line.startswith("@@http ") or line.startswith("@@tcp "):
             parts = line.split()
-            try:
+            with contextlib.suppress(ValueError, IndexError):
                 http[int(parts[1])] = parts[2] if len(parts) > 2 else ""
-            except (ValueError, IndexError):
-                pass
             mode, cur = "", None
         elif line.startswith("@@file "):
             parts = line.split()
@@ -344,10 +343,8 @@ def _json_items(text: str) -> list[dict[str, Any]]:
         for line in text.splitlines():
             line = line.strip()
             if line.startswith("{"):
-                try:
+                with contextlib.suppress(ValueError):
                     items.append(json.loads(line))
-                except ValueError:
-                    pass
         return items
 
 
@@ -391,7 +388,7 @@ def _compose_rows(cfg: dict[str, Any], ids: list[str], parsed: dict[str, Any], c
                 tgt, port = pub.get("TargetPort"), pub.get("PublishedPort")
                 proto = pub.get("Protocol", "tcp")
                 if port:
-                    r["listen"].append(f"{pub.get('URL') or '0.0.0.0'}:{port} -> {tgt}/{proto}")
+                    r["listen"].append(f"{pub.get('URL') or '0.0.0.0'}:{port} -> {tgt}/{proto}")  # noqa: S104 - display text
                 elif ip:
                     r["listen"].append(f"{ip}:{tgt}/{proto} (container)")
             if ip and not r["listen"]:
@@ -412,7 +409,7 @@ def parse_k8s(out: str) -> list[dict[str, Any]]:
     try:
         return json.loads(out).get("items", [])
     except (ValueError, AttributeError):
-        raise deploy.DeployError("kubectl: " + out.strip().splitlines()[-1] if out.strip() else "kubectl: empty answer")
+        raise deploy.DeployError("kubectl: " + out.strip().splitlines()[-1] if out.strip() else "kubectl: empty answer") from None
 
 
 def _k8s_name(comp: str) -> str:

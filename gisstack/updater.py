@@ -42,7 +42,9 @@ def is_newer(latest: str, current: str = __version__) -> bool:
 
 
 def _get(url: str, opener: Callable[..., Any] | None = None, timeout: int = 10, accept: str = "application/vnd.github+json") -> Any:
-    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": f"gisstack/{__version__}"})
+    if not url.startswith("https://"):         # never follow file:, ftp: or plain http: (the GitHub URLs are all https)
+        raise UpdateError("only https URLs are allowed")
+    req = urllib.request.Request(url, headers={"Accept": accept, "User-Agent": f"gisstack/{__version__}"})  # noqa: S310 - https only, checked above
     try:
         return (opener or urllib.request.urlopen)(req, timeout=timeout)
     except urllib.error.HTTPError as e:

@@ -9,7 +9,7 @@ from __future__ import annotations
 import ipaddress
 import os
 import re
-from typing import Any, Callable
+from typing import Any, Callable, Optional, Tuple
 
 # Environment switch for unknown keys: "warn" (default; they are reported, not fatal) or "error".
 STRICT_ENV = "GISSTACK_STRICT_CONFIG"
@@ -26,7 +26,7 @@ _K8S_QTY = re.compile(r"^[1-9][0-9]{0,5}(?:Mi|Gi|Ti)$")
 _WMS_LAYERS = re.compile(r"^[A-Za-z0-9_.:,/ -]{0,300}$")
 _QGIS_MAP = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 
-Check = Callable[[Any], tuple[Any, str | None]]      # value -> (normalised value, error or None)
+Check = Callable[[Any], Tuple[Any, Optional[str]]]      # value -> (normalised value, error or None); typing aliases keep Python 3.9 working
 
 
 def _int(lo: int, hi: int) -> Check:

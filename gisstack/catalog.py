@@ -185,7 +185,7 @@ BASEMAPS = [
 
 
 def component_ids() -> list[str]:
-    return [c["id"] for c in COMPONENTS]
+    return [str(c["id"]) for c in COMPONENTS]
 
 
 def ui_catalog() -> dict:

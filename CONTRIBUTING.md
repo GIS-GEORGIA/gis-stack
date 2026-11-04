@@ -15,11 +15,17 @@ Anyone is welcome to contribute: code, tests, docs, translations, or reports fro
 1. გახსენი [issue](https://github.com/GIS-GEORGIA/gis-stack/issues) (ბაგი, იდეა ან კითხვა) — დიდ ცვლილებამდე
    სჯობს ჯერ განვიხილოთ.
 2. გააკეთე **fork**, შემდეგ ბრენჩი: `git checkout -b my-change`.
-3. გაუშვი ტესტები:
+3. გაუშვი იგივე შემოწმებები, რასაც CI გაუშვებს:
    ```bash
-   pip install flask jinja2 pyyaml mapproxy
-   python3 tests/test_gisstack.py
+   pip install flask jinja2 pyyaml mapproxy ruff mypy types-PyYAML coverage bandit pip-audit
+   python3 -m unittest discover -s tests        # ტესტები (Python 3.9 – 3.13)
+   ruff check .                                   # სტილი და ტიპური შეცდომები
+   mypy                                           # ტიპები
+   coverage run -m unittest discover -s tests && coverage report --fail-under=70
+   bandit -r gisstack -ll                         # უსაფრთხოება
    ```
+   CI ასევე ამოწმებს shell სკრიპტებს (`shellcheck`), YAML-ს, `docker compose config`-ს, Kubernetes მანიფესტებს (`kubeconform`), დამოკიდებულებებს (`pip-audit`),
+   პაკეტების აგებასა და დაყენებას (sdist, wheel, deb, rpm) და CodeQL-ს.
 4. გახსენი **pull request** `main`-ზე და აღწერე, რა შეიცვალა და როგორ გადაამოწმე.
 
 ## პროექტის აგებულება

@@ -5,6 +5,7 @@ to a temporary name in the same directory and renamed into place, so a crash nev
 secret file and a concurrent reader never sees loose permissions."""
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
 from pathlib import Path
@@ -54,10 +55,8 @@ def write_file(path: str | Path, data: str | bytes, mode: int = 0o600, *, atomic
             os.fsync(fh.fileno())
         os.replace(tmp, p)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise
     return p
 

@@ -6,7 +6,6 @@ import json
 import os
 import re
 import shutil
-import stat
 import tarfile
 import zipfile
 from pathlib import Path
@@ -30,7 +29,7 @@ def _env() -> jinja2.Environment:
         trim_blocks=True,
         lstrip_blocks=True,
         keep_trailing_newline=True,
-        autoescape=False,
+        autoescape=False,  # nosec B701  # noqa: S701 - the output is shell/YAML/Caddy text, never HTML; the quoting filters below protect each context
     )
     env.filters["tojson_c"] = lambda v: json.dumps(v, ensure_ascii=False)
     env.filters["shq"] = lambda s: "'" + str(s).replace("'", "'\"'\"'") + "'"      # a whole word, single-quoted
@@ -58,7 +57,7 @@ def pg_packages(cfg: dict, flavor: str) -> list[str]:
     out: list[str] = []
     for e in catalog.EXTENSIONS:
         if e["id"] in cfg["postgres"]["extensions"]:
-            out += [p.format(v=v) for p in e[flavor]]
+            out += [p.format(v=v) for p in e[flavor]]  # type: ignore[attr-defined]  # catalog entries are plain dicts
     return list(dict.fromkeys(out))
 
 

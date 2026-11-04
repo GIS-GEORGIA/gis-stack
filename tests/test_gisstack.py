@@ -176,8 +176,8 @@ class CleanTests(unittest.TestCase):
             log = td / "calls.log"
             for tool in ("docker", "kubectl"):
                 stub = bindir / tool
-                stub.write_text('#!/bin/sh\necho "$(basename "$0") $*" >> "%s"\n'
-                                'case " $* " in *" config "*) printf "postgis\\ngeoserver\\nmapproxy\\ncaddy\\n" ;; esac\nexit 0\n' % log)
+                stub.write_text(f'#!/bin/sh\necho "$(basename "$0") $*" >> "{log}"\n'
+                                'case " $* " in *" config "*) printf "postgis\\ngeoserver\\nmapproxy\\ncaddy\\n" ;; esac\nexit 0\n')
                 stub.chmod(0o755)
             env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}")
 
@@ -1094,7 +1094,7 @@ class ConfigValidationTests(unittest.TestCase):
         self.rejects(mapproxy__layers=[{"name": "ok", "title": "t", "source": "evil"}])
         self.rejects(mapproxy__layers=[{"name": "ok", "title": "t", "source": "wms", "url": "ftp://x"}])
         self.assertIn("unknown key", self.rejects(mapproxy__layers=[{"name": "ok", "title": "t", "source": "wms", "extra": 1}]))
-        self.rejects(mapproxy__layers=[{"name": "l%d" % i, "title": "t", "source": "geoserver"} for i in range(600)])
+        self.rejects(mapproxy__layers=[{"name": f"l{i}", "title": "t", "source": "geoserver"} for i in range(600)])
 
     def test_malformed_files_give_errors_not_tracebacks(self):
         for bad in ({"postgres": "x"}, {"components": []}, {"mapproxy": {"layers": "x"}}, {"webmap": {"center": 5}},
@@ -1155,9 +1155,8 @@ class InjectionFuzzTests(unittest.TestCase):
             path = f"{prefix}{k}"
             if isinstance(v, dict):
                 out += InjectionFuzzTests.string_paths(v, path + ".")
-            elif isinstance(v, str) or (isinstance(v, list) and v and all(isinstance(x, str) for x in v)):
-                out.append(path)
-            elif isinstance(v, (int, float)) and not isinstance(v, bool):
+            elif (isinstance(v, str) or (isinstance(v, list) and v and all(isinstance(x, str) for x in v))
+                  or (isinstance(v, (int, float)) and not isinstance(v, bool))):
                 out.append(path)
         return out
 

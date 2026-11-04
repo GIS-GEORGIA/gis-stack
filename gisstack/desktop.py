@@ -51,10 +51,11 @@ def _wrap_text_widget(cls):
 for _n in ("Label", "Button", "Checkbutton", "LabelFrame", "Radiobutton"):
     setattr(ttk, _n, _wrap_text_widget(getattr(ttk, _n)))
 _nb_add, _tv_heading = ttk.Notebook.add, ttk.Treeview.heading
-ttk.Notebook.add = lambda self, child, **kw: _nb_add(self, child, **_tr_kw(kw))
-ttk.Treeview.heading = lambda self, column, option=None, **kw: _tv_heading(self, column, option, **_tr_kw(kw))
+setattr(ttk.Notebook, "add", lambda self, child, **kw: _nb_add(self, child, **_tr_kw(kw)))  # noqa: B010 - mypy forbids assigning methods
+setattr(ttk.Treeview, "heading", lambda self, column, option=None, **kw: _tv_heading(self, column, option, **_tr_kw(kw)))  # noqa: B010
 _wm_title = tk.Wm.wm_title
-tk.Wm.wm_title = tk.Wm.title = lambda self, string=None: _wm_title(self, tr(string) if string else string)
+setattr(tk.Wm, "wm_title", lambda self, string=None: _wm_title(self, tr(string) if string else string))  # noqa: B010
+setattr(tk.Wm, "title", tk.Wm.wm_title)  # noqa: B010
 for _n in ("showinfo", "showerror", "showwarning", "askyesno", "askokcancel"):
     setattr(messagebox, _n, (lambda f: lambda title=None, message=None, **kw: f(tr(title), tr(message), **kw))(getattr(messagebox, _n)))
 _askdir = filedialog.askdirectory
@@ -122,7 +123,9 @@ def recolor(w: tk.Misc, name: str) -> None:
             c.configure(bg=pal["bg"])
         elif isinstance(c, (tk.Text, tk.Listbox)):
             fg = pal["err"] if getattr(c, "_gs_error", False) else pal["fg"]
-            c.configure(bg=pal["field"], fg=fg, insertbackground=pal["fg"], highlightbackground=pal["line"])
+            c.configure(bg=pal["field"], fg=fg, highlightbackground=pal["line"])
+            if isinstance(c, tk.Text):
+                c.configure(insertbackground=pal["fg"])
         if c is not w:
             recolor(c, name)
 
@@ -420,7 +423,8 @@ class App(tk.Tk):
                 rep = discover.scan(cfg, mode, ssh, "native")
                 self.after(0, lambda: self._exist_show(rep, None))
             except deploy.DeployError as e:
-                self.after(0, lambda: self._exist_show(None, str(e)))
+                msg = str(e)                   # `e` is deleted when the except block ends, the callback runs later
+                self.after(0, lambda: self._exist_show(None, msg))
         threading.Thread(target=run, daemon=True).start()
 
     def _exist_show(self, rep, err) -> None:
@@ -509,7 +513,7 @@ class App(tk.Tk):
         if not messagebox.askyesno("გეგმის შესრულება", f"შესრულდება (ყოველ წაშლამდე ბექაფი):\n{what}\n\nგავაგრძელო?", icon="warning"):
             return
         plan, wd = dict(self.exist_plan), self.exist_data.get()
-        self._exist_job("run", lambda: existing.run(cfg, "native", mode, ssh, plan, lambda c: None, with_data=wd, install=False,
+        self._exist_job("run", lambda: existing.run(cfg, "native", mode, ssh, plan, None, with_data=wd, install=False,
                                                     confirm_data_loss=True))     # the dialog above listed the plan, +purge included
 
     def _tab_clean(self, nb):
@@ -624,7 +628,8 @@ class App(tk.Tk):
                 res = ops.status(cfg, mode, ssh)
                 self.after(0, lambda: self._ops_show(res, None))
             except (deploy.DeployError, ValueError) as e:
-                self.after(0, lambda: self._ops_show(None, str(e)))
+                msg = str(e)
+                self.after(0, lambda: self._ops_show(None, msg))
         threading.Thread(target=run, daemon=True).start()
 
     def _ops_show(self, res, err) -> None:
@@ -887,10 +892,10 @@ class App(tk.Tk):
             return
         if target == "native":
             plan, wd = dict(self.exist_plan), self.exist_data.get()
-            if any(v["purge"] and v["action"] in ("remove", "reuse") for v in plan.values()):
-                if not messagebox.askyesno("გასუფთავება", "⚠ მონაცემებიც წაიშლება და ვერ აღდგება!\n" + "\n".join(
+            if any(v["purge"] and v["action"] in ("remove", "reuse") for v in plan.values()) and not messagebox.askyesno(
+                    "გასუფთავება", "⚠ მონაცემებიც წაიშლება და ვერ აღდგება!\n" + "\n".join(
                         f"{k}: {self._plan_label(k)}" for k in plan) + "\nგავაგრძელო?", icon="warning"):
-                    return
+                return
 
             def steps(b):
                 if plan:
@@ -1048,7 +1053,8 @@ class App(tk.Tk):
         links.grid(row=2, column=0, columnspan=2, pady=10, sticky="w")
         for text, url in (("GitHub", ""), ("ინსტრუქცია", "/blob/main/docs/USAGE.md"), ("გამოშვებები", "/releases"),
                           ("პრობლემის შეტყობინება", "/issues/new/choose"), ("ლიცენზია", "/blob/main/LICENSE")):
-            ttk.Button(links, text=text, command=lambda u=url: webbrowser.open(settings.REPO_URL + u)).pack(side="left", padx=2)
+            ttk.Button(links, text=text, command=lambda u=url: webbrowser.open(settings.REPO_URL + u)  # type: ignore[misc]
+                       ).pack(side="left", padx=2)
         ttk.Label(f, text=tr(f"ვერსია v{__version__} · MIT · ") + tr("პარამეტრები ინახება ამ კომპიუტერზე (~/.gisstack/settings.json) და ორივე GUI-ს (ვებ და Desktop) საერთოა."),
                   wraplength=430, foreground=PALETTES[self.theme]["mut"]).grid(row=3, column=0, columnspan=2, sticky="w")
 
@@ -1059,7 +1065,7 @@ class App(tk.Tk):
             win.destroy()
             if lang != cur["lang"] or theme != cur["theme"]:
                 # language and theme are applied while the widgets are built: restart the window
-                os.execv(sys.executable, [sys.executable, "-m", "gisstack", "desktop"])
+                os.execv(sys.executable, [sys.executable, "-m", "gisstack", "desktop"])  # noqa: S606 - restart this program
         ttk.Button(f, text="შენახვა და გადატვირთვა", command=save).grid(row=4, column=0, columnspan=2, pady=(12, 0), sticky="e")
 
     # ------------------------------------------------------------ updates
@@ -1071,7 +1077,8 @@ class App(tk.Tk):
                 info = updater.check()
                 self.after(0, lambda: self._show_update(info))
             except updater.UpdateError as e:
-                self.after(0, lambda: messagebox.showerror("განახლება", str(e)))
+                msg = str(e)
+                self.after(0, lambda: messagebox.showerror("განახლება", msg))
         threading.Thread(target=run, daemon=True).start()
 
     def _show_update(self, info) -> None:

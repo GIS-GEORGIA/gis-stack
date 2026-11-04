@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import hmac
 import io
-import json
 import os
 import secrets
 import tempfile
@@ -417,8 +416,8 @@ def create_app(token: str | None = None) -> Flask:
     def _save(body: dict[str, Any]) -> str:
         """Validate and store the whole project, or just one program's part of it. Returns the file path."""
         cfg = _resolve_or_400(body.get("config"))     # validation (and 400 with the reason)
-        raw = body.get("config") if isinstance(body.get("config"), dict) else {}
-        raw = dict(raw, project=cfg["project"])
+        given = body.get("config")
+        raw = dict(given if isinstance(given, dict) else {}, project=cfg["project"])
         comp = body.get("component")
         try:
             if comp is None:
@@ -441,6 +440,8 @@ def create_app(token: str | None = None) -> Flask:
         mode, comp, target = body.get("mode"), body.get("component"), cfg["deploy_target"]
         if mode not in ("local", "ssh"):
             return make_response(jsonify({"error": "mode must be local or ssh"}), 400)
+        if not isinstance(comp, str):
+            return make_response(jsonify({"error": "component is required"}), 400)
         try:
             deploy_mod.apply_args(target, comp)
         except deploy_mod.DeployError as e:

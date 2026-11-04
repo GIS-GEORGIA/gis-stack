@@ -88,6 +88,8 @@ def save_component(cfg: dict[str, Any], component: str) -> Path:
     if component not in SECTIONS:
         raise ProjectError(f"უცნობი კომპონენტი: {component}")
     name = cfg.get("project")
+    if not isinstance(name, str):
+        raise ProjectError("project: required")
     try:
         data = load(name)
     except ProjectError as e:

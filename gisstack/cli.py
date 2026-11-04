@@ -190,7 +190,6 @@ def _existing(a: argparse.Namespace, cfg: dict) -> int:
     try:
         if a.action == "backup":
             rep = discover.scan(cfg, a.mode, ssh, target)
-            import time as _t
             ts = existing.new_backup_id()
             out = ops._run(a.mode, ssh, existing.backup_script(rep, comps, ts, a.with_data), root=True, timeout=900)
             print(out, end="")
@@ -200,7 +199,7 @@ def _existing(a: argparse.Namespace, cfg: dict) -> int:
             local = existing.fetch_backup(a.mode, ssh, ts, a.backup_dir, existing.host_label(a.mode, ssh))
             print("ასლი ამ მანქანაზე:", local, f"(SHA-256 ✔ {existing.verify_backup_archive(local)} ფაილი)")
             return 0
-        for line in existing.run(cfg, target, a.mode, ssh, plan, lambda c: None, with_data=a.with_data,
+        for line in existing.run(cfg, target, a.mode, ssh, plan, None, with_data=a.with_data,
                                  backup_dir=a.backup_dir, install=False, confirm_data_loss=True):   # confirmed above
             print(line, flush=True)
         return 0
@@ -216,7 +215,8 @@ def _apply(a: argparse.Namespace, cfg: dict) -> int:
         return 2
     try:
         if a.save:
-            print("saved:", projects.save_component(dict(_load(a.config), project=cfg["project"]), a.component))
+            print("saved:", projects.save_component(
+                dict(config._merge(config.default_config(), _load(a.config)), project=cfg["project"]), a.component))
         out = deploy.home_dir() / "bundles" / f"{cfg['project']}-apply"
         generate.generate_bundle(cfg, out)
         for line in deploy.apply_component(cfg, out, target, a.mode, ssh, a.component):
@@ -313,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
         sa.add_argument("components", nargs="*")
     lg = sub.add_parser("logs", help="show a program's log")
     conn(lg)
-    lg.add_argument("component", choices=[c for c in ops.ORDER] + ["qgis"])
+    lg.add_argument("component", choices=[*ops.ORDER, "qgis"])
     lg.add_argument("-n", "--lines", type=int, default=100)
     lg.add_argument("-f", "--follow", action="store_true")
 
@@ -391,7 +391,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "save":
         try:
-            raw = dict(_load(a.config), project=cfg["project"])
+            raw = dict(config._merge(config.default_config(), _load(a.config)), project=cfg["project"])
             path = projects.save_component(raw, a.component) if a.component else projects.save(raw)
         except projects.ProjectError as e:
             print(f"ERROR: {e}", file=sys.stderr)

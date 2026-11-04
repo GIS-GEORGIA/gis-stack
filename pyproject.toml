@@ -28,3 +28,40 @@ include = ["gisstack*"]
 
 [tool.setuptools.package-data]
 gisstack = ["templates/**/*", "vendor/**/*", "webgui/templates/*"]
+
+[project.optional-dependencies]
+dev = ["ruff", "mypy", "coverage", "bandit", "pip-audit", "types-PyYAML", "build"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 140
+extend-exclude = ["build", "dist", "gisstack/vendor"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "S", "C4", "SIM", "UP"]
+ignore = [
+    "E501",    # long lines: templates and Georgian text
+    "E741",    # `l` for log lines / listeners is idiomatic in the parsers
+    "C408",    # dict(key=value) is used for readable palettes
+    "S101",    # assert is used for invariants the type checker cannot see
+    "S105", "S106",   # empty-string "password" defaults are not credentials
+    "S404", "S603", "S607",   # subprocess is the point of this tool; arguments are lists, never shell strings
+    "UP006", "UP007", "UP035", "UP045",   # keep typing spelling stable while Python 3.9 is supported
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S", "B011", "B017", "SIM117"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true
+files = ["gisstack"]
+warn_unused_ignores = true
+
+[tool.coverage.run]
+source = ["gisstack"]
+branch = false
+
+[tool.coverage.report]
+skip_empty = true
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]

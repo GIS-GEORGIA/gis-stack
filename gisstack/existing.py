@@ -409,11 +409,12 @@ def _tail(text: str) -> Iterator[str]:
 
 
 def run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None, plan: dict[str, Any] | None,
-        make_bundle: Callable[[dict[str, Any]], Path], *, with_data: bool = False, backup_dir: str | None = None,
+        make_bundle: Callable[[dict[str, Any]], Path] | None, *, with_data: bool = False, backup_dir: str | None = None,
         install: bool = True, confirm_data_loss: bool = False) -> Iterator[str]:
     """scan -> check plan -> backup -> remove -> install (build on top where asked) -> import.  Yields log lines.
 
-    make_bundle(cfg) must render the bundle for the (possibly adjusted) cfg and return its folder."""
+    make_bundle(cfg) must render the bundle for the (possibly adjusted) cfg and return its folder (None is allowed
+    only with install=False)."""
     if target != "native":
         raise PlanError("არსებული პროგრამების მართვა ახლა მხოლოდ native სამიზნეზეა")
     plan = _norm(plan)
@@ -445,9 +446,9 @@ def run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None,
         if comp in discover.WEB_SERVERS and p["action"] == "disable":
             yield from _tail(ops._run(mode, ssh, disable_script(comp + ".service"), root=True))
     for comp in discover.COMPONENTS:
-        p = plan.get(comp)
-        if p and p["action"] in ("remove", "reuse"):
-            yield from _tail(ops._run(mode, ssh, remove_script(rep, comp, p["purge"]), root=True, timeout=600))
+        step = plan.get(comp)
+        if step and step["action"] in ("remove", "reuse"):
+            yield from _tail(ops._run(mode, ssh, remove_script(rep, comp, step["purge"]), root=True, timeout=600))
     pg = plan.get("postgis")
     if pg and pg["action"] == "adopt":
         c = rep["components"]["postgis"]
@@ -455,6 +456,8 @@ def run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None,
         flags.append("--adopt-postgres")
         yield f"== PostgreSQL {c['major']}: ვიყენებთ არსებულს (ახალ სერვერს არ ვაყენებთ, პარამეტრებს არ ვცვლით)"
     if install:
+        if make_bundle is None:
+            raise PlanError("make_bundle is required when installing")
         bundle = make_bundle(cfg)
         yield from deploy.deploy(cfg, bundle, target, mode, ssh, extra_args=flags)
     reuse = [c for c, p in plan.items() if c in discover.COMPONENTS and p["action"] == "reuse"]

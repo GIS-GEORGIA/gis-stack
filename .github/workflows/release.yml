@@ -27,14 +27,14 @@ jobs:
           [ "$V" = "$P" ] && [ "$V" = "$T" ] || { echo "::error::version mismatch - bump gisstack/__init__.py and pyproject.toml to $V"; exit 1; }
 
       - run: pip install flask jinja2 pyyaml mapproxy build
-      - run: python3 tests/test_gisstack.py
+      - run: python3 -m unittest discover -s tests
 
       - name: Build archive and packages
         run: |
           python3 -m build --sdist --outdir dist
           packaging/build.sh deb
           sudo apt-get install -y rpm >/dev/null && packaging/build.sh rpm || echo "rpm skipped"
-          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+          cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS
 
       - name: Release notes from CHANGELOG.md
         run: |

@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from . import catalog, deploy, ops
+from . import catalog, ops
 
 _NAMES = {c["id"]: c["ka"] for c in catalog.COMPONENTS}
 COMPONENTS = ["postgis", "tomcat", "geoserver", "qgis_server", "mapproxy", "caddy"]
@@ -115,7 +115,7 @@ def parse(out: str) -> dict[str, Any]:
         except (ValueError, IndexError):
             continue
         listeners.append({"addr": addr, "port": port, "proc": m.group(1) if m else "", "pid": int(m.group(2)) if m else None})
-    pg = {"dbs": []}
+    pg: dict[str, Any] = {"dbs": []}
     for l in s.get("pg", []):
         p = l.split("|")
         if p[0] == "ver" and len(p) > 1:
@@ -178,7 +178,8 @@ def analyse(raw: dict[str, Any], cfg: dict[str, Any]) -> dict[str, Any]:
     c["listen"] = [f"{l['addr']} ({l['proc'] or 'postgres'})" for l in listeners if l["proc"] in ("postgres", "postmaster") or l["port"] == pg.get("port")]
     c["data"] = [f"{d['name']} ({d['bytes'] // (1024 * 1024)} MB)" for d in pg["dbs"]]
     c["databases"] = [d["name"] for d in pg["dbs"]]
-    c["major"] = re.match(r"\d+", c["version"]).group(0) if re.match(r"\d+", c["version"]) else ""
+    major = re.match(r"\d+", c["version"])
+    c["major"] = major.group(0) if major else ""
     c["found"] = bool(c["packages"] or c["services"] or pg.get("version"))
     c["ours"] = c["found"] and ours_marker
     c["foreign"] = c["found"] and not ours_marker
@@ -316,7 +317,7 @@ def scan(cfg: dict[str, Any], mode: str, ssh: dict[str, Any] | None = None, targ
     rep = analyse(raw, cfg)
     rep["target"] = t
     rep["conflicts"] = conflicts(rep, cfg, t)
-    rep["wanted"] = [c for c in needed_ports(cfg, t)]
+    rep["wanted"] = list(needed_ports(cfg, t))
     rep["any_foreign"] = any(c["foreign"] for c in rep["components"].values())
     return rep
 

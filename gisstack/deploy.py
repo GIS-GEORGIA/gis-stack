@@ -35,9 +35,14 @@ def _stream(cmd: list[str], cwd: str | None = None, env: dict | None = None) -> 
     except FileNotFoundError as e:
         raise DeployError(f"command not found: {cmd[0]}") from e
     assert proc.stdout is not None
-    for line in proc.stdout:
-        yield line.rstrip("\n")
-    rc = proc.wait()
+    try:
+        for line in proc.stdout:
+            yield line.rstrip("\n")
+    finally:                                   # also when the consumer stops early: no leaked pipe, no zombie
+        proc.stdout.close()
+        if proc.poll() is None:
+            proc.terminate()
+        rc = proc.wait()
     if rc != 0:
         raise DeployError(f"command failed (exit {rc}): {cmd[0]}")
 
@@ -60,7 +65,11 @@ def preflight(target: str, mode: str) -> list[str]:
 
 def _ssh_base(ssh: dict[str, Any]) -> list[str]:
     host, user = str(ssh.get("host", "")), str(ssh.get("user", "root"))
-    port = int(ssh.get("port") or 22)
+    raw_port = ssh.get("port")
+    try:
+        port = 22 if raw_port in (None, "") else int(raw_port)      # port 0 is invalid, not "default"
+    except (TypeError, ValueError):
+        raise DeployError("SSH port არასწორია") from None
     if not _HOST_RE.match(host):
         raise DeployError("SSH host არასწორია")
     if not _USER_RE.match(user):

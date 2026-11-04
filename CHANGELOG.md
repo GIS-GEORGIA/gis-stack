@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+### ხარისხი და CI (Phase 11a)
+- **CI-ს კარიბჭეები:** ruff, mypy, shellcheck (საცავის და გენერირებული სკრიპტები), yamllint, `docker compose config`, `kubeconform`, `pip-audit`, bandit, CodeQL,
+  Dependabot; ტესტები Python **3.9 – 3.13**-ზე; დაფარვის ზღვარი (≥70 %); sdist/wheel/deb/rpm-ის აგება და დაყენების შემოწმება.
+- **ახალი ტესტები** `cli.py`-სა და `deploy.py`-სთვის (დაფარვა 0 % → 89 % და 39 % → 99 %; საერთო 59 % → 74 %).
+- **გასწორდა:** Python 3.9-ზე იმპორტი ეცემოდა (`str | None` გაშვების დროს); Tk-ის შეცდომის დიალოგები ვარდებოდა (`except` ცვლადი closure-ში);
+  `_stream` არ ხურავდა pipe-ს; SSH port `0` ჩუმად ხდებოდა 22; `gisstack save/apply --save` იშვიათი კონფიგით არაფერს ინახავდა.
+
 ### უსაფრთხოება (Phase 1a)
 - **კონფიგურაციის მკაცრი ვალიდაცია** (`gisstack/validation.py`): ტიპები, დიაპაზონები, ფორმატები (CIDR, e-mail, image, K8s სახელები, URL, გზები),
   მართვის სიმბოლოების აკრძალვა, უცნობი გასაღებების გაფრთხილება (`GISSTACK_STRICT_CONFIG=error` — შეცდომა), დაზიანებული ფაილი → ნათელი შეტყობინება.

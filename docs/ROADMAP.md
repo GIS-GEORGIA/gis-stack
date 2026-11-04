@@ -42,7 +42,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - **Exit criteria:** the three verified injection cases are rejected; failed backup aborts before any removal; full suite green.
 - **Risks:** stricter validation may reject unusual-but-legitimate values → warn mode + documented allowed alphabets.
 
-### Phase 11a — Quality gates and characterisation tests · **M**
+### Phase 11a — Quality gates and characterisation tests · **M** — ✅ implemented
 - **Work:** CI jobs for `ruff` (baseline then enforce), `mypy` (baseline file, ratchet), `shellcheck` on templates rendered in CI and repository scripts, YAML lint, `kubeconform` on rendered manifests, `docker compose config`, `pip-audit`, CodeQL, Dependabot; Python matrix 3.9–3.13; coverage report with a ratchet (start at 59 %); characterisation tests for `cli.py` and `deploy.py` (stubbed `ssh`/`tar`).
 - **Exit criteria:** CI blocks on lint/type/audit regressions; `cli.py` and `deploy.py` ≥ 70 %.
 
