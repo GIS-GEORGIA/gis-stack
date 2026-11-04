@@ -60,6 +60,8 @@ warn_unused_ignores = true
 
 [tool.coverage.run]
 source = ["gisstack"]
+# the Tk desktop GUI needs a display; it is exercised by hand and in the VM checks, not in the CI coverage figure
+omit = ["gisstack/desktop.py"]
 branch = false
 
 [tool.coverage.report]

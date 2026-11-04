@@ -388,7 +388,7 @@ def _compose_rows(cfg: dict[str, Any], ids: list[str], parsed: dict[str, Any], c
                 tgt, port = pub.get("TargetPort"), pub.get("PublishedPort")
                 proto = pub.get("Protocol", "tcp")
                 if port:
-                    r["listen"].append(f"{pub.get('URL') or '0.0.0.0'}:{port} -> {tgt}/{proto}")  # noqa: S104 - display text
+                    r["listen"].append(f"{pub.get('URL') or '0.0.0.0'}:{port} -> {tgt}/{proto}")  # nosec B104  # noqa: S104 - display text only
                 elif ip:
                     r["listen"].append(f"{ip}:{tgt}/{proto} (container)")
             if ip and not r["listen"]:

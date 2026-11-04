@@ -16,7 +16,7 @@ concurrency:
 jobs:
   lint:
     name: lint and types
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -28,7 +28,7 @@ jobs:
 
   shell-yaml:
     name: shell, YAML, Compose and Kubernetes validation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -60,7 +60,7 @@ jobs:
 
   test:
     name: tests (Python ${{ matrix.python }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -72,7 +72,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Install dependencies (MapProxy 7 needs Python 3.10+; its test is skipped on 3.9)
         run: |
-          pip install flask jinja2 pyyaml coverage
+          pip install flask jinja2 pyyaml "coverage[toml]"
           if python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then pip install mapproxy; fi
       - name: Run the test suite with coverage
         run: |
@@ -84,7 +84,7 @@ jobs:
 
   security:
     name: dependency and code security checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -100,7 +100,7 @@ jobs:
 
   build:
     name: build sdist, wheel, deb and rpm and install them
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -122,7 +122,7 @@ jobs:
         run: |
           packaging/build.sh deb
           sudo apt-get install -y ./dist/gisstack-installer_*_all.deb
-          gisstack --version
+          PATH=/usr/bin:/bin gisstack --version      # the system python3 with the distro's jinja2, not setup-python's
       - name: rpm package
         run: |
           sudo apt-get install -y rpm
