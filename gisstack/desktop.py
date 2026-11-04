@@ -6,6 +6,7 @@ server over SSH (key-based) or on this machine.  Needs python3-tk
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import queue
@@ -18,7 +19,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Any
 
-from . import __version__, catalog, config, deploy, discover, existing, generate, i18n, ops, projects, settings, updater
+from . import __version__, catalog, config, deploy, discover, existing, generate, i18n, ops, preflight, projects, services, settings, updater
 from .core import paths
 
 # ---------------------------------------------------------------- language and theme
@@ -48,19 +49,39 @@ def _wrap_text_widget(cls):
     return W
 
 
-# every label / button / tab / heading / dialog goes through tr() without touching each call site
-for _n in ("Label", "Button", "Checkbutton", "LabelFrame", "Radiobutton"):
-    setattr(ttk, _n, _wrap_text_widget(getattr(ttk, _n)))
-_nb_add, _tv_heading = ttk.Notebook.add, ttk.Treeview.heading
-setattr(ttk.Notebook, "add", lambda self, child, **kw: _nb_add(self, child, **_tr_kw(kw)))  # noqa: B010 - mypy forbids assigning methods
-setattr(ttk.Treeview, "heading", lambda self, column, option=None, **kw: _tv_heading(self, column, option, **_tr_kw(kw)))  # noqa: B010
-_wm_title = tk.Wm.wm_title
-setattr(tk.Wm, "wm_title", lambda self, string=None: _wm_title(self, tr(string) if string else string))  # noqa: B010
-setattr(tk.Wm, "title", tk.Wm.wm_title)  # noqa: B010
-for _n in ("showinfo", "showerror", "showwarning", "askyesno", "askokcancel"):
-    setattr(messagebox, _n, (lambda f: lambda title=None, message=None, **kw: f(tr(title), tr(message), **kw))(getattr(messagebox, _n)))
-_askdir = filedialog.askdirectory
-filedialog.askdirectory = lambda **kw: _askdir(**({**kw, "title": tr(kw["title"])} if "title" in kw else kw))
+_ORIGINALS: dict[tuple[Any, str], Any] = {}
+
+
+def _swap(owner: Any, name: str, replacement: Any) -> None:
+    _ORIGINALS.setdefault((owner, name), getattr(owner, name))
+    setattr(owner, name, replacement)
+
+
+def install_translation() -> None:
+    """Route every label / button / tab / heading / dialog text through tr() without touching each call site.
+
+    Explicit and idempotent: nothing is patched when this module is merely imported (audit A-04); `App` installs it when the
+    window is created and `uninstall_translation()` restores the stock Tk classes (tests, embedding)."""
+    if _ORIGINALS:
+        return
+    for n in ("Label", "Button", "Checkbutton", "LabelFrame", "Radiobutton"):
+        _swap(ttk, n, _wrap_text_widget(getattr(ttk, n)))
+    nb_add, tv_heading, wm_title = ttk.Notebook.add, ttk.Treeview.heading, tk.Wm.wm_title
+    _swap(ttk.Notebook, "add", lambda self, child, **kw: nb_add(self, child, **_tr_kw(kw)))
+    _swap(ttk.Treeview, "heading", lambda self, column, option=None, **kw: tv_heading(self, column, option, **_tr_kw(kw)))
+    _swap(tk.Wm, "wm_title", lambda self, string=None: wm_title(self, tr(string) if string else string))
+    _swap(tk.Wm, "title", tk.Wm.wm_title)
+    for n in ("showinfo", "showerror", "showwarning", "askyesno", "askokcancel"):
+        _swap(messagebox, n, (lambda f: lambda title=None, message=None, **kw: f(tr(title), tr(message), **kw))(getattr(messagebox, n)))
+    askdir = filedialog.askdirectory
+    _swap(filedialog, "askdirectory", lambda **kw: askdir(**({**kw, "title": tr(kw["title"])} if "title" in kw else kw)))
+
+
+def uninstall_translation() -> None:
+    for (owner, name), original in list(_ORIGINALS.items()):
+        setattr(owner, name, original)
+    _ORIGINALS.clear()
+
 
 PALETTES = {
     "light": dict(bg="#f4f6f8", fg="#1c2630", field="#ffffff", btn="#e6ecf1", sel="#bcd3ec", mut="#5b6b7a", line="#c9d3dc", err="#b00020"),
@@ -156,6 +177,7 @@ def layers_to_text(layers: list[dict[str, Any]]) -> str:
 
 class App(tk.Tk):
     def __init__(self) -> None:
+        install_translation()
         super().__init__()
         self.theme = theme_name()
         apply_theme(self, self.theme)
@@ -204,7 +226,7 @@ class App(tk.Tk):
         self.deploy_btn.pack(side="left", padx=4)
         self.log = scrolledtext.ScrolledText(self, height=11, state="disabled", font=("monospace", 9))
         self.log.pack(fill="both", padx=8, pady=8)
-        self.after(150, self._drain)
+        self._drain_id = self.after(150, self._drain)
 
     # ------------------------------------------------------------ widgets
     def _entry(self, parent, label, path, row, width=34, show=None):
@@ -788,6 +810,13 @@ class App(tk.Tk):
     def _log(self, line: str) -> None:
         self.log_q.put(line)
 
+    def destroy(self) -> None:
+        drain_id = getattr(self, "_drain_id", None)
+        if drain_id:
+            with contextlib.suppress(tk.TclError):
+                self.after_cancel(drain_id)      # no callback may fire into a destroyed window
+        super().destroy()
+
     def _drain(self) -> None:
         try:
             while True:
@@ -804,7 +833,7 @@ class App(tk.Tk):
                 self.log.configure(state="disabled")
         except queue.Empty:
             pass
-        self.after(150, self._drain)
+        self._drain_id = self.after(150, self._drain)
 
     def preview(self) -> None:
         cfg = self.resolved()
@@ -899,17 +928,23 @@ class App(tk.Tk):
                 return
 
             def steps(b):
-                if plan:
-                    def make(c):
-                        generate.generate_bundle(c, b)
-                        return b
-                    yield from existing.run(cfg, target, mode, ssh, plan, make, with_data=wd, confirm_data_loss=True)
-                    return
-                rep = discover.scan(cfg, mode, ssh, target)
-                if rep["conflicts"]:
-                    self.after(0, lambda: (self._exist_show(rep, None), self.nb.select(self.exist_tab)))
-                    raise deploy.DeployError("საჭირო პორტები დაკავებულია — აირჩიე რა ვუყოთ არსებულ პროგრამებს (ჩანართი „არსებული პროგრამები“)")
-                yield from deploy.deploy(cfg, b, target, mode, ssh)
+                try:
+                    res = services.ensure_ready(cfg, mode, ssh, target)
+                except services.PreflightFailed as e:
+                    yield from preflight.format_table(e.result).splitlines()
+                    raise deploy.DeployError("მანქანა არჩეული სტეკისთვის არ ვარგა") from e
+                if res and not all(c["status"] == "ok" for c in res["checks"]):
+                    yield from preflight.format_table(res).splitlines()
+
+                def make(c):
+                    generate.generate_bundle(c, b)
+                    return b
+                try:
+                    yield from services.deploy_steps(cfg, b, target, mode, ssh, plan=dict(plan) if plan else None, make_bundle=make,
+                                                     with_data=wd, confirm_data_loss=True)
+                except services.Conflict as e:
+                    self.after(0, lambda rep=e.report: (self._exist_show(rep, None), self.nb.select(self.exist_tab)))
+                    raise deploy.DeployError("საჭირო პორტები დაკავებულია — აირჩიე რა ვუყოთ არსებულ პროგრამებს (ჩანართი „არსებული პროგრამები“)") from e
             self._run_job(cfg, "desktop", steps)
             return
         self._run_job(cfg, "desktop", lambda b: deploy.deploy(cfg, b, target, mode, ssh))

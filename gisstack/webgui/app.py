@@ -29,7 +29,7 @@ from flask import Flask, Response, abort, jsonify, make_response, redirect, rend
 
 from . import security
 from ..core import paths
-from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
+from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, services, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
 MAX_PREVIEW_BYTES = 120_000
@@ -280,22 +280,16 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
         problems = deploy_mod.preflight(target, mode)
         if problems:
             return make_response(jsonify({"error": "; ".join(problems)}), 400)
-        if not body.get("skip_preflight"):
-            try:
-                pre = preflight_mod.run(cfg, mode, ssh, target)
-            except deploy_mod.DeployError as e:
-                return make_response(jsonify({"error": str(e)}), 502)
-            if not pre["ok"]:
-                return make_response(jsonify({"error": "მანქანა არჩეული სტეკისთვის არ ვარგა", "preflight": pre}), 409)
-        if target == "native":
-            # somebody else's program on a port we need: do not start, show what is there so the user can decide
-            try:
-                rep = discover_mod.scan(cfg, mode, ssh, target)
-            except deploy_mod.DeployError:
-                rep = None                       # cannot inspect (e.g. no sudo): the installer will report its own errors
-            if rep and rep["conflicts"]:
-                return make_response(jsonify({"error": "ზოგიერთი საჭირო პორტი დაკავებულია — აირჩიე რა ვუყოთ არსებულ პროგრამებს",
-                                              "existing": rep}), 409)
+        try:
+            services.ensure_ready(cfg, mode, ssh, target, skip_preflight=bool(body.get("skip_preflight")))
+        except services.PreflightFailed as e:
+            return make_response(jsonify({"error": str(e), "preflight": e.result, "code": e.code}), 409)
+        except deploy_mod.DeployError as e:
+            return make_response(jsonify({"error": str(e), "code": e.code}), 502)
+        rep = services.find_conflicts(cfg, mode, ssh, target)      # somebody else's program on a port we need: show it, do not start
+        if rep:
+            return make_response(jsonify({"error": "ზოგიერთი საჭირო პორტი დაკავებულია — აირჩიე რა ვუყოთ არსებულ პროგრამებს",
+                                          "existing": rep, "code": "conflict"}), 409)
         return _start_job(cfg, lambda b: deploy_mod.deploy(cfg, b, target, mode, ssh), cleanup=(mode == "ssh"))
 
     @app.post("/api/clean")

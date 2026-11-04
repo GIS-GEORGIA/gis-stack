@@ -26,7 +26,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, settings, transport, updater
+from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, services, settings, transport, updater
 from .core import log, paths
 
 
@@ -471,31 +471,30 @@ def main(argv: list[str] | None = None) -> int:
             user, _, host = userhost.rpartition("@")
             ssh = {"user": user or "root", "host": host, "port": int(port or 22), "key": a.key or ""}
         try:
-            if not a.skip_preflight:
-                res = preflight.run(cfg, a.mode, ssh, target)
-                if not (res["ok"] and all(c["status"] == "ok" for c in res["checks"])):
-                    print(preflight.format_table(res), file=sys.stderr)
-                if not res["ok"]:
-                    print("\nERROR: მანქანა არჩეული სტეკისთვის არ ვარგა (გვერდის ავლა: --skip-preflight)", file=sys.stderr)
-                    return 4
+            try:
+                res = services.ensure_ready(cfg, a.mode, ssh, target, skip_preflight=a.skip_preflight)
+            except services.PreflightFailed as e:
+                print(preflight.format_table(e.result), file=sys.stderr)
+                print("\nERROR: მანქანა არჩეული სტეკისთვის არ ვარგა (გვერდის ავლა: --skip-preflight)", file=sys.stderr)
+                return 4
+            if res and not all(c["status"] == "ok" for c in res["checks"]):
+                print(preflight.format_table(res), file=sys.stderr)
             if a.existing is not None:
                 plan = existing.parse_plan_spec(a.existing) if a.existing else {}
 
                 def make(c: dict) -> Path:
                     generate.generate_bundle(c, out)
                     return out
-                lines = existing.run(cfg, target, a.mode, ssh, plan, make, with_data=a.with_data, backup_dir=a.backup_dir,
-                                     confirm_data_loss=a.confirm_data_loss)
+                lines = services.deploy_steps(cfg, out, target, a.mode, ssh, plan=plan, make_bundle=make, with_data=a.with_data,
+                                              backup_dir=a.backup_dir, confirm_data_loss=a.confirm_data_loss)
             else:
-                # no plan given: refuse only when someone else holds a port we need
-                if target == "native":
-                    rep = discover.scan(cfg, a.mode, ssh, target)
-                    if rep["conflicts"]:
-                        print(discover.format_report(rep), file=sys.stderr)
-                        print("\nERROR: ზოგიერთი საჭირო პორტი დაკავებულია. გადაწყვიტე რა ვუყოთ არსებულს: "
-                              "gisstack deploy ... --existing postgis=adopt,tomcat=remove,caddy=reuse,nginx=disable", file=sys.stderr)
-                        return 3
-                lines = deploy.deploy(cfg, out, target, a.mode, ssh)
+                rep = services.find_conflicts(cfg, a.mode, ssh, target)       # refuse only when someone else holds a port we need
+                if rep:
+                    print(discover.format_report(rep), file=sys.stderr)
+                    print("\nERROR: ზოგიერთი საჭირო პორტი დაკავებულია. გადაწყვიტე რა ვუყოთ არსებულს: "
+                          "gisstack deploy ... --existing postgis=adopt,tomcat=remove,caddy=reuse,nginx=disable", file=sys.stderr)
+                    return 3
+                lines = services.deploy_steps(cfg, out, target, a.mode, ssh, refuse_conflicts=False)
             for line in lines:
                 print(line, flush=True)
         except deploy.DeployError as e:
