@@ -310,6 +310,7 @@ EN: dict[str, str] = {
     'მეხსიერება საკმარისია': 'Memory is sufficient',
     'მეხსიერება ძალიან ცოტაა არჩეული პროგრამებისთვის': 'Far too little memory for the selected programs',
     'მეხსიერების ზომა ვერ დადგინდა': 'Memory size could not be determined',
+    'წინასწარი შემოწმება ვერ გაიარა. გავაგრძელო მაინც? (არ არის რეკომენდებული)': 'The pre-flight check failed. Continue anyway? (not recommended)',
     'ოპერაციული სისტემა': 'Operating system',
     'ოპერაციული სისტემა native ინსტალაციისთვის მხარდაჭერილი არ არის': 'This operating system is not supported for a native installation',
     'ოპერაციული სისტემა მხარდაჭერილია': 'The operating system is supported',

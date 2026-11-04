@@ -249,6 +249,10 @@ def main(argv: list[str] | None = None) -> int:
     w = sub.add_parser("web", help="start the web installer")
     w.add_argument("--host", default="127.0.0.1")
     w.add_argument("--port", type=int, default=8765)
+    w.add_argument("--server", choices=["werkzeug", "waitress"], default="werkzeug",
+                   help="werkzeug = built-in development server (default); waitress = production WSGI server (pip install waitress)")
+    w.add_argument("--allow-host", action="append", default=[], metavar="NAME", help="accept this Host header too (repeatable)")
+    w.add_argument("--rotate-token", action="store_true", help="create a new access token (invalidates old links and sessions)")
 
     sub.add_parser("desktop", help="start the desktop installer")
     sub.add_parser("defaults", help="print default configuration as JSON")
@@ -351,7 +355,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "web":
         from .webgui.app import main as web_main
-        web_main(a.host, a.port)
+        web_main(a.host, a.port, a.server, tuple(a.allow_host), a.rotate_token)
         return 0
     if a.cmd == "desktop":
         if not deps.ensure_tk():           # asks before installing the system package

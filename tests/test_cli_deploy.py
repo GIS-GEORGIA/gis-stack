@@ -131,7 +131,7 @@ class CliBasicsTests(CliBase):
         with mock.patch("gisstack.webgui.app.main") as m:
             rc, _, _ = self.run_cli("web", "--port", "9999")
         self.assertEqual(rc, 0)
-        m.assert_called_once_with("127.0.0.1", 9999)
+        m.assert_called_once_with("127.0.0.1", 9999, "werkzeug", (), False)
 
 
 class CliOperationsTests(CliBase):

@@ -3,9 +3,11 @@
 Security model: the app can run commands as the user it runs as (root, when it
 installs a server), so it
   * binds to 127.0.0.1 by default (reach it through `ssh -L 8765:127.0.0.1:8765 server`),
-  * requires a secret token (cookie / Bearer / ?token=) for every request,
+  * requires a secret token (?token= once, or Bearer) and exchanges it for a random, expiring, revocable session cookie,
   * only accepts state-changing requests that carry the custom X-GisStack header
-    with a SameSite=Strict cookie (blocks cross-site requests).
+    with a SameSite=Strict cookie (blocks cross-site requests),
+  * accepts only the Host names the operator allowed (blocks DNS rebinding), limits request size and failed logins,
+  * writes an audit log of every state-changing request (~/.gisstack/audit.log, no secrets).
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import hmac
 import io
 import os
 import secrets
+import shutil
 import tempfile
 import threading
 import time
@@ -22,6 +25,7 @@ from typing import Any
 
 from flask import Flask, Response, abort, jsonify, make_response, redirect, render_template, request, send_file
 
+from . import security
 from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
@@ -40,6 +44,19 @@ def load_or_create_token(path: Path | None = None) -> str:
     return tok
 
 
+def rotate_token(path: Path | None = None) -> str:
+    """Replace the stored access token with a new one (all existing browser sessions become invalid on restart)."""
+    path = path or (deploy_mod.home_dir() / "web.token")
+    tok = secrets.token_urlsafe(24)
+    fsutil.write_private(path, tok)
+    return tok
+
+
+MAX_JOB_LINES = 50_000
+MAX_JOBS = 50
+JOB_TTL = 3600
+
+
 class Job:
     def __init__(self) -> None:
         self.id = uuid.uuid4().hex[:12]
@@ -52,37 +69,87 @@ class Job:
 
     def add(self, line: str) -> None:
         with self.lock:
-            self.lines.append(line)
+            if len(self.lines) < MAX_JOB_LINES:
+                self.lines.append(line)
+            elif len(self.lines) == MAX_JOB_LINES:
+                self.lines.append("… (log truncated)")
 
 
-def create_app(token: str | None = None) -> Flask:
+def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None = None) -> Flask:
     app = Flask(__name__)
     app.config["TOKEN"] = token or load_or_create_token()
     app.config["JOBS"] = {}
     app.config["DEPLOY_LOCK"] = threading.Lock()
+    app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024           # the largest legitimate body is a config + plan
+    app.config["SESSIONS"] = sessions = security.Sessions()
+    app.config["LIMITER"] = limiter = security.RateLimiter()
+    app.config["AUDIT"] = audit = security.AuditLog(lambda: deploy_mod.home_dir() / "audit.log")
+    hosts = tuple(allowed_hosts) if allowed_hosts is not None else security.allowed_hosts_from_env()
+    app.config["ALLOWED_HOSTS"] = hosts
+    COOKIE = "gs_session"
+
+    def client_ip() -> str:
+        return request.remote_addr or "?"
+
+    def token_ok(cand: str) -> bool:
+        return bool(cand) and hmac.compare_digest(cand, app.config["TOKEN"])
 
     def authed() -> bool:
-        tok = app.config["TOKEN"]
-        cand = request.cookies.get("gs_token") or ""
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
-            cand = auth[7:]
-        return bool(cand) and hmac.compare_digest(cand, tok)
+            return token_ok(auth[7:])
+        return sessions.valid(request.cookies.get(COOKIE, ""))
+
+    def deny(status: int, text: str, why: str) -> Response:
+        audit.write(event="denied", why=why, ip=client_ip(), method=request.method, path=request.path, status=status)
+        return Response(text, status)
 
     @app.before_request
     def guard():
+        if not security.host_allowed(request.host, app.config["ALLOWED_HOSTS"]):
+            return deny(400, "400 – unexpected Host header. Open the URL printed by `gisstack web`, or allow the name with --allow-host.\n", "host")
         if request.path == "/healthz":
             return None
-        qt = request.args.get("token")
-        if qt and hmac.compare_digest(qt, app.config["TOKEN"]):
-            resp = make_response(redirect(request.path))
-            resp.set_cookie("gs_token", qt, httponly=True, samesite="Strict")
+        ip = client_ip()
+        if limiter.blocked(ip):
+            resp = deny(429, "429 – too many failed attempts; wait a minute.\n", "rate-limited")
+            resp.headers["Retry-After"] = str(security.FAILURE_WINDOW)
             return resp
+        qt = request.args.get("token")
+        if qt:
+            if token_ok(qt):
+                limiter.reset(ip)
+                resp = make_response(redirect(request.path))
+                resp.set_cookie(COOKIE, sessions.create(), httponly=True, samesite="Strict", max_age=sessions.absolute)
+                audit.write(event="login", ip=ip)
+                return resp
+            limiter.fail(ip)
+            return deny(401, "401 – invalid token.\n", "bad-token")
         if not authed():
-            return Response("401 – token required. Open the URL printed by `gisstack web`.\n", 401)
+            limiter.fail(ip)
+            return deny(401, "401 – token required. Open the URL printed by `gisstack web`.\n", "no-session")
         if request.method not in ("GET", "HEAD") and request.headers.get("X-GisStack") != "1":
-            abort(403)
+            return deny(403, "403\n", "csrf-header")
         return None
+
+    @app.after_request
+    def record(resp: Response) -> Response:
+        if request.method not in ("GET", "HEAD", "OPTIONS") and request.path != "/healthz" and resp.status_code != 429:
+            sid = request.cookies.get(COOKIE, "")
+            try:
+                body = request.get_json(silent=True)
+            except Exception:  # noqa: BLE001 - e.g. 413: the body was refused, there is nothing to summarise
+                body = None
+            audit.write(event="request", ip=client_ip(), method=request.method, path=request.path, status=resp.status_code,
+                        session=(sid[:6] if sid else "bearer"), **security.summarize(body))
+        return resp
+
+    @app.post("/api/logout")
+    def api_logout() -> Response:
+        sessions.revoke(request.cookies.get(COOKIE, ""))
+        resp = make_response(jsonify({"ok": True}))
+        resp.delete_cookie(COOKIE)
+        return resp
 
     @app.after_request
     def headers(resp: Response) -> Response:
@@ -144,14 +211,27 @@ def create_app(token: str | None = None) -> Flask:
         return send_file(io.BytesIO(data), mimetype="application/zip", as_attachment=True,
                          download_name=f"gisstack-{cfg['project']}.zip")
 
-    def _start_job(cfg: dict[str, Any], steps: Any) -> Response:
+    def _register(job: Job) -> None:
+        """Keep the job registry bounded: drop finished jobs after an hour and the oldest ones beyond MAX_JOBS."""
+        jobs: dict[str, Job] = app.config["JOBS"]
+        now = time.time()
+        for jid in [k for k, j in jobs.items() if j.done and now - j.started > JOB_TTL]:
+            del jobs[jid]
+        while len(jobs) >= MAX_JOBS:
+            oldest = next((k for k, j in jobs.items() if j.done), None)
+            if oldest is None:
+                break
+            del jobs[oldest]
+        jobs[job.id] = job
+
+    def _start_job(cfg: dict[str, Any], steps: Any, cleanup: bool = False) -> Response:
         """Run steps(bundle_dir) -> Iterator[str] in a background job (one at a time)."""
         lock: threading.Lock = app.config["DEPLOY_LOCK"]
         if not lock.acquire(blocking=False):
             return make_response(jsonify({"error": "სხვა ოპერაცია უკვე მიმდინარეობს"}), 409)
 
         job = Job()
-        app.config["JOBS"][job.id] = job
+        _register(job)
         bundle_dir = deploy_mod.home_dir() / "bundles" / f"{cfg['project']}-{job.id}"
 
         def run() -> None:
@@ -168,6 +248,8 @@ def create_app(token: str | None = None) -> Flask:
             except Exception as e:  # noqa: BLE001 - surface anything to the log pane
                 job.add(f"ERROR: {type(e).__name__}: {e}")
             finally:
+                if cleanup:                    # the server has its own copy; do not keep passwords in a local bundle for nothing
+                    shutil.rmtree(bundle_dir, ignore_errors=True)
                 job.done = True
                 lock.release()
 
@@ -211,7 +293,7 @@ def create_app(token: str | None = None) -> Flask:
             if rep and rep["conflicts"]:
                 return make_response(jsonify({"error": "ზოგიერთი საჭირო პორტი დაკავებულია — აირჩიე რა ვუყოთ არსებულ პროგრამებს",
                                               "existing": rep}), 409)
-        return _start_job(cfg, lambda b: deploy_mod.deploy(cfg, b, target, mode, ssh))
+        return _start_job(cfg, lambda b: deploy_mod.deploy(cfg, b, target, mode, ssh), cleanup=(mode == "ssh"))
 
     @app.post("/api/clean")
     def api_clean() -> Response:
@@ -236,7 +318,7 @@ def create_app(token: str | None = None) -> Flask:
         problems = deploy_mod.preflight(target, mode)
         if problems:
             return make_response(jsonify({"error": "; ".join(problems)}), 400)
-        return _start_job(cfg, lambda b: deploy_mod.clean(cfg, b, target, mode, ssh, comps, purge, rm_pg))
+        return _start_job(cfg, lambda b: deploy_mod.clean(cfg, b, target, mode, ssh, comps, purge, rm_pg), cleanup=(mode == "ssh"))
 
     def _ops_args(body: dict[str, Any]) -> tuple[dict[str, Any], str, dict[str, Any], str]:
         cfg = _resolve_or_400(body.get("config"))
@@ -251,7 +333,7 @@ def create_app(token: str | None = None) -> Flask:
         if locked and not lock.acquire(blocking=False):
             return make_response(jsonify({"error": "სხვა ოპერაცია უკვე მიმდინარეობს"}), 409)
         job = Job()
-        app.config["JOBS"][job.id] = job
+        _register(job)
 
         def run() -> None:
             try:
@@ -468,7 +550,7 @@ def create_app(token: str | None = None) -> Flask:
         if body.get("save"):
             _save(body)
         ssh = body.get("ssh") or {}
-        return _start_job(cfg, lambda b: deploy_mod.apply_component(cfg, b, target, mode, ssh, comp))
+        return _start_job(cfg, lambda b: deploy_mod.apply_component(cfg, b, target, mode, ssh, comp), cleanup=(mode == "ssh"))
 
     @app.get("/api/jobs/<jid>")
     def api_job(jid: str) -> Response:
@@ -483,13 +565,29 @@ def create_app(token: str | None = None) -> Flask:
     return app
 
 
-def main(host: str = "127.0.0.1", port: int = 8765) -> None:
-    token = load_or_create_token()
-    app = create_app(token)
+def main(host: str = "127.0.0.1", port: int = 8765, server: str = "werkzeug", allow_hosts: tuple[str, ...] = (),
+         rotate: bool = False) -> None:
+    token = rotate_token() if rotate else load_or_create_token()
+    extra = tuple(allow_hosts) + security.allowed_hosts_from_env()
+    if host not in ("127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0", "::") and host not in extra:  # noqa: S104 - comparison, not a bind
+        extra += (host,)                           # binding to a specific name implies using it in the Host header
+    app = create_app(token, extra)
     print(f"gisstack web installer {__version__}")
+    if rotate:
+        print("  access token rotated: all earlier links and sessions are now invalid")
     print(f"  open:  http://{host}:{port}/?token={token}")
     if host in ("127.0.0.1", "localhost"):
         print(f"  remote server? tunnel first:  ssh -L {port}:127.0.0.1:{port} user@server")
     else:
         print("  WARNING: listening beyond localhost over plain HTTP - put it behind TLS or use an SSH tunnel.")
+        if not extra:
+            print("  Host names other than localhost are rejected; allow yours with --allow-host NAME (or GISSTACK_ALLOWED_HOSTS).")
+    if server == "waitress":
+        try:
+            import waitress
+        except ImportError:
+            raise SystemExit("waitress is not installed: pip install waitress  (or use --server werkzeug)") from None
+        waitress.serve(app, host=host, port=port, threads=8, max_request_body_size=app.config["MAX_CONTENT_LENGTH"])
+        return
+    print("  (development server; for long-running use: gisstack web --server waitress)")
     app.run(host=host, port=port, threaded=True)

@@ -30,6 +30,7 @@ include = ["gisstack*"]
 gisstack = ["templates/**/*", "vendor/**/*", "webgui/templates/*"]
 
 [project.optional-dependencies]
+prod = ["waitress>=3.0"]
 dev = ["ruff", "mypy", "coverage", "bandit", "pip-audit", "types-PyYAML", "build"]
 
 [tool.ruff]
