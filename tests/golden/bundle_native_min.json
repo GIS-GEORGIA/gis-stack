@@ -1,0 +1,10 @@
+{
+ "README.md": "f80a48049f9d4614886961968b285636da7c8a24addee7afdad487e411661deb",
+ "native/config/Caddyfile": "639743b5003e187572e23ad74e7e38dfe87db57b0e72dd329807ed749fe69764",
+ "native/config/init-extensions.sql": "45262192416174d4ecd9c150105c39f8b3819ebf525b263d3b435bfe1c5446f1",
+ "native/config/pins.sha256": "c27706d7569ff3631e5e61e7de0b98ec36c7fae76d5bfe28ea9ac57d2fb3d718",
+ "native/install.sh": "4ef25adf4cc0b66120046c815981b53a8f6f7569bcb97164be9a9bbd8addf793",
+ "native/stack.env": "c3b1c053593778d62f20113db94fb494ad78203c603702a756126121e5d8851f",
+ "native/uninstall.sh": "52f1a55f68ed7fa09afbdc3bd12f68dfd0bc74cf98f5f29e0e303d9bcc60bf86",
+ "stack.json": "73b8f3395e23c72b04c17d0fced4e1d073bbe64a405eebe610beaa8dc26090ae"
+}

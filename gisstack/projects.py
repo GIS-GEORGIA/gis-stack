@@ -10,7 +10,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from . import config, deploy, fsutil
+from . import config, fsutil
+from .core import paths
+from .core.errors import ProjectError
 
 # component id -> top-level config sections it owns
 SECTIONS: dict[str, list[str]] = {
@@ -25,12 +27,8 @@ SECTIONS: dict[str, list[str]] = {
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 
 
-class ProjectError(ValueError):
-    pass
-
-
 def projects_dir() -> Path:
-    d = deploy.home_dir() / "projects"
+    d = paths.projects_dir()
     d.mkdir(parents=True, exist_ok=True)
     return d
 

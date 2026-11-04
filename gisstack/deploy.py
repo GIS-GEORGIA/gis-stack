@@ -12,20 +12,18 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from . import fsutil, journal, runner
+from . import journal, runner
+from .core import paths
+from .core.errors import DeployError
 
 _HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$|^\[[0-9a-fA-F:]+\]$")
 _USER_RE = re.compile(r"^[a-z_][a-z0-9_\-]{0,31}$")
 _ENTRY = {"native": "install.sh", "compose": "up.sh", "k8s": "apply.sh"}
 
 
-class DeployError(RuntimeError):
-    pass
-
-
 def home_dir() -> Path:
-    p = Path(os.environ.get("GISSTACK_HOME") or (Path.home() / ".gisstack"))
-    return fsutil.private_dir(p)        # holds secrets, tokens, backups: owner-only (0700)
+    """Kept for compatibility; the location logic lives in core.paths."""
+    return paths.home()
 
 
 def _stream(cmd: list[str], cwd: str | None = None, env: dict | None = None, *, stop: threading.Event | None = None,

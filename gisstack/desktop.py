@@ -19,6 +19,7 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Any
 
 from . import __version__, catalog, config, deploy, discover, existing, generate, i18n, ops, projects, settings, updater
+from .core import paths
 
 # ---------------------------------------------------------------- language and theme
 LANG = settings.resolve_lang()
@@ -865,7 +866,7 @@ class App(tk.Tk):
 
         def run() -> None:
             try:
-                bundle = deploy.home_dir() / "bundles" / f"{cfg['project']}-{tag}"
+                bundle = paths.bundles_dir() / f"{cfg['project']}-{tag}"
                 self._log("== bundle-ის გენერაცია")
                 generate.generate_bundle(cfg, bundle)
                 for line in steps(bundle):

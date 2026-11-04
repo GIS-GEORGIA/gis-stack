@@ -20,18 +20,14 @@ import threading
 import time
 from typing import Any, Callable, Iterable, Iterator, Optional, Sequence, Type
 
+from .core import log
+from .core.errors import RunnerError, Timeout
+
 MASK = "••••••••"
+_log = log.get("runner")
 GRACE_SECONDS = 5.0
 DEADLINE_ENV, IDLE_ENV = "GISSTACK_DEADLINE", "GISSTACK_IDLE_TIMEOUT"
 DEFAULT_DEADLINE, DEFAULT_IDLE = 3600.0, 900.0
-
-
-class RunnerError(RuntimeError):
-    pass
-
-
-class Timeout(RunnerError):
-    """The command exceeded its deadline or produced no output for too long."""
 
 
 def _env_seconds(name: str, default: Optional[float]) -> Optional[float]:
@@ -119,6 +115,7 @@ def stream(cmd: Sequence[str], *, cwd: Optional[str] = None, env: Optional[dict]
     Raises `error` when the command is missing, fails (non-zero exit) or times out.  If `stop` is set the command is
     ended and the generator returns normally (a user cancelling is not a failure).  deadline/idle in seconds; None = no limit."""
     mask = redact or (lambda s: s)
+    _log.debug("run: %s", mask(" ".join(shlex.quote(c) for c in cmd)))
     if echo:
         yield mask("$ " + " ".join(shlex.quote(c) for c in cmd))
     try:

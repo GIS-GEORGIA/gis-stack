@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import copy
 import json
-import os
 import re
 import secrets
 from pathlib import Path
 from typing import Any, Callable
 
 from . import catalog, fsutil, secretsrc, validation
+from .core import paths
+from .core.errors import ConfigError
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 _SECRET_RE = re.compile(r"^[A-Za-z0-9_.\-]{8,64}$")
@@ -17,8 +18,7 @@ _DOMAIN_RE = re.compile(r"^(localhost|[a-z0-9]([a-z0-9.-]*[a-z0-9])?)(:\d{2,5})?
 
 
 def _secrets_path(project: str) -> Path:
-    home = Path(os.environ.get("GISSTACK_HOME") or (Path.home() / ".gisstack"))
-    return home / "secrets" / f"{project}.json"
+    return paths.secrets_file(project)
 
 
 SCHEMA_VERSION = 1
@@ -137,10 +137,6 @@ def _merge(base: dict, over: dict) -> dict:
         else:
             out[k] = copy.deepcopy(v)
     return out
-
-
-class ConfigError(ValueError):
-    pass
 
 
 def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,

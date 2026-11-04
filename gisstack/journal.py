@@ -14,21 +14,14 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 
 from . import fsutil
+from .core import events, paths
+from .core.errors import Busy
 
 MAX_BYTES = 5 * 1024 * 1024
 
 
-class Busy(RuntimeError):
-    """Another operation holds the lock."""
-
-
-def _dir() -> Path:
-    p = Path(os.environ.get("GISSTACK_HOME") or (Path.home() / ".gisstack"))
-    return fsutil.private_dir(p)
-
-
 def path() -> Path:
-    return _dir() / "journal.jsonl"
+    return paths.journal_file()
 
 
 def record(event: dict[str, Any]) -> None:
@@ -65,6 +58,7 @@ class Operation:
     def __enter__(self) -> Operation:
         self.t0 = time.time()
         record({"id": self.id, "ts": int(self.t0), "op": self.op, "event": "start", **self.meta})
+        events.emit("operation.start", self.op, id=self.id, **self.meta)
         return self
 
     def __exit__(self, et: Any, ev: Any, tb: Any) -> None:
@@ -76,6 +70,7 @@ class Operation:
             status, err = "error", self.redact(f"{type(ev).__name__}: {ev}")[:500]
         record({"id": self.id, "ts": int(time.time()), "op": self.op, "event": "end", "status": status,
                 "seconds": round(time.time() - self.t0, 1), "error": err, **self.meta})
+        events.emit("operation.end", self.op, id=self.id, status=status, error=err, **self.meta)
 
 
 @contextlib.contextmanager
@@ -86,7 +81,7 @@ def exclusive(name: str = "operation") -> Iterator[None]:
     except ImportError:                              # Windows: no lock available, the in-process lock still applies
         yield
         return
-    lock_dir = fsutil.private_dir(_dir() / "locks")
+    lock_dir = fsutil.private_dir(paths.lock_dir())
     fd = os.open(lock_dir / f"{name}.lock", os.O_RDWR | os.O_CREAT, 0o600)
     try:
         try:

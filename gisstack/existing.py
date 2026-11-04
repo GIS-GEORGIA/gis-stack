@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from . import deploy, discover, fsutil, journal, ops
+from .core import paths
+from .core.errors import PlanError
 
 ACTIONS = ("ignore", "adopt", "remove", "reuse", "disable")
 REMOTE_BACKUPS = "/var/backups/gisstack"
@@ -49,10 +51,6 @@ DATA_PATHS: dict[str, list[str]] = {
     "mapproxy": ["/etc/mapproxy"],
     "caddy": ["/var/lib/caddy"],
 }
-
-
-class PlanError(deploy.DeployError):
-    pass
 
 
 def parse_plan_spec(spec: str) -> dict[str, dict[str, Any]]:
@@ -359,7 +357,7 @@ else echo "  (nothing to import)"; fi''')
 # --------------------------------------------------------------------------- backups on this machine
 def fetch_backup(mode: str, ssh: dict[str, Any] | None, ts: str, dest_dir: str | Path | None, host_label: str) -> Path:
     """Download /var/backups/gisstack/<ts> as one tar.gz into dest_dir/<host>/."""
-    dest = fsutil.private_dir((Path(dest_dir).expanduser() if dest_dir else deploy.home_dir() / "backups")
+    dest = fsutil.private_dir((Path(dest_dir).expanduser() if dest_dir else paths.backups_dir())
                               / re.sub(r"[^A-Za-z0-9._-]", "_", host_label))
     out = dest / f"{ts}.tar.gz"
     script = f"tar czf - -C {_q(REMOTE_BACKUPS)} {_q(ts)}"

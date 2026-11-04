@@ -15,16 +15,13 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 
 from . import __version__
+from .core.errors import UpdateError
 
 REPO = "GIS-GEORGIA/gis-stack"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
 ASSET_PREFIX = f"https://github.com/{REPO}/releases/download/"
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 MAX_ASSET_BYTES = 200 * 1024 * 1024
-
-
-class UpdateError(RuntimeError):
-    pass
 
 
 def parse_version(s: str) -> tuple[int, ...]:

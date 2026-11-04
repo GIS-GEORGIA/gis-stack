@@ -11,12 +11,10 @@ import re
 from pathlib import Path
 from typing import Optional, Protocol
 
+from .core.errors import SecretError
+
 MAX_SECRET_FILE = 4096
 NAMES = ("postgres.password", "geoserver.admin_password", "tomcat.manager_password")
-
-
-class SecretError(ValueError):
-    pass
 
 
 class SecretProvider(Protocol):

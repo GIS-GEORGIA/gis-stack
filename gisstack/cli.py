@@ -27,6 +27,7 @@ import time
 from pathlib import Path
 
 from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, settings, updater
+from .core import log, paths
 
 
 MAX_CONFIG_BYTES = 1_000_000
@@ -76,7 +77,7 @@ def _clean(a: argparse.Namespace, cfg: dict) -> int:
         if input("Type 'yes' to continue: ").strip() != "yes":
             print("aborted")
             return 1
-    out = deploy.home_dir() / "bundles" / f"{cfg['project']}-clean"
+    out = paths.bundles_dir() / f"{cfg['project']}-clean"
     generate.generate_bundle(cfg, out)
     try:
         for line in deploy.clean(cfg, out, target, a.mode, ssh, comps, a.purge, a.remove_postgres, a.force_postgres):
@@ -251,7 +252,7 @@ def _apply(a: argparse.Namespace, cfg: dict) -> int:
         if a.save:
             print("saved:", projects.save_component(
                 dict(config._merge(config.default_config(), _load(a.config)), project=cfg["project"]), a.component))
-        out = deploy.home_dir() / "bundles" / f"{cfg['project']}-apply"
+        out = paths.bundles_dir() / f"{cfg['project']}-apply"
         generate.generate_bundle(cfg, out)
         for line in deploy.apply_component(cfg, out, target, a.mode, ssh, a.component):
             print(line, flush=True)
@@ -265,6 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="gisstack", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", action="version", version=f"gisstack {__version__}")
+    ap.add_argument("--log-level", choices=["debug", "info", "warning", "error"], help="log to stderr (secrets are masked); default: silent")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     w = sub.add_parser("web", help="start the web installer")
@@ -378,6 +380,7 @@ def main(argv: list[str] | None = None) -> int:
     ex.add_argument("-y", "--yes", action="store_true")
 
     a = ap.parse_args(argv)
+    log.configure(a.log_level)
 
     if a.cmd == "web":
         from .webgui.app import main as web_main
@@ -457,7 +460,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "deploy":
         target = a.target or cfg["deploy_target"]
-        out = Path(a.out) if a.out else deploy.home_dir() / "bundles" / cfg["project"]
+        out = Path(a.out) if a.out else paths.bundles_dir() / cfg["project"]
         generate.generate_bundle(cfg, out)
         ssh = {}
         if a.mode == "ssh":

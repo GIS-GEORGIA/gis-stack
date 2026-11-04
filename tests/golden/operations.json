@@ -1,0 +1,188 @@
+{
+ "apply_args/compose/caddy": [
+  "only",
+  "caddy"
+ ],
+ "apply_args/compose/geoserver": [
+  "only",
+  "geoserver"
+ ],
+ "apply_args/compose/mapproxy": [
+  "only",
+  "mapproxy"
+ ],
+ "apply_args/compose/postgis": [
+  "only",
+  "postgis"
+ ],
+ "apply_args/compose/qgis_server": [
+  "only",
+  "qgis"
+ ],
+ "apply_args/compose/tomcat": [
+  "only",
+  "tomcat"
+ ],
+ "apply_args/compose/webmap": [
+  "only",
+  "caddy"
+ ],
+ "apply_args/k8s/caddy": [
+  "only",
+  "caddy"
+ ],
+ "apply_args/k8s/geoserver": [
+  "only",
+  "geoserver"
+ ],
+ "apply_args/k8s/mapproxy": [
+  "only",
+  "mapproxy"
+ ],
+ "apply_args/k8s/postgis": [
+  "only",
+  "postgis"
+ ],
+ "apply_args/k8s/qgis_server": [
+  "only",
+  "qgis"
+ ],
+ "apply_args/k8s/tomcat": [
+  "only",
+  "tomcat"
+ ],
+ "apply_args/k8s/webmap": [
+  "only",
+  "caddy"
+ ],
+ "apply_args/native/caddy": [
+  "--only",
+  "caddy"
+ ],
+ "apply_args/native/geoserver": [
+  "--only",
+  "geoserver"
+ ],
+ "apply_args/native/mapproxy": [
+  "--only",
+  "mapproxy"
+ ],
+ "apply_args/native/postgis": [
+  "--only",
+  "postgis"
+ ],
+ "apply_args/native/qgis_server": [
+  "--only",
+  "qgis"
+ ],
+ "apply_args/native/tomcat": [
+  "--only",
+  "tomcat"
+ ],
+ "apply_args/native/webmap": [
+  "--only",
+  "webmap"
+ ],
+ "clean_args/compose/all": [
+  "clean",
+  "--purge"
+ ],
+ "clean_args/compose/some": [
+  "clean",
+  "caddy",
+  "qgis"
+ ],
+ "clean_args/k8s/all": [
+  "clean",
+  "--purge"
+ ],
+ "clean_args/k8s/some": [
+  "clean",
+  "caddy",
+  "qgis"
+ ],
+ "clean_args/native/all": [
+  "--purge",
+  "--remove-postgres",
+  "--force-postgres"
+ ],
+ "clean_args/native/some": [
+  "--only",
+  "caddy,qgis"
+ ],
+ "control/compose/disable": "e29edb0876a02d66cb0a83a1df0ac39c8934722660fee65f9b8ee9e35e3255c6",
+ "control/compose/disable/one": "c445d9d2cf71672bd6a2206a273a8466bca26f7760aa9ac00e779494240b814d",
+ "control/compose/enable": "3686b48be6dab7a9a7f59d2e0d8e6a919fefb03fe35a7e8a4c9236f9b1598c70",
+ "control/compose/enable/one": "1f84d91ec336e83a531b2aee6c5bc463108db8ddf2f87bc3a2da27a81bb006f0",
+ "control/compose/restart": "b1fa192b830067a7bd440d9a872e2ba085148122469bdea80b5646866ca08726",
+ "control/compose/restart/one": "787d3502079dca9b6a590ebeccc18da966dd05527e2f9055b19ac9af66180ae0",
+ "control/compose/start": "5a4091e9d1dd0f0f4dd1b52a70167644c899236da286ac8a5949341c134663d4",
+ "control/compose/start/one": "99e4130b79f08abb3037f100ee1eff00ecc4e222f7c32db94f1104a4a4365e98",
+ "control/compose/stop": "bb044142a1876214a9da903a3fc3d37573ec653f07bed28f79f2b7234335964c",
+ "control/compose/stop/one": "729b2d4e8b8f9420bac7944e9f1b269c97dec2199f46c07fc8834c45e33792f0",
+ "control/k8s/disable": "e683e2ad5a4750dee6e96fed7fbe817d2e940958a735e390396c6f7f1f828ec6",
+ "control/k8s/disable/one": "11d2ca73decc118a565f51f0cad86f4cfde08f14b57e6886b5a6324fded1ad25",
+ "control/k8s/enable": "6ce093c5143e090467bb1ec9a56480554ff878c858e94689ec714e7bea7193fd",
+ "control/k8s/enable/one": "b7e057f2ec7bcc6158a3ae905192701ff9edd4c46ceb5641cd26cc1a5b5c8b5e",
+ "control/k8s/restart": "7c438f541119388df500502572705c1e0e036e57eddfb4d0800d1efaf18d257b",
+ "control/k8s/restart/one": "64df4f80bc635c284d91f60248553e9eab70458c64ee9617fafedc75791a0c74",
+ "control/k8s/start": "4dc40956f384ab1da3b370967ac7eed414451e6b4a8b4852aa47bb9647c78623",
+ "control/k8s/start/one": "8683d469f3676567aa6fca97c415f49c085d5264d7440e442790c57b04acc639",
+ "control/k8s/stop": "4526d835bb8648477ecc52328e19a6e154c0314388eb2340ef43f480760d9a3b",
+ "control/k8s/stop/one": "dde441e6bbcdb255facca9c658a09fc8a0cd566ec2a5486affe0bbcb13a0c865",
+ "control/native/disable": "60208ab19b44a06fd9ba253c2fe391ce13313923a58d39139d8162f6f78a0e50",
+ "control/native/disable/one": "7989bdbb8c341fe3cbefff297b33b8910b4acfc38e99de84e28862a45ebad482",
+ "control/native/enable": "e1f919177b11e69d9ac56ce4c0e5bc6a2d08b7aba7081780a8b24b67838463df",
+ "control/native/enable/one": "f3bda691b3e0c36906a8f76481ebb8c54f0c4448d4dd60d1ecd0d750e43ce012",
+ "control/native/restart": "f9668c43e2308cf1ab83b70f20dced0dda6ea9d90324d5f6ed760f7a99be80a9",
+ "control/native/restart/one": "8634a9a528f51e392bda54f7844523960c72e36c7e56d4228164ed6e460f6f61",
+ "control/native/start": "3c4d94234f2106ccb60c8f1737c4161299ff94b647985d14606c93d8c109e7f5",
+ "control/native/start/one": "723cffbf23f6ea8ddc6cb995641c7c7b9176390c3a920e08f93f07bde70f6014",
+ "control/native/stop": "97035f43972eac311a53e91f818bb6cba1dffbb0b248b853d950b079cd5dcae4",
+ "control/native/stop/one": "c64460ffacff9c7ac22ae0af32a978ab918a044d73b75ff4cc129038e045151c",
+ "logs/compose/caddy/False": "64cec12abaff37797763a4545c5f58fb5ca3c884cc1289d4b1134027f25a91d7",
+ "logs/compose/caddy/True": "c57f6842f83fe9040197b6072e6676dc0952d35da6203f4f0a708d0148d65ea1",
+ "logs/compose/geoserver/False": "9ba927eebf3bc14c69c9432f31101f50ce55c0773a29b862650acd781f3912b8",
+ "logs/compose/geoserver/True": "7441fdab75dfd911a51f49dadaf74c0fbc4388577a5cb3ed22baa4217d78eb53",
+ "logs/compose/mapproxy/False": "379dd290c6f0f6b960842c7cc924865d872d427d86f3698cc759a32e8430330f",
+ "logs/compose/mapproxy/True": "04c427b1ab5fc87cd99b77d98e84387dc8a614e27e8784ba4ee5e3374ee69691",
+ "logs/compose/postgis/False": "51eff2757efff0b57d3d3633c9fbb40824d382e15c91dd4b45af533875aefcec",
+ "logs/compose/postgis/True": "b8e22096e715f29d3250c31fd9449533af43582da5bfcdebc302c253a958c798",
+ "logs/compose/qgis_server/False": "d6601b4429069983e5a5a4dacb0e0306ca7e67311d007ba50fbe88d665872b87",
+ "logs/compose/qgis_server/True": "2fc0f8d4a53dadbdbb8917baf4c0facf5f16bf93ec1e7f4fa74644a23338556f",
+ "logs/compose/tomcat/False": "0af6f02d87a53762a3768a2e672cc3fce9062966502e120d7b4604ca51ccbc91",
+ "logs/compose/tomcat/True": "e28e2d8defd6a7d36ca951b0b5ece0535bd4d8685d986c0324b16f71b7e373f6",
+ "logs/compose/webmap/False": "64cec12abaff37797763a4545c5f58fb5ca3c884cc1289d4b1134027f25a91d7",
+ "logs/compose/webmap/True": "c57f6842f83fe9040197b6072e6676dc0952d35da6203f4f0a708d0148d65ea1",
+ "logs/k8s/caddy/False": "729b0131b9d0d2bce140941619c0a5fd26fbd607e0fa20dd6e8711d9c91ab46e",
+ "logs/k8s/caddy/True": "a373dff8f65f79b93eaa13cf4989f01311cb07fa1384df00aa5305c25a348192",
+ "logs/k8s/geoserver/False": "cb60fc8fae83726092d1c391512ce782375ae43665831bbbe1f947b18b07ba2c",
+ "logs/k8s/geoserver/True": "af874f67e056220689e2460e0821066774ab28881350e0da6f1fd5db81d1f4ec",
+ "logs/k8s/mapproxy/False": "169b4234d17b8e1b7ee23a9253585ec6d8cea0c43b4f19f47f6a490baf362a32",
+ "logs/k8s/mapproxy/True": "e2678b68cd5e99e484c939957ca7c9873a1258ffe64607bea3cbe1ac3973259c",
+ "logs/k8s/postgis/False": "7b6556a8ef50f9ddcd37c334d8f2f4f29a842a8f34aada0c36c61b17bdaefb02",
+ "logs/k8s/postgis/True": "84419d6cb741febc435dc7114b789324e489aa46682edfa1240f727d4e273f65",
+ "logs/k8s/qgis_server/False": "66cb7762d1cabb37d9c9316efaf116ca983c0001b5aa0c889ce77855a38225fe",
+ "logs/k8s/qgis_server/True": "f4eb6da733f31d8602adafe1ebf1e375767a3cc18faa8aac757e3d4e0154b5d4",
+ "logs/k8s/tomcat/False": "5c10dc26eab0dff0eb7cb89e871fcf8f4cf5248e273420f925780dc8b3e9d53c",
+ "logs/k8s/tomcat/True": "58a7e7d58cd6f83d6e3516fb67473de45342c8bd0f2a7a791e8606c4626231e1",
+ "logs/k8s/webmap/False": "729b0131b9d0d2bce140941619c0a5fd26fbd607e0fa20dd6e8711d9c91ab46e",
+ "logs/k8s/webmap/True": "a373dff8f65f79b93eaa13cf4989f01311cb07fa1384df00aa5305c25a348192",
+ "logs/native/caddy/False": "2e6ccccde08f5a9f93a622db528737c1b4c9841dc12d35978d6ec589e812f8f7",
+ "logs/native/caddy/True": "0c7ff32099ec51dfafc3e908a6dbb1f357d16018542ce2f92fdfe11bdf965d17",
+ "logs/native/geoserver/False": "55dd4fecb8d8362807fc01fd9f725618fc88f62399fd3e83179ba5145aee6b31",
+ "logs/native/geoserver/True": "546132168072bdbc459fdea058a28074dcb55cecb843c34af2e875635a6463da",
+ "logs/native/mapproxy/False": "3cc7094810a5821adc1d6a24a56b37a2181b588a6f95120bd332dfded6b016c8",
+ "logs/native/mapproxy/True": "dba6ea878e73db37f357bdff63177cc269d496199c626fbf113a941f31ec6689",
+ "logs/native/postgis/False": "8c1410959abbd864db53cc08de7cc77c0064b655e4f4baf4e64b7ff7767f9e86",
+ "logs/native/postgis/True": "9e5539613430f22c9cca0cb792b6723cfbf10064079590fb538fb210c8498372",
+ "logs/native/qgis_server/False": "0476b858e896dd0048f9a994e27c65a5d7c98b267e943f88a6bc531995f35ab4",
+ "logs/native/qgis_server/True": "5e81d1c605b1f832b8f90e407b234e3ed08ecaa2ffe6189cfec67b748cac9cf2",
+ "logs/native/tomcat/False": "e3b22eebb6e4a15f01e93df0901f9e3c848916da6c2c00f1fabe41f0481dca17",
+ "logs/native/tomcat/True": "cf8bbffb3782d5f0f21577039a6647321325f5154460bd997d3a06513bdda0ea",
+ "logs/native/webmap/False": "2e6ccccde08f5a9f93a622db528737c1b4c9841dc12d35978d6ec589e812f8f7",
+ "logs/native/webmap/True": "0c7ff32099ec51dfafc3e908a6dbb1f357d16018542ce2f92fdfe11bdf965d17",
+ "status/compose": "57d3c3e7f7b7d8240b764a3da33ec6211ba864585bdc6484ac54d214e506777f",
+ "status/k8s": "06731254b3a14db8b5469cfed0b740e2dbe4e302f9dd75e3ae2427693234c705",
+ "status/native": "0cf481907b2b9c6e09d0f77311a3ce726ff95cee840be0757b1e1699011932bb"
+}

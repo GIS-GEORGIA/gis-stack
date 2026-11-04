@@ -5,7 +5,8 @@ import json
 import os
 from typing import Any
 
-from . import deploy, fsutil
+from . import fsutil
+from .core import paths
 
 LANGS = ("auto", "ka", "en")
 THEMES = ("auto", "light", "dark")
@@ -14,7 +15,7 @@ DEFAULTS: dict[str, str] = {"lang": "auto", "theme": "auto"}
 
 
 def _path():
-    return deploy.home_dir() / "settings.json"
+    return paths.settings_file()
 
 
 def load() -> dict[str, str]:

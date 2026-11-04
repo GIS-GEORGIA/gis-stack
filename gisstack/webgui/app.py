@@ -28,6 +28,7 @@ from typing import Any
 from flask import Flask, Response, abort, jsonify, make_response, redirect, render_template, request, send_file
 
 from . import security
+from ..core import paths
 from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
@@ -38,7 +39,7 @@ def load_or_create_token(path: Path | None = None) -> str:
     env = os.environ.get("GISSTACK_TOKEN")
     if env:
         return env
-    path = path or (deploy_mod.home_dir() / "web.token")
+    path = path or paths.token_file()
     if path.exists():
         return path.read_text().strip()
     tok = secrets.token_urlsafe(24)
@@ -48,7 +49,7 @@ def load_or_create_token(path: Path | None = None) -> str:
 
 def rotate_token(path: Path | None = None) -> str:
     """Replace the stored access token with a new one (all existing browser sessions become invalid on restart)."""
-    path = path or (deploy_mod.home_dir() / "web.token")
+    path = path or paths.token_file()
     tok = secrets.token_urlsafe(24)
     fsutil.write_private(path, tok)
     return tok
@@ -85,7 +86,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
     app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024           # the largest legitimate body is a config + plan
     app.config["SESSIONS"] = sessions = security.Sessions()
     app.config["LIMITER"] = limiter = security.RateLimiter()
-    app.config["AUDIT"] = audit = security.AuditLog(lambda: deploy_mod.home_dir() / "audit.log")
+    app.config["AUDIT"] = audit = security.AuditLog(paths.audit_log)
     hosts = tuple(allowed_hosts) if allowed_hosts is not None else security.allowed_hosts_from_env()
     app.config["ALLOWED_HOSTS"] = hosts
     COOKIE = "gs_session"
@@ -234,7 +235,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
 
         job = Job()
         _register(job)
-        bundle_dir = deploy_mod.home_dir() / "bundles" / f"{cfg['project']}-{job.id}"
+        bundle_dir = paths.bundles_dir() / f"{cfg['project']}-{job.id}"
 
         def run() -> None:
             try:
@@ -400,7 +401,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
             return make_response(jsonify({"error": "მონაცემების წაშლა მოითხოვს ექსპლიციტურ დადასტურებას (confirm_data_loss)"}), 400)
 
         def steps(job: Job) -> Any:
-            bundle_dir = deploy_mod.home_dir() / "bundles" / f"{cfg['project']}-{job.id}"
+            bundle_dir = paths.bundles_dir() / f"{cfg['project']}-{job.id}"
 
             def make(c: dict[str, Any]) -> Path:
                 generate.generate_bundle(c, bundle_dir)
