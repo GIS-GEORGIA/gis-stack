@@ -1,0 +1,21 @@
+# Flutter map — generated for {{ public }}
+
+`lib/config.dart` is pre-wired to your server and the same layers as the web map.
+
+```bash
+cd mobile/flutter
+flutter create --project-name {{ project }}_map --org ge.gisstack .   # adds android/ ios/ (keeps lib/)
+flutter pub get
+flutter run
+```
+
+* Language switch KA/EN in the app bar (remembered on the device); layers in the drawer.
+* Release builds on Android need the `INTERNET` permission in
+  `android/app/src/main/AndroidManifest.xml`:
+  `<uses-permission android:name="android.permission.INTERNET"/>`
+{% if tls == 'none' %}
+* Your server is plain HTTP: add `android:usesCleartextTraffic="true"` to `<application>` and the
+  matching ATS exception on iOS — or switch the installer to HTTPS.
+{% endif %}
+* The code targets the `flutter_map` 6–8 API (`MapOptions(initialCenter: …)`). If a newer major
+  release changes it, pin `flutter_map` in `pubspec.yaml`.

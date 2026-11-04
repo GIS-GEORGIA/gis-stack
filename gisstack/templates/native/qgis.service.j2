@@ -1,0 +1,23 @@
+[Unit]
+Description=QGIS Server FastCGI (gisstack)
+After=network.target
+Requires=gisstack-qgis.socket
+
+[Service]
+# systemd owns the listening socket and hands it over as stdin (FastCGI's FCGI_LISTENSOCK_FILENO);
+# the wrapper starts N workers that all accept() on it - what spawn-fcgi does, without spawn-fcgi
+# (which is not packaged for EL9).
+Type=simple
+User=qgis
+Group=qgis
+StandardInput=socket
+Environment=QT_QPA_PLATFORM=offscreen
+Environment=QGIS_SERVER_LOG_LEVEL=1
+Environment=QGIS_SERVER_PARALLEL_RENDERING=1
+Environment=QGIS_SERVER_PROJECTS_DIRECTORY=@PROJECTS@
+ExecStart=/opt/gisstack/qgis-fcgi.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

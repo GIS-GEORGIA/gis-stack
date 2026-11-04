@@ -1,0 +1,18 @@
+[Unit]
+Description=GIS Stack web installer (localhost only)
+After=network.target
+
+[Service]
+# Runs as root on purpose: "install on this machine" needs it. It only listens on
+# 127.0.0.1 and requires a secret token; reach it with an SSH tunnel:
+#   ssh -L 8765:127.0.0.1:8765 user@server      then open the URL from `gisstack web --help`
+#   token: /var/lib/gisstack-installer/web.token
+Type=simple
+Environment=GISSTACK_HOME=/var/lib/gisstack-installer
+ExecStart=/usr/bin/gisstack web --host 127.0.0.1 --port 8765
+Restart=on-failure
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

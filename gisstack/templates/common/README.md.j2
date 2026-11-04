@@ -1,0 +1,68 @@
+# {{ project }} — GIS stack ({{ domain }})
+
+გენერირებულია gisstack {{ version }}-ით. პაროლები არის `native/stack.env`,
+`compose/.env`, `k8s/secret.yaml` და `stack.json` ფაილებში (უფლება 600) — **არ ატვირთო git-ში**.
+
+## რა არის ჩართული
+
+{% for k, v in cfg.components.items() %}
+- {{ '[x]' if v else '[ ]' }} {{ k }}
+{% endfor %}
+- PostgreSQL {{ pg.version }}, ბაზა `{{ pg.db }}`, ექსთენშენები: {{ pg.extensions | join(', ') }}
+{% if c.geoserver %}
+- {{ gs.channel and ('GeoServer ' ~ gs.version) }} (Tomcat {{ tomcat.major }})
+{% endif %}
+
+## გაშვება
+
+{% if 'native' in cfg.targets %}
+### პირდაპირ სერვერზე (apt / dnf) — `native/`
+
+```bash
+scp -r native/ root@SERVER:/root/gisstack
+ssh root@SERVER 'cd /root/gisstack && ./install.sh'
+# ნაწილობრივ:  ./install.sh --only postgis,caddy     ან   --skip qgis
+```
+{% endif %}
+{% if 'compose' in cfg.targets %}
+### Docker / Podman Compose — `compose/`
+
+```bash
+cd compose && ./up.sh          # RUNTIME={{ runtime }}; ./up.sh logs | ps | down{% if c.mapproxy %} | seed{% endif %}
+
+```
+{% endif %}
+{% if 'k8s' in cfg.targets %}
+### Kubernetes — `k8s/`
+
+```bash
+cd k8s && ./apply.sh           # = kubectl apply -k .
+```
+{% endif %}
+
+## მისამართები
+
+- რუკა: `{{ public }}/`
+{% if c.geoserver %}
+- GeoServer: `{{ public }}/geoserver/web/` (მომხმარებელი `admin`)
+{% endif %}
+{% if c.mapproxy %}
+- MapProxy დემო: `{{ public }}/mapproxy/demo/` · WMTS/TMS/WMS `{{ public }}/mapproxy/…`
+{% endif %}
+{% if c.qgis_server %}
+- QGIS Server: `{{ public }}/qgis/?MAP=<პროექტი>.qgs&SERVICE=WMS&REQUEST=GetCapabilities`
+{% endif %}
+{% if c.mobile_templates %}
+
+## მობილური
+
+`mobile/react-native/` და `mobile/flutter/` — უკვე მიბმულია შენს სერვერზე; ინსტრუქცია თითოეულ README-ში.
+{% endif %}
+{% if cfg._meta is defined and cfg._meta.warnings %}
+
+## გაფრთხილებები
+
+{% for w in cfg._meta.warnings %}
+- {{ w }}
+{% endfor %}
+{% endif %}

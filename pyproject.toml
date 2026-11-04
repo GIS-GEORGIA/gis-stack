@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gisstack-installer"
+version = "0.1.1"
+description = "One-click GIS server stack: PostGIS, GeoServer, Tomcat, MapProxy, QGIS Server, Caddy, web & mobile maps"
+requires-python = ">=3.9"
+dependencies = ["Flask>=3.0", "Jinja2>=3.1", "PyYAML>=6.0"]
+license = { text = "MIT" }
+
+[project.scripts]
+gisstack = "gisstack.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["gisstack*"]
+
+[tool.setuptools.package-data]
+gisstack = ["templates/**/*", "vendor/**/*", "webgui/templates/*"]

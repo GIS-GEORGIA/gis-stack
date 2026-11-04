@@ -1,0 +1,423 @@
+#!/usr/bin/env bash
+# gisstack native installer {{ version }}
+# Debian / Ubuntu (apt) and RHEL / Rocky / Alma / Fedora (dnf).
+#
+#   sudo ./install.sh                      install everything selected in the GUI
+#   sudo ./install.sh --only postgis,caddy install just these steps
+#   sudo ./install.sh --skip qgis          everything except these
+#   sudo ./install.sh --list               show the steps
+#
+# Safe to re-run: every step is idempotent.
+set -Eeuo pipefail
+trap 'echo "ERROR: failed near line $LINENO (step: ${CURRENT_STEP:-init})" >&2' ERR
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ALL_STEPS="base{% if c.postgis %} postgis{% endif %}{% if c.tomcat %} tomcat{% endif %}{% if c.geoserver %} geoserver{% endif %}{% if c.qgis_server %} qgis{% endif %}{% if c.mapproxy %} mapproxy{% endif %}{% if c.caddy %} caddy{% endif %}{% if c.webmap %} webmap{% endif %} firewall"
+
+# ---------------------------------------------------------------- helpers
+log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33mWARN:\033[0m %s\n' "$*" >&2; }
+die()  { printf '\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" -eq 0 ] || die "run as root (sudo ./install.sh)"
+command -v systemctl >/dev/null || die "systemd is required"
+
+# shellcheck disable=SC1091
+source "$HERE/stack.env"
+mkdir -p /etc/gisstack
+install -m 600 "$HERE/stack.env" /etc/gisstack/stack.env
+
+# shellcheck disable=SC1091
+. /etc/os-release
+case " ${ID_LIKE:-} ${ID} " in
+  *" debian "*|*" ubuntu "*) FAMILY=deb ;;
+  *" rhel "*|*" fedora "*|*" centos "*|*" rocky "*|*" almalinux "*) FAMILY=rpm ;;
+  *) die "unsupported distribution: ${PRETTY_NAME:-$ID}" ;;
+esac
+ARCH="$(uname -m)"
+
+STEPS="$ALL_STEPS"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --list) echo "$ALL_STEPS" | tr ' ' '\n'; exit 0 ;;
+    --only) STEPS="base $(echo "$2" | tr ',' ' ')"; shift 2 ;;
+    --skip) for s in $(echo "$2" | tr ',' ' '); do STEPS="$(echo " $STEPS " | sed "s/ $s / /")"; done; shift 2 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+done
+
+pkg_update() {
+  if [ "$FAMILY" = deb ]; then apt-get update -qq; else dnf -q makecache; fi
+}
+pkg_install() {
+  if [ "$FAMILY" = deb ]; then
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+  else
+    dnf install -y "$@" || { warn "dnf failed, retrying once (stale cache?)"; dnf clean packages >/dev/null; dnf install -y "$@"; }
+  fi
+}
+pkg_try() {   # install packages one by one, warn on failure
+  for p in "$@"; do pkg_install "$p" || warn "package not available: $p"; done
+}
+latest_pkg() {   # newest available rpm matching a glob, e.g. "postgis3*_16"
+  # installed AND available: after the first run the installed package is no longer listed as 'available'
+  dnf -q list "$1" 2>/dev/null | awk '$1 ~ /\./ {print $1}' | sed 's/\.[^.]*$//' | sort -V | tail -1
+}
+unit_install() {   # unit_install <file-in-bundle>
+  install -m 644 "$HERE/systemd/$1" "/etc/systemd/system/$1"
+  systemctl daemon-reload
+}
+wait_http() {      # wait_http <url> <seconds>
+  local i
+  for i in $(seq 1 "$2"); do
+    curl -fsS -o /dev/null -m 3 "$1" 2>/dev/null && return 0
+    sleep 1
+  done
+  return 1
+}
+psql_pg() { (cd /tmp && runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 "$@"); }
+ensure_user() {    # ensure_user <name> <home>
+  id "$1" >/dev/null 2>&1 || useradd --system --home-dir "$2" --create-home --shell /usr/sbin/nologin "$1"
+}
+
+# ------------------------------------------------------------------ steps
+step_base() {
+  pkg_update
+  if [ "$FAMILY" = deb ]; then
+    pkg_install curl ca-certificates tar gzip unzip openssl gnupg lsb-release
+  else
+    command -v curl >/dev/null || pkg_install curl   # EL9 ships curl-minimal; do not replace it
+    pkg_install ca-certificates tar gzip unzip openssl
+  fi
+}
+{% if c.postgis %}
+
+step_postgis() {
+  local V="$PG_VERSION" SVC
+  if [ "$FAMILY" = deb ]; then
+    pkg_install postgresql-common
+    /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+    pkg_install "postgresql-$V" "postgresql-$V-postgis-3" "postgresql-$V-postgis-3-scripts"
+{% if deb_pkgs | length > 2 %}
+    pkg_try {% for p in deb_pkgs %}{% if not p.endswith('postgis-3') and not p.endswith('postgis-3-scripts') %}{{ p | shq }} {% endif %}{% endfor %}
+
+{% endif %}
+    SVC=postgresql
+  else
+    local REPO
+    if [ "$ID" = fedora ]; then REPO="F-${VERSION_ID}"; else REPO="EL-${VERSION_ID%%.*}"; fi
+    [ "$ID" = fedora ] || pkg_install epel-release dnf-plugins-core
+    [ "$ID" = fedora ] || dnf config-manager --set-enabled crb 2>/dev/null || dnf config-manager --set-enabled powertools 2>/dev/null || true
+    pkg_install "https://download.postgresql.org/pub/repos/yum/reporpms/${REPO}-${ARCH}/pgdg-redhat-repo-latest.noarch.rpm" || true
+    dnf -qy module disable postgresql 2>/dev/null || true
+    pkg_install "postgresql${V}-server" "postgresql${V}-contrib"
+    local PGIS; PGIS="$(latest_pkg "postgis3*_${V}")"
+    [ -n "$PGIS" ] || die "no PostGIS package for PostgreSQL $V in the PGDG repository"
+    pkg_install "$PGIS"
+{% if rpm_pkgs | length > 1 %}
+    pkg_try {% for p in rpm_pkgs %}{% if p != '@postgis' %}{{ p | shq }} {% endif %}{% endfor %}
+
+{% endif %}
+    if [ ! -f "/var/lib/pgsql/$V/data/PG_VERSION" ]; then "/usr/pgsql-$V/bin/postgresql-$V-setup" initdb; fi
+    SVC="postgresql-$V"
+    systemctl enable --now "$SVC"
+  fi
+  systemctl enable --now "$SVC"
+
+  log "PostgreSQL tuning"
+  local LISTEN="localhost"; [ "$PG_REMOTE_ACCESS" = 1 ] && LISTEN="*"
+  psql_pg -c "ALTER SYSTEM SET listen_addresses = '$LISTEN'" \
+          -c "ALTER SYSTEM SET shared_buffers = '$PG_SHARED_BUFFERS'" \
+          -c "ALTER SYSTEM SET effective_cache_size = '$PG_EFFECTIVE_CACHE_SIZE'" \
+          -c "ALTER SYSTEM SET work_mem = '$PG_WORK_MEM'" \
+          -c "ALTER SYSTEM SET maintenance_work_mem = '$PG_MAINTENANCE_WORK_MEM'" \
+          -c "ALTER SYSTEM SET max_connections = '$PG_MAX_CONNECTIONS'"
+  if [ -n "$PG_PRELOAD" ]; then
+    psql_pg -c "ALTER SYSTEM SET shared_preload_libraries = '$PG_PRELOAD'"
+  fi
+  if [ "$PG_REMOTE_ACCESS" = 1 ]; then
+    local HBA; HBA="$(psql_pg -Atqc 'SHOW hba_file')"
+    grep -q '# gisstack' "$HBA" || echo "host  $DB_NAME  $DB_USER  $PG_ALLOWED_CIDR  scram-sha-256  # gisstack" >> "$HBA"
+  fi
+  systemctl restart "$SVC"
+  for _ in $(seq 1 30); do runuser -u postgres -- pg_isready -q && break; sleep 1; done
+
+  log "database $DB_NAME, role $DB_USER, extensions"
+  psql_pg -v dbuser="$DB_USER" -v dbpass="$DB_PASSWORD" -v dbname="$DB_NAME" <<'SQL'
+SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', :'dbuser', :'dbpass')
+  WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'dbuser') \gexec
+SELECT format('ALTER ROLE %I PASSWORD %L', :'dbuser', :'dbpass') \gexec
+SELECT format('CREATE DATABASE %I OWNER %I', :'dbname', :'dbuser')
+  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'dbname') \gexec
+SQL
+  local out   # no ON_ERROR_STOP: one missing extension must not block the others
+  out="$(cd /tmp && runuser -u postgres -- psql -X -d "$DB_NAME" < "$HERE/config/init-extensions.sql" 2>&1)" || true
+  echo "$out"
+  if echo "$out" | grep -q 'ERROR'; then warn "some extensions failed (package missing?) - see messages above"; fi
+  psql_pg -d "$DB_NAME" -c "GRANT ALL ON SCHEMA public TO \"$DB_USER\""
+}
+{% endif %}
+{% if c.tomcat %}
+
+step_tomcat() {
+  local home=/opt/tomcat
+  if [ "$FAMILY" = deb ]; then pkg_install "openjdk-${JAVA_VERSION}-jre-headless"
+  else pkg_install "java-${JAVA_VERSION}-openjdk-headless"; fi
+
+  local dir pat ver base
+  case "$TOMCAT_MAJOR" in
+    9)    dir=tomcat-9;  pat='9\.0\.[0-9]+' ;;
+    10.1) dir=tomcat-10; pat='10\.1\.[0-9]+' ;;
+    11)   dir=tomcat-11; pat='11\.0\.[0-9]+' ;;
+    *) die "TOMCAT_MAJOR must be 9, 10.1 or 11" ;;
+  esac
+  ver="$TOMCAT_VERSION"; base=""
+  for b in https://dlcdn.apache.org/tomcat https://archive.apache.org/dist/tomcat; do
+    if [ "$ver" = auto ]; then
+      v="$(curl -fsSL "$b/$dir/" | grep -oE "v${pat}/" | tr -d 'v/' | sort -V | tail -1 || true)"
+    else v="$ver"; fi
+    if [ -n "${v:-}" ] && curl -fsI -o /dev/null "$b/$dir/v$v/bin/apache-tomcat-$v.tar.gz"; then ver="$v"; base="$b"; break; fi
+  done
+  [ -n "$base" ] || die "cannot find Tomcat $TOMCAT_MAJOR (set TOMCAT_VERSION manually)"
+  log "Tomcat $ver"
+
+  ensure_user tomcat /var/lib/tomcat
+  if [ ! -d "/opt/apache-tomcat-$ver" ]; then
+    local tmp; tmp="$(mktemp -d)"
+    curl -fL --retry 3 -o "$tmp/tc.tgz" "$base/$dir/v$ver/bin/apache-tomcat-$ver.tar.gz"
+    curl -fsSL -o "$tmp/tc.tgz.sha512" "$base/$dir/v$ver/bin/apache-tomcat-$ver.tar.gz.sha512"
+    (cd "$tmp" && echo "$(cut -d' ' -f1 tc.tgz.sha512)  tc.tgz" | sha512sum -c -)
+    tar -xzf "$tmp/tc.tgz" -C /opt
+    rm -rf "$tmp"
+    rm -rf "/opt/apache-tomcat-$ver/webapps/"{docs,examples,manager,host-manager,ROOT}
+  fi
+  # the Apache tarball ships bin/ and lib/ as 0750 root:root; the tomcat user must be able to run them
+  chmod -R go+rX "/opt/apache-tomcat-$ver"
+  chmod 755 "/opt/apache-tomcat-$ver"/bin/*.sh
+  ln -sfn "/opt/apache-tomcat-$ver" "$home"
+  install -d -o tomcat -g tomcat /var/lib/gisstack
+  chown -R tomcat:tomcat "/opt/apache-tomcat-$ver"/{logs,temp,work,webapps,conf} 2>/dev/null || true
+
+  local conf="$home/conf/server.xml"
+  sed -i -E "s|<Connector port=\"[0-9]+\" protocol=\"HTTP/1.1\"|<Connector port=\"$TOMCAT_PORT\" address=\"$BIND_BACKENDS\" protocol=\"HTTP/1.1\"|" "$conf"
+  grep -q RemoteIpValve "$conf" || sed -i 's|</Host>|  <Valve className="org.apache.catalina.valves.RemoteIpValve" internalProxies="127\\.0\\.0\\.1" protocolHeader="X-Forwarded-Proto" />\n      </Host>|' "$conf"
+
+  local JH; JH="$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")"
+  printf 'JAVA_HOME=%s\nCATALINA_HOME=%s\nCATALINA_BASE=%s\n' "$JH" "$home" "$home" > /etc/gisstack/tomcat.env
+  sed -e "s|@HEAP@|$TOMCAT_HEAP_MB|g" -e "s|@DATA_DIR@|$GS_DATA_DIR|g" -e "s|@DOMAIN@|$DOMAIN|g" \
+      "$HERE/config/tomcat/setenv.sh" > "$home/bin/setenv.sh"
+  chmod 755 "$home/bin/setenv.sh"
+  unit_install gisstack-tomcat.service
+  systemctl enable gisstack-tomcat.service
+  systemctl restart gisstack-tomcat.service
+}
+{% endif %}
+{% if c.geoserver %}
+
+step_geoserver() {
+  local tmp; tmp="$(mktemp -d)"
+  local base="https://downloads.sourceforge.net/project/geoserver/GeoServer/${GS_VERSION}"
+  local mirror="https://build.geoserver.org/geoserver/release/${GS_VERSION}"   # fallback
+  log "GeoServer ${GS_VERSION}"
+  systemctl stop gisstack-tomcat.service
+  curl -fL --retry 3 -o "$tmp/gs.zip" "$base/geoserver-${GS_VERSION}-war.zip" \
+    || curl -fL --retry 3 -o "$tmp/gs.zip" "$mirror/geoserver-${GS_VERSION}-war.zip" \
+    || die "cannot download GeoServer ${GS_VERSION} (set GS_VERSION, or fetch the WAR zip manually)"
+  unzip -q -o "$tmp/gs.zip" geoserver.war -d "$tmp"
+  rm -rf /opt/tomcat/webapps/geoserver
+  install -d /opt/tomcat/webapps/geoserver
+  unzip -q "$tmp/geoserver.war" -d /opt/tomcat/webapps/geoserver
+  for ext in $GS_EXTENSIONS; do
+    log "GeoServer extension: $ext"
+    if curl -fL --retry 3 -o "$tmp/$ext.zip" "$base/extensions/geoserver-${GS_VERSION}-${ext}-plugin.zip" \
+       || curl -fL --retry 3 -o "$tmp/$ext.zip" "$mirror/ext-latest/geoserver-${GS_VERSION}-${ext}-plugin.zip"; then
+      unzip -q -o -j "$tmp/$ext.zip" '*.jar' -d /opt/tomcat/webapps/geoserver/WEB-INF/lib/
+    else warn "extension not found: $ext"; fi
+  done
+  install -d -o tomcat -g tomcat "$GS_DATA_DIR"
+  chown -R tomcat:tomcat /opt/tomcat/webapps/geoserver "$GS_DATA_DIR"
+  rm -rf "$tmp"
+  systemctl start gisstack-tomcat.service
+
+  log "waiting for GeoServer (first start can take a few minutes)"
+  wait_http "http://127.0.0.1:${TOMCAT_PORT}/geoserver/web/" 300 || die "GeoServer did not come up; see: journalctl -u gisstack-tomcat"
+  local url="http://127.0.0.1:${TOMCAT_PORT}/geoserver/rest/security/self/password"
+  if curl -fsS -u "admin:geoserver" -X PUT -H 'Content-Type: application/json' \
+       -d "{\"newPassword\":\"$GS_ADMIN_PASSWORD\"}" "$url" >/dev/null 2>&1; then
+    log "GeoServer admin password set"
+  elif curl -fsS -u "admin:$GS_ADMIN_PASSWORD" -o /dev/null "http://127.0.0.1:${TOMCAT_PORT}/geoserver/rest/about/version" 2>/dev/null; then
+    log "GeoServer admin password already set"
+  elif old="$(sed -n 's|^GeoServer admin: *admin / ||p' /etc/gisstack/credentials.txt 2>/dev/null)"; [ -n "$old" ] \
+       && curl -fsS -u "admin:$old" -X PUT -H 'Content-Type: application/json' \
+            -d "{\"newPassword\":\"$GS_ADMIN_PASSWORD\"}" "$url" >/dev/null 2>&1; then
+    log "GeoServer admin password changed (was the one from the previous run)"
+  else
+    warn "could not set GeoServer admin password automatically - change it in the web UI (default admin / geoserver)"
+  fi
+}
+{% endif %}
+{% if c.qgis_server %}
+
+step_qgis() {
+  if [ "$FAMILY" = deb ]; then
+    if [ "$QGIS_OFFICIAL_REPO" = 1 ]; then
+      install -d -m 755 /etc/apt/keyrings
+      curl -fsSL https://download.qgis.org/downloads/qgis-archive-keyring.gpg -o /etc/apt/keyrings/qgis-archive-keyring.gpg
+      cat > /etc/apt/sources.list.d/qgis.sources <<EOF
+Types: deb
+URIs: https://qgis.org/${ID}
+Suites: $(lsb_release -cs)
+Architectures: $(dpkg --print-architecture)
+Components: main
+Signed-By: /etc/apt/keyrings/qgis-archive-keyring.gpg
+EOF
+      pkg_update
+    fi
+    pkg_install qgis-server
+  else
+    dnf -y -q list qgis-server >/dev/null 2>&1 || die "qgis-server is not in your repositories (enable EPEL/CRB or use the Compose target)"
+    pkg_install qgis-server
+  fi
+  local fcgi
+  fcgi="$(find /usr/lib /usr/lib64 /usr/libexec -name qgis_mapserv.fcgi 2>/dev/null | head -1)"
+  [ -n "$fcgi" ] || die "qgis_mapserv.fcgi not found"
+  ensure_user qgis /var/lib/qgis
+  install -d -o qgis -g qgis "$QGIS_PROJECTS_DIR"
+  install -d /opt/gisstack
+  cat > /opt/gisstack/qgis-fcgi.sh <<WRAP
+#!/bin/sh
+# $QGIS_PROCESSES FastCGI workers sharing the socket systemd passes in as stdin
+n=$QGIS_PROCESSES
+while [ "\$n" -gt 1 ]; do $fcgi & n=\$((n - 1)); done
+exec $fcgi
+WRAP
+  chmod 755 /opt/gisstack/qgis-fcgi.sh
+  sed -e "s|@PROJECTS@|$QGIS_PROJECTS_DIR|g" "$HERE/systemd/gisstack-qgis.service" > /etc/systemd/system/gisstack-qgis.service
+  sed -e "s|@BIND@|$BIND_BACKENDS|g" "$HERE/systemd/gisstack-qgis.socket" > /etc/systemd/system/gisstack-qgis.socket
+  restorecon -R /opt/gisstack 2>/dev/null || true
+  systemctl daemon-reload
+  systemctl enable gisstack-qgis.socket gisstack-qgis.service
+  systemctl restart gisstack-qgis.socket
+  systemctl restart gisstack-qgis.service
+}
+{% endif %}
+{% if c.mapproxy %}
+
+step_mapproxy() {
+  local PY=python3
+  if [ "$FAMILY" = deb ]; then pkg_install python3 python3-venv python3-pip
+  else pkg_install python3.12 python3.12-pip; PY=python3.12; fi   # EL9's python3 is 3.9; MapProxy 7 needs 3.10+
+  "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || die "MapProxy needs Python 3.10 or newer (found $("$PY" --version)); use the Compose target on this system"
+  ensure_user mapproxy /var/lib/gisstack/mapproxy
+  "$PY" -m venv --clear /opt/gisstack/mapproxy-venv
+  /opt/gisstack/mapproxy-venv/bin/pip install --quiet --upgrade pip
+  /opt/gisstack/mapproxy-venv/bin/pip install --quiet mapproxy gunicorn pyproj shapely
+  install -d /etc/gisstack/mapproxy
+  install -m 644 "$HERE"/config/mapproxy/{mapproxy.yaml,seed.yaml,app.py} /etc/gisstack/mapproxy/
+  install -d -o mapproxy -g mapproxy /var/lib/gisstack/mapproxy/cache_data
+  /opt/gisstack/mapproxy-venv/bin/python - <<'PY' || warn "MapProxy config check reported problems (see above)"
+from mapproxy.config.loader import load_configuration
+load_configuration('/etc/gisstack/mapproxy/mapproxy.yaml', ignore_warnings=True)
+print("MapProxy configuration OK")
+PY
+  sed -e "s|@WORKERS@|$MAPPROXY_WORKERS|g" -e "s|@BIND@|$BIND_BACKENDS|g" \
+      "$HERE/systemd/gisstack-mapproxy.service" > /etc/systemd/system/gisstack-mapproxy.service
+  systemctl daemon-reload
+  systemctl enable gisstack-mapproxy.service
+  systemctl restart gisstack-mapproxy.service
+}
+{% endif %}
+{% if c.caddy %}
+
+step_caddy() {
+  local carch
+  case "$ARCH" in x86_64|amd64) carch=amd64 ;; aarch64|arm64) carch=arm64 ;; *) die "unsupported CPU: $ARCH" ;; esac
+  if ! /usr/local/bin/caddy version >/dev/null 2>&1; then   # missing or truncated binary
+    curl -fL --retry 3 -o /usr/local/bin/caddy "https://caddyserver.com/api/download?os=linux&arch=${carch}"
+    chmod 755 /usr/local/bin/caddy
+  fi
+  ensure_user caddy /var/lib/caddy
+  install -d /etc/caddy
+  install -m 644 "$HERE/config/Caddyfile" /etc/caddy/Caddyfile
+  /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  cat > /etc/systemd/system/caddy.service <<'UNIT'
+[Unit]
+Description=Caddy web server (gisstack)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=caddy
+Group=caddy
+ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+PrivateTmp=true
+ProtectSystem=full
+Environment=XDG_DATA_HOME=/var/lib/caddy XDG_CONFIG_HOME=/var/lib/caddy/config
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable caddy.service
+  systemctl restart caddy.service
+}
+{% endif %}
+{% if c.webmap %}
+
+step_webmap() {
+  install -d /var/www/gisstack
+  rm -rf /var/www/gisstack/webmap
+  cp -r "$HERE/webmap" /var/www/gisstack/webmap
+  chmod -R a+rX /var/www/gisstack
+}
+{% endif %}
+
+step_firewall() {
+  if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then
+    ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null
+    log "ufw: opened 80, 443"
+  elif command -v firewall-cmd >/dev/null && systemctl is-active -q firewalld; then
+    firewall-cmd --permanent --add-service=http --add-service=https >/dev/null
+    firewall-cmd --reload >/dev/null
+    log "firewalld: opened http, https"
+  fi
+}
+
+write_credentials() {
+  umask 077
+  cat > /etc/gisstack/credentials.txt <<EOF
+Domain:            $DOMAIN
+PostgreSQL:        host=127.0.0.1 port=$PG_PORT db=$DB_NAME user=$DB_USER password=$DB_PASSWORD
+GeoServer admin:   admin / $GS_ADMIN_PASSWORD
+EOF
+}
+
+# ------------------------------------------------------------------- main
+for s in $STEPS; do
+  case " $ALL_STEPS " in *" $s "*) ;; *) warn "skipping unknown/unselected step: $s"; continue ;; esac
+  CURRENT_STEP="$s"
+  log "step: $s"
+  "step_$s"
+done
+write_credentials
+
+SCHEME={{ scheme }}
+echo
+log "Done."
+echo "  Map / home:   $SCHEME://$DOMAIN/"
+{% if c.geoserver %}
+echo "  GeoServer:    $SCHEME://$DOMAIN/geoserver/web/"
+{% endif %}
+{% if c.mapproxy %}
+echo "  MapProxy:     $SCHEME://$DOMAIN/mapproxy/demo/"
+{% endif %}
+{% if c.qgis_server %}
+echo "  QGIS Server:  $SCHEME://$DOMAIN/qgis/?MAP=$QGIS_PROJECTS_DIR/<project>.qgs&SERVICE=WMS&REQUEST=GetCapabilities"
+{% endif %}
+echo "  Passwords:    /etc/gisstack/credentials.txt (root only)"

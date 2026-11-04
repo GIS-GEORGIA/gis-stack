@@ -1,0 +1,160 @@
+#!/usr/bin/env bash
+# gisstack native uninstaller {{ version }}
+#
+#   sudo ./uninstall.sh                         remove the whole stack, KEEP data
+#   sudo ./uninstall.sh --only tomcat,caddy     remove just these components
+#   sudo ./uninstall.sh --purge                 also delete their data (GeoServer data dir, tile caches,
+#                                               Caddy certificates, QGIS projects, the database and role)
+#   sudo ./uninstall.sh --purge --remove-postgres
+#                                               ... and uninstall the PostgreSQL server itself
+#                                               (refuses if it holds other databases, unless --force-postgres)
+#
+# Components: postgis tomcat geoserver qgis mapproxy caddy webmap
+# Without --purge PostgreSQL and its databases are never touched.
+set -Eeuo pipefail
+trap 'echo "ERROR: failed near line $LINENO" >&2' ERR
+[ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ALL="postgis tomcat geoserver qgis mapproxy caddy webmap"
+SEL=""; PURGE=0; RMPG=0; FORCEPG=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --only)  [ $# -ge 2 ] || { echo "--only needs a list" >&2; exit 2; }
+             SEL="$(echo "$2" | tr ',' ' ' | sed 's/qgis_server/qgis/g')"; shift 2 ;;
+    --purge) PURGE=1; shift ;;
+    --remove-postgres) RMPG=1; PURGE=1; shift ;;
+    --force-postgres)  FORCEPG=1; shift ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+done
+[ -n "$SEL" ] || SEL="$ALL"
+for s in $SEL; do
+  case " $ALL " in *" $s "*) ;; *) echo "unknown component: $s" >&2; exit 2 ;; esac
+done
+FULL=0; [ "$(echo $SEL | wc -w)" -eq "$(echo $ALL | wc -w)" ] && FULL=1
+
+for f in /etc/gisstack/stack.env "$HERE/stack.env"; do
+  if [ -f "$f" ]; then set +u; . "$f"; set -u; break; fi
+done
+DB_NAME="${DB_NAME:-gis}"; DB_USER="${DB_USER:-gis}"; PG_VERSION="${PG_VERSION:-17}"
+GS_DATA_DIR="${GS_DATA_DIR:-/var/lib/gisstack/geoserver_data}"
+QGIS_PROJECTS_DIR="${QGIS_PROJECTS_DIR:-/srv/qgis/projects}"
+
+. /etc/os-release
+case " ${ID_LIKE:-} ${ID} " in
+  *" debian "*|*" ubuntu "*) FAMILY=deb ;;
+  *) FAMILY=rpm ;;
+esac
+
+log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+has()  { case " $SEL " in *" $1 "*) return 0 ;; esac; return 1; }
+rm_unit() { systemctl disable --now "$1.${2:-service}" >/dev/null 2>&1 || true; rm -f "/etc/systemd/system/$1.${2:-service}"; }
+rm_user() { if id "$1" >/dev/null 2>&1; then userdel "$1" >/dev/null 2>&1 || true; fi; }
+pkg_remove() {
+  if [ "$FAMILY" = deb ]; then DEBIAN_FRONTEND=noninteractive apt-get purge -y "$@" || true
+  else dnf remove -y "$@" || true; fi
+}
+
+# geoserver before tomcat: it lives inside Tomcat's webapps
+if has geoserver; then
+  log "GeoServer"
+  if has tomcat; then
+    :   # the webapp disappears together with Tomcat below
+  elif [ -d /opt/tomcat/webapps/geoserver ]; then
+    systemctl stop gisstack-tomcat.service >/dev/null 2>&1 || true
+    rm -rf /opt/tomcat/webapps/geoserver
+    systemctl start gisstack-tomcat.service >/dev/null 2>&1 || true
+  fi
+  if [ "$PURGE" = 1 ]; then rm -rf "$GS_DATA_DIR"; fi
+fi
+
+if has tomcat; then
+  log "Tomcat"
+  rm_unit gisstack-tomcat
+  rm -rf /opt/tomcat /opt/apache-tomcat-*
+  rm -f /etc/gisstack/tomcat.env
+  if [ "$PURGE" = 1 ]; then rm -rf /var/lib/tomcat; rm_user tomcat; fi
+fi
+
+if has qgis; then
+  log "QGIS Server"
+  rm_unit gisstack-qgis
+  rm_unit gisstack-qgis socket
+  rm -f /opt/gisstack/qgis-fcgi.sh
+  if [ "$PURGE" = 1 ]; then
+    rm -rf "$QGIS_PROJECTS_DIR"
+    pkg_remove qgis-server
+    rm -f /etc/apt/sources.list.d/qgis.sources /etc/apt/keyrings/qgis-archive-keyring.gpg
+    rm_user qgis
+  fi
+fi
+
+if has mapproxy; then
+  log "MapProxy"
+  rm_unit gisstack-mapproxy
+  rm -rf /opt/gisstack/mapproxy-venv /etc/gisstack/mapproxy
+  rmdir /opt/gisstack 2>/dev/null || true
+  if [ "$PURGE" = 1 ]; then rm -rf /var/lib/gisstack/mapproxy; rm_user mapproxy; fi
+fi
+
+if has caddy; then
+  log "Caddy"
+  rm_unit caddy
+  rm -f /usr/local/bin/caddy
+  rm -rf /etc/caddy
+  if [ "$PURGE" = 1 ]; then rm -rf /var/lib/caddy; rm_user caddy; fi
+fi
+
+if has webmap; then
+  log "web map"
+  rm -rf /var/www/gisstack
+fi
+
+if has postgis; then
+  if [ "$PURGE" = 1 ]; then
+    log "PostgreSQL: dropping database $DB_NAME and role $DB_USER"
+    if (cd /tmp && runuser -u postgres -- pg_isready -q) 2>/dev/null; then
+      (cd /tmp && runuser -u postgres -- psql -X -q \
+         -c "DROP DATABASE IF EXISTS \"$DB_NAME\" WITH (FORCE)" \
+         -c "DROP ROLE IF EXISTS \"$DB_USER\"") || echo "WARN: could not drop the database/role" >&2
+    else
+      echo "PostgreSQL is not running - database $DB_NAME was not dropped" >&2
+    fi
+    if [ "$RMPG" = 1 ]; then
+      others=""
+      if (cd /tmp && runuser -u postgres -- pg_isready -q) 2>/dev/null; then
+        others="$(cd /tmp && runuser -u postgres -- psql -X -Atq -c \
+          "SELECT string_agg(datname, ', ') FROM pg_database WHERE datname NOT IN ('postgres','template0','template1')")" || true
+      fi
+      if [ -n "$others" ] && [ "$FORCEPG" != 1 ]; then
+        echo "REFUSING to remove PostgreSQL: it still holds other databases ($others). Use --force-postgres to override." >&2
+        exit 3
+      fi
+      log "PostgreSQL: removing server $PG_VERSION"
+      systemctl disable --now postgresql >/dev/null 2>&1 || true
+      systemctl disable --now "postgresql-$PG_VERSION" >/dev/null 2>&1 || true
+      if [ "$FAMILY" = deb ]; then
+        pkg_remove "postgresql-$PG_VERSION*" "postgresql-client-$PG_VERSION"
+        rm -rf "/var/lib/postgresql/$PG_VERSION" "/etc/postgresql/$PG_VERSION"
+      else
+        pkg_remove "postgresql$PG_VERSION*" "postgis3*_$PG_VERSION*"
+        rm -rf "/var/lib/pgsql/$PG_VERSION"
+      fi
+    fi
+  else
+    echo "PostgreSQL and database $DB_NAME kept (use --purge to drop the database)"
+  fi
+fi
+
+systemctl daemon-reload
+systemctl reset-failed >/dev/null 2>&1 || true
+
+if [ "$PURGE" = 1 ] && [ "$FULL" = 1 ]; then
+  rm -rf /var/lib/gisstack /etc/gisstack
+  echo "all gisstack data and settings purged"
+elif [ "$FULL" = 1 ]; then
+  echo "kept: /var/lib/gisstack (GeoServer data, tile caches) and /etc/gisstack/stack.env"
+fi
+echo "done: $SEL"

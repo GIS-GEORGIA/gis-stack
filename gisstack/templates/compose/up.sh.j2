@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# gisstack Compose launcher {{ version }}   usage: ./up.sh [up|down|logs|ps|seed|pull|clean|only]
+set -Eeuo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+RUNTIME="${RUNTIME:-{{ runtime }}}"
+if [ "$RUNTIME" = podman ]; then
+  if podman compose version >/dev/null 2>&1; then COMPOSE="podman compose"
+  elif command -v podman-compose >/dev/null; then COMPOSE="podman-compose"
+  else echo "install podman-compose (or the compose plugin for podman)" >&2; exit 1; fi
+else
+  if docker compose version >/dev/null 2>&1; then COMPOSE="docker compose"
+  elif command -v docker-compose >/dev/null; then COMPOSE="docker-compose"
+  else echo "install Docker Engine with the compose plugin" >&2; exit 1; fi
+fi
+
+mkdir -p tomcat/webapps qgis/projects
+
+case "${1:-up}" in
+  up)
+    $COMPOSE --env-file .env up -d --build
+    echo
+    echo "Started. Check:  $COMPOSE ps"
+    echo "Open:  {{ public }}/"
+{% if c.geoserver %}
+    echo "GeoServer:  {{ public }}/geoserver/web/   (user admin, password in .env: GS_ADMIN_PASSWORD)"
+{% endif %}
+{% if c.mapproxy %}
+    echo "MapProxy:   {{ public }}/mapproxy/demo/"
+{% endif %}
+    ;;
+  down)  $COMPOSE --env-file .env down ;;
+  only)
+    # ./up.sh only <service> ...   (re)build and start just these services with the current settings
+    shift
+    [ "$#" -gt 0 ] || { echo "usage: $0 only <service>..."; exit 2; }
+    DEFINED="$($COMPOSE --env-file .env config --services)"
+    LIST=""
+    for s in "$@"; do
+      case "$s" in qgis_server) s=qgis ;; webmap) s=caddy ;; esac
+      if echo "$DEFINED" | grep -qx "$s"; then LIST="$LIST $s"; else echo "not part of this stack: $s"; fi
+    done
+    [ -n "$LIST" ] || { echo "nothing to do" >&2; exit 1; }
+    $COMPOSE --env-file .env up -d --build $LIST
+    ;;
+  clean)
+    # ./up.sh clean [--purge] [service ...]   no service = whole stack; --purge also deletes volumes (data)
+    shift
+    PURGE=0; WANT=""
+    for a in "$@"; do case "$a" in --purge) PURGE=1 ;; *) WANT="$WANT $a" ;; esac; done
+    if [ -z "$WANT" ]; then
+      if [ "$PURGE" = 1 ]; then $COMPOSE --env-file .env down -v --rmi local --remove-orphans
+      else $COMPOSE --env-file .env down --remove-orphans; fi
+    else
+      DEFINED="$($COMPOSE --env-file .env config --services)"
+      LIST=""
+      for s in $WANT; do
+        [ "$s" = qgis_server ] && s=qgis
+        if [ "$s" = webmap ]; then echo "webmap is served by caddy (bind mount): nothing to remove"; continue; fi
+        if echo "$DEFINED" | grep -qx "$s"; then LIST="$LIST $s"; else echo "not part of this stack: $s"; fi
+      done
+      if [ -n "$LIST" ]; then
+        $COMPOSE --env-file .env rm -sf $LIST
+        if [ "$PURGE" = 1 ]; then
+          for s in $LIST; do
+            case "$s" in
+              postgis)   vols="pgdata" ;;
+              geoserver) vols="geoserver_data" ;;
+              mapproxy)  vols="mapproxy_cache" ;;
+              caddy)     vols="caddy_data caddy_config" ;;
+              *)         vols="" ;;
+            esac
+            for v in $vols; do "$RUNTIME" volume rm -f "{{ project }}_$v" || true; done
+          done
+        fi
+      fi
+    fi
+    ;;
+  pull)  $COMPOSE --env-file .env pull ;;
+  logs)  shift; $COMPOSE --env-file .env logs -f "$@" ;;
+  ps)    $COMPOSE --env-file .env ps ;;
+{% if c.mapproxy %}
+  seed)  $COMPOSE --env-file .env run --rm mapproxy mapproxy-seed -f /etc/mapproxy/mapproxy.yaml -c 2 /etc/mapproxy/seed.yaml ;;
+{% endif %}
+  *) echo "usage: $0 [up|down|pull|logs|ps{% if c.mapproxy %}|seed{% endif %}|only <service>...|clean [--purge] [service...]]"; exit 2 ;;
+esac

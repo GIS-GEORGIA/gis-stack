@@ -1,0 +1,547 @@
+"""Desktop GUI (Tkinter) for the installer.
+
+Runs on your own computer, writes the bundle to a folder and can deploy it to a
+server over SSH (key-based) or on this machine.  Needs python3-tk
+(`sudo apt install python3-tk` / `sudo dnf install python3-tkinter`).
+"""
+from __future__ import annotations
+
+import json
+import queue
+import threading
+import tkinter as tk
+from pathlib import Path
+from tkinter import filedialog, messagebox, scrolledtext, ttk
+from typing import Any
+
+from . import __version__, catalog, config, deploy, generate, projects
+
+LAYER_HELP = ("ერთი ფენა ხაზზე:  სახელი | სათაური EN | სათაური KA | წყარო | WMS ფენა | URL\n"
+              "წყარო: geoserver | qgis | wms | tiles")
+
+
+def parse_layers(text: str) -> list[dict[str, str]]:
+    layers = []
+    for raw in text.splitlines():
+        raw = raw.strip()
+        if not raw or raw.startswith("#"):
+            continue
+        parts = [p.strip() for p in raw.split("|")] + [""] * 6
+        name, title, title_ka, source, wms, url = parts[:6]
+        layers.append({"name": name, "title": title or name, "title_ka": title_ka,
+                       "source": source or "geoserver", "wms_layers": wms, "url": url})
+    return layers
+
+
+def layers_to_text(layers: list[dict[str, Any]]) -> str:
+    return "\n".join(" | ".join([l.get("name", ""), l.get("title", ""), l.get("title_ka", ""),
+                                 l.get("source", "geoserver"), l.get("wms_layers", ""), l.get("url", "")])
+                     for l in layers)
+
+
+class App(tk.Tk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.title(f"GIS Stack Installer {__version__}")
+        self.geometry("1020x780")
+        self.d = config.default_config()
+        self.vars: dict[str, tk.Variable] = {}
+        self.checks: dict[str, dict[str, tk.BooleanVar]] = {}
+        self.log_q: queue.Queue[str | None] = queue.Queue()
+        self.busy = False
+        self.clean_btns: list[ttk.Button] = []     # every button that must stay disabled while a job runs
+
+        top = ttk.Frame(self)
+        top.pack(fill="x", padx=8, pady=(8, 0))
+        ttk.Label(top, text="შენახული პროექტები:").pack(side="left")
+        self.proj_var = tk.StringVar()
+        self.proj_box = ttk.Combobox(top, textvariable=self.proj_var, state="readonly", width=28)
+        self.proj_box.pack(side="left", padx=4)
+        ttk.Button(top, text="ჩატვირთვა", command=self.load_project).pack(side="left", padx=2)
+        ttk.Button(top, text="მთელი პროექტის შენახვა", command=self.save_project).pack(side="left", padx=2)
+        self.refresh_projects()
+
+        nb = ttk.Notebook(self)
+        nb.pack(fill="both", expand=True, padx=8, pady=8)
+        self._tab_components_vars()
+        self._tab_general(nb)
+        self._tab_components(nb)
+        self._tab_postgres(nb)
+        self._tab_servers(nb)
+        self._tab_mapproxy(nb)
+        self._tab_map(nb)
+        self._tab_deploy(nb)
+        self._tab_clean(nb)
+
+        bar = ttk.Frame(self)
+        bar.pack(fill="x", padx=8)
+        ttk.Button(bar, text="წინასწარი ნახვა", command=self.preview).pack(side="left", padx=4)
+        ttk.Button(bar, text="შენახვა საქაღალდეში…", command=self.save_folder).pack(side="left", padx=4)
+        self.deploy_btn = ttk.Button(bar, text="Deploy", command=self.do_deploy)
+        self.deploy_btn.pack(side="left", padx=4)
+        self.log = scrolledtext.ScrolledText(self, height=11, state="disabled", font=("monospace", 9))
+        self.log.pack(fill="both", padx=8, pady=8)
+        self.after(150, self._drain)
+
+    # ------------------------------------------------------------ widgets
+    def _entry(self, parent, label, path, row, width=34, show=None):
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=6, pady=3)
+        cur = self.d
+        for k in path.split("."):
+            cur = cur[k]
+        v = tk.StringVar(value="" if cur in (None, "") else str(cur))
+        ttk.Entry(parent, textvariable=v, width=width, show=show).grid(row=row, column=1, sticky="w", padx=6)
+        self.vars[path] = v
+
+    def _combo(self, parent, label, path, values, row):
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", padx=6, pady=3)
+        cur = self.d
+        for k in path.split("."):
+            cur = cur[k]
+        v = tk.StringVar(value=str(cur))
+        ttk.Combobox(parent, textvariable=v, values=values, state="readonly", width=32).grid(row=row, column=1, sticky="w", padx=6)
+        self.vars[path] = v
+
+    def _check(self, parent, label, path, row):
+        cur = self.d
+        for k in path.split("."):
+            cur = cur[k]
+        v = tk.BooleanVar(value=bool(cur))
+        ttk.Checkbutton(parent, text=label, variable=v).grid(row=row, column=0, columnspan=2, sticky="w", padx=6, pady=2)
+        self.vars[path] = v
+
+    def _group(self, parent, name, items, selected, cols=2, label_key="ka", start_row=0):
+        self.checks[name] = {}
+        for i, it in enumerate(items):
+            iid = it["id"] if isinstance(it, dict) else it
+            text = it.get(label_key, iid) if isinstance(it, dict) else it
+            v = tk.BooleanVar(value=iid in selected)
+            ttk.Checkbutton(parent, text=text, variable=v).grid(row=start_row + i // cols, column=i % cols, sticky="w", padx=6, pady=1)
+            self.checks[name][iid] = v
+
+    def _tab(self, nb, title):
+        f = ttk.Frame(nb, padding=8)
+        nb.add(f, text=title)
+        return f
+
+    def _comp_bars(self, parent, row, comps):
+        """Per-program bar: tick (on/off), save the program's settings, save + roll out only this program."""
+        box = ttk.LabelFrame(parent, text="პროგრამა: მონიშვნა / შენახვა / გამოყენება")
+        box.grid(row=row, column=0, columnspan=3, sticky="we", pady=10)
+        names = {c["id"]: c["ka"] for c in catalog.COMPONENTS}
+        for i, cid in enumerate(comps):
+            ttk.Checkbutton(box, text=f"{names.get(cid, cid)} — ჩართულია", variable=self.checks["comp"][cid],
+                            width=42).grid(row=i, column=0, sticky="w", padx=6, pady=2)
+            b1 = ttk.Button(box, text="შენახვა", command=lambda c=cid: self.do_save_comp(c))
+            b2 = ttk.Button(box, text="შენახვა და გამოყენება", command=lambda c=cid: self.do_apply(c))
+            b1.grid(row=i, column=1, padx=4, pady=2)
+            b2.grid(row=i, column=2, padx=4, pady=2)
+            self.clean_btns += [b2]
+
+    # --------------------------------------------------------------- tabs
+    def _tab_general(self, nb):
+        f = self._tab(nb, "ზოგადი")
+        self._entry(f, "პროექტი", "project", 0)
+        self._entry(f, "დომენი", "domain", 1)
+        self._entry(f, "ელ-ფოსტა (Let's Encrypt)", "email", 2)
+        ttk.Label(f, text="HTTPS").grid(row=3, column=0, sticky="w", padx=6, pady=3)
+        self.tls_map = {t["ka"]: t["id"] for t in catalog.TLS_MODES}
+        self.tls_var = tk.StringVar(value=next(k for k, v in self.tls_map.items() if v == self.d["tls"]))
+        ttk.Combobox(f, textvariable=self.tls_var, values=list(self.tls_map), state="readonly", width=60).grid(row=3, column=1, sticky="w", padx=6)
+        self._comp_bars(f, 4, ["caddy"])
+
+    def _tab_components_vars(self):
+        """The on/off ticks are created first so every tab's per-program bar can share them."""
+        self.checks["comp"] = {c["id"]: tk.BooleanVar(value=bool(self.d["components"].get(c["id"])))
+                               for c in catalog.COMPONENTS}
+
+    def _tab_components(self, nb):
+        f = self._tab(nb, "კომპონენტები")
+        for i, c in enumerate(catalog.COMPONENTS):
+            ttk.Checkbutton(f, text=c["ka"], variable=self.checks["comp"][c["id"]]).grid(
+                row=i, column=0, sticky="w", padx=6, pady=1)
+        ttk.Label(f, text="GeoServer native რეჟიმში Tomcat-ში ინსტალირდება — Tomcat ავტომატურად დაემატება.").grid(
+            row=20, column=0, sticky="w", padx=6, pady=8)
+
+    def _tab_postgres(self, nb):
+        f = self._tab(nb, "PostgreSQL")
+        self._combo(f, "ვერსია", "postgres.version", catalog.POSTGRES_VERSIONS, 0)
+        self._entry(f, "ბაზა", "postgres.db", 1)
+        self._entry(f, "მომხმარებელი", "postgres.user", 2)
+        self._entry(f, "პაროლი (ცარიელი = შემთხვევითი)", "postgres.password", 3)
+        self._entry(f, "RAM (GB)", "postgres.ram_gb", 4)
+        self._entry(f, "max_connections", "postgres.max_connections", 5)
+        self._check(f, "გარე წვდომა", "postgres.remote_access", 6)
+        self._entry(f, "დაშვებული CIDR", "postgres.allowed_cidr", 7)
+        box = ttk.LabelFrame(f, text="ექსთენშენები")
+        box.grid(row=8, column=0, columnspan=2, sticky="we", pady=8)
+        self._group(box, "ext", catalog.EXTENSIONS, self.d["postgres"]["extensions"], cols=3)
+        self._comp_bars(f, 9, ["postgis"])
+
+    def _tab_servers(self, nb):
+        f = self._tab(nb, "GeoServer / Tomcat / QGIS")
+        ttk.Label(f, text="GeoServer ხაზი").grid(row=0, column=0, sticky="w", padx=6, pady=3)
+        self.ch_map = {f"{c['label']} — {c['version']}": k for k, c in catalog.GEOSERVER_CHANNELS.items()}
+        self.ch_var = tk.StringVar(value=next(k for k, v in self.ch_map.items() if v == self.d["geoserver"]["channel"]))
+        ttk.Combobox(f, textvariable=self.ch_var, values=list(self.ch_map), state="readonly", width=40).grid(row=0, column=1, sticky="w", padx=6)
+        self._entry(f, "GeoServer heap (MB)", "geoserver.heap_mb", 1)
+        self._entry(f, "admin პაროლი (ცარიელი = შემთხვევითი)", "geoserver.admin_password", 2)
+        self._entry(f, "Tomcat heap (MB)", "tomcat.heap_mb", 3)
+        self._entry(f, "QGIS პროცესები", "qgis.processes", 4)
+        box = ttk.LabelFrame(f, text="GeoServer გაფართოებები")
+        box.grid(row=5, column=0, columnspan=2, sticky="we", pady=8)
+        self._group(box, "gsext", catalog.GEOSERVER_EXTENSIONS, [], cols=4)
+        self._comp_bars(f, 6, ["geoserver", "tomcat", "qgis_server"])
+
+    def _tab_mapproxy(self, nb):
+        f = self._tab(nb, "MapProxy")
+        self._combo(f, "ქეშის ტიპი", "mapproxy.cache_type", catalog.CACHE_TYPES, 0)
+        self._combo(f, "ფორმატი", "mapproxy.format", catalog.TILE_FORMATS, 1)
+        self._entry(f, "workers", "mapproxy.workers", 2)
+        self._combo(f, "ფონი", "mapproxy.upstream_basemap", ["none", "osm"], 3)
+        box = ttk.LabelFrame(f, text="Grid-ები")
+        box.grid(row=4, column=0, columnspan=2, sticky="we", pady=6)
+        self._group(box, "grid", catalog.GRIDS, self.d["mapproxy"]["grids"], cols=2)
+        ttk.Label(f, text=LAYER_HELP).grid(row=5, column=0, columnspan=2, sticky="w", padx=6)
+        self.layers_txt = tk.Text(f, height=7, width=100)
+        self.layers_txt.grid(row=6, column=0, columnspan=2, padx=6, pady=4)
+        self.layers_txt.insert("1.0", layers_to_text(self.d["mapproxy"]["layers"]))
+        self._check(f, "წინასწარი seed", "mapproxy.seed.enabled", 7)
+        self._entry(f, "seed დონეები (from,to)", "mapproxy.seed.levels", 8)
+        self._entry(f, "seed bbox (W,S,E,N)", "mapproxy.seed.bbox", 9)
+        self._comp_bars(f, 10, ["mapproxy"])
+
+    def _tab_map(self, nb):
+        f = self._tab(nb, "ვებ რუკა")
+        self._entry(f, "სათაური (KA)", "webmap.title_ka", 0)
+        self._entry(f, "Title (EN)", "webmap.title_en", 1)
+        self._combo(f, "ენა", "webmap.default_lang", ["ka", "en"], 2)
+        self._entry(f, "ცენტრი lat,lon", "webmap.center", 3)
+        self._entry(f, "zoom", "webmap.zoom", 4)
+        self._combo(f, "ფონური რუკა", "webmap.basemap", [b["id"] for b in catalog.BASEMAPS], 5)
+        self._entry(f, "საკუთარი XYZ URL", "webmap.basemap_url", 6, width=60)
+        self._comp_bars(f, 7, ["webmap"])
+
+    def _tab_deploy(self, nb):
+        f = self._tab(nb, "სამიზნე / Deploy")
+        box = ttk.LabelFrame(f, text="რა დაგენერირდეს")
+        box.grid(row=0, column=0, columnspan=2, sticky="we", pady=4)
+        self._group(box, "target", catalog.TARGETS, self.d["targets"], cols=3)
+        self._combo(f, "Docker / Podman", "runtime", catalog.RUNTIMES, 1)
+        self._combo(f, "რომელი გავუშვა", "deploy_target", [t["id"] for t in catalog.TARGETS], 2)
+        self.d["_mode"] = "ssh"
+        self._combo(f, "სად", "_mode", ["ssh", "local"], 3)
+        self._entry(f, "SSH host", "ssh.host", 4)
+        self._entry(f, "SSH port", "ssh.port", 5)
+        self._entry(f, "SSH user", "ssh.user", 6)
+        self._entry(f, "SSH key (ფაილი)", "ssh.key", 7, width=50)
+        ttk.Button(f, text="…", width=3, command=lambda: self.vars["ssh.key"].set(filedialog.askopenfilename() or self.vars["ssh.key"].get())).grid(row=7, column=2)
+        self._entry(f, "K8s namespace", "k8s.namespace", 8)
+        self._entry(f, "K8s StorageClass", "k8s.storage_class", 9)
+        self._combo(f, "K8s Service ტიპი", "k8s.service_type", ["LoadBalancer", "NodePort", "ClusterIP"], 10)
+
+    def _tab_clean(self, nb):
+        f = self._tab(nb, "გასუფთავება / Cleanup")
+        ttk.Label(f, text="იყენებს „სამიზნე / Deploy“ ჩანართში არჩეულ სამიზნეს და „სად“-ს.").grid(
+            row=0, column=0, columnspan=3, sticky="w", padx=6, pady=3)
+        for i, c in enumerate(catalog.COMPONENTS, start=1):
+            ttk.Label(f, text=c["ka"]).grid(row=i, column=0, sticky="w", padx=6, pady=2)
+            b = ttk.Button(f, text="გასუფთავება", command=lambda cid=c["id"]: self.do_clean([cid]))
+            b.grid(row=i, column=1, sticky="w", padx=6)
+            self.clean_btns.append(b)
+        n = len(catalog.COMPONENTS) + 1
+        self.cl_purge = tk.BooleanVar(value=False)
+        self.cl_pg = tk.BooleanVar(value=False)
+        ttk.Checkbutton(f, text="მონაცემების წაშლაც (ბაზა, GeoServer data, ქეშები, volume-ები)",
+                        variable=self.cl_purge).grid(row=n, column=0, columnspan=3, sticky="w", padx=6, pady=(10, 2))
+        ttk.Checkbutton(f, text="PostgreSQL სერვერის პაკეტების წაშლაც (native; მოითხოვს მონაცემების წაშლას)",
+                        variable=self.cl_pg).grid(row=n + 1, column=0, columnspan=3, sticky="w", padx=6, pady=2)
+        b = ttk.Button(f, text="მთელი სტეკის გასუფთავება", command=lambda: self.do_clean(None))
+        b.grid(row=n + 2, column=0, sticky="w", padx=6, pady=8)
+        self.clean_btns.append(b)
+        ttk.Label(f, text="Kubernetes-ზე მთელი სტეკის გასუფთავება შლის namespace-ს, ანუ ყველა volume-საც.").grid(
+            row=n + 3, column=0, columnspan=3, sticky="w", padx=6)
+
+    # ------------------------------------------------------------ collect
+    def _get(self, path: str) -> Any:
+        v = self.vars[path].get()
+        cur = self.d
+        for k in path.split("."):
+            cur = cur.get(k, "") if isinstance(cur, dict) else ""
+        if isinstance(cur, bool):
+            return bool(v)
+        if isinstance(cur, int):
+            return int(float(v)) if str(v).strip() else 0
+        if isinstance(cur, float):
+            return float(v)
+        if isinstance(cur, list):
+            return [json.loads(x) if x.strip().lstrip("-").replace(".", "", 1).isdigit() else x.strip()
+                    for x in str(v).replace("[", "").replace("]", "").split(",") if x.strip()]
+        return str(v).strip()
+
+    def collect(self) -> dict[str, Any]:
+        def put(cfg, path, val):
+            cur = cfg
+            parts = path.split(".")
+            for k in parts[:-1]:
+                cur = cur.setdefault(k, {})
+            cur[parts[-1]] = val
+        cfg: dict[str, Any] = {}
+        for path in self.vars:
+            if path.startswith("_") or path.startswith("ssh."):
+                continue
+            put(cfg, path, self._get(path))
+        cfg["tls"] = self.tls_map[self.tls_var.get()]
+        cfg["components"] = {k: v.get() for k, v in self.checks["comp"].items()}
+        cfg["postgres"]["extensions"] = [k for k, v in self.checks["ext"].items() if v.get()]
+        cfg["geoserver"]["channel"] = self.ch_map[self.ch_var.get()]
+        cfg["geoserver"]["extensions"] = [k for k, v in self.checks["gsext"].items() if v.get()]
+        cfg["mapproxy"]["grids"] = [k for k, v in self.checks["grid"].items() if v.get()]
+        cfg["mapproxy"]["layers"] = parse_layers(self.layers_txt.get("1.0", "end"))
+        cfg["targets"] = [k for k, v in self.checks["target"].items() if v.get()]
+        # seed.levels / center are lists of numbers
+        s = cfg["mapproxy"]["seed"]
+        s["levels"] = [int(x) for x in s["levels"]][:2]
+        s["bbox"] = [float(x) for x in s["bbox"]][:4]
+        cfg["webmap"]["center"] = [float(x) for x in cfg["webmap"]["center"]][:2]
+        return cfg
+
+    def resolved(self) -> dict[str, Any] | None:
+        try:
+            return config.resolve(self.collect(), persist_secrets=True)
+        except (config.ConfigError, ValueError) as e:
+            messagebox.showerror("არასწორი კონფიგურაცია", str(e))
+            return None
+
+    # ------------------------------------------------------------ actions
+    def _log(self, line: str) -> None:
+        self.log_q.put(line)
+
+    def _drain(self) -> None:
+        try:
+            while True:
+                line = self.log_q.get_nowait()
+                if line is None:
+                    self.busy = False
+                    self.deploy_btn.state(["!disabled"])
+                    for b in self.clean_btns:
+                        b.state(["!disabled"])
+                    continue
+                self.log.configure(state="normal")
+                self.log.insert("end", line + "\n")
+                self.log.see("end")
+                self.log.configure(state="disabled")
+        except queue.Empty:
+            pass
+        self.after(150, self._drain)
+
+    def preview(self) -> None:
+        cfg = self.resolved()
+        if not cfg:
+            return
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            out = generate.generate_bundle(cfg, Path(td) / "bundle")
+            files = {p.relative_to(out).as_posix(): p.read_text("utf-8", "replace")
+                     for p in sorted(out.rglob("*"))
+                     if p.is_file() and "vendor" not in p.parts and p.suffix not in (".png", ".tgz") and p.stat().st_size < 120_000}
+        secrets_ = [cfg["postgres"]["password"], cfg["geoserver"]["admin_password"], cfg["tomcat"]["manager_password"]]
+        for k, t in files.items():
+            for s in secrets_:
+                t = t.replace(s, "••••••••") if s else t
+            files[k] = t
+        win = tk.Toplevel(self)
+        win.title("წინასწარი ნახვა")
+        win.geometry("900x600")
+        lb = tk.Listbox(win, width=38)
+        lb.pack(side="left", fill="y")
+        txt = scrolledtext.ScrolledText(win, font=("monospace", 9))
+        txt.pack(side="left", fill="both", expand=True)
+        names = list(files)
+        for n in names:
+            lb.insert("end", n)
+
+        def show(_e=None):
+            if lb.curselection():
+                txt.delete("1.0", "end")
+                txt.insert("1.0", files[names[lb.curselection()[0]]])
+        lb.bind("<<ListboxSelect>>", show)
+
+    def save_folder(self) -> None:
+        cfg = self.resolved()
+        if not cfg:
+            return
+        d = filedialog.askdirectory(title="აირჩიე საქაღალდე")
+        if not d:
+            return
+        out = generate.generate_bundle(cfg, Path(d) / f"gisstack-{cfg['project']}")
+        self._log(f"bundle შენახულია: {out}")
+        messagebox.showinfo("მზადაა", f"{out}\n\nპაროლები stack.env / .env / secret.yaml ფაილებშია.")
+
+    def _ssh_mode(self):
+        mode = self.vars["_mode"].get()
+        ssh = {"host": self.vars["ssh.host"].get().strip(), "port": self.vars["ssh.port"].get().strip() or "22",
+               "user": self.vars["ssh.user"].get().strip(), "key": self.vars["ssh.key"].get().strip()}
+        where = f"{ssh['user']}@{ssh['host']}" if mode == "ssh" else "ამ კომპიუტერზე"
+        return mode, ssh, where
+
+    def _run_job(self, cfg, tag, steps) -> None:
+        """Run steps(bundle_dir) -> Iterator[str] in a thread, logging to the log pane."""
+        self.busy = True
+        self.deploy_btn.state(["disabled"])
+        for b in self.clean_btns:
+            b.state(["disabled"])
+
+        def run() -> None:
+            try:
+                bundle = deploy.home_dir() / "bundles" / f"{cfg['project']}-{tag}"
+                self._log("== bundle-ის გენერაცია")
+                generate.generate_bundle(cfg, bundle)
+                for line in steps(bundle):
+                    self._log(line)
+                self._log("✔ დასრულდა")
+            except deploy.DeployError as e:
+                self._log(f"ERROR: {e}")
+            except Exception as e:  # noqa: BLE001
+                self._log(f"ERROR: {type(e).__name__}: {e}")
+            finally:
+                self.log_q.put(None)
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def do_deploy(self) -> None:
+        if self.busy:
+            return
+        cfg = self.resolved()
+        if not cfg:
+            return
+        mode, ssh, where = self._ssh_mode()
+        target = cfg["deploy_target"]
+        if not messagebox.askyesno("Deploy", f"{target} → {where}\nგავაგრძელო?"):
+            return
+        self._run_job(cfg, "desktop", lambda b: deploy.deploy(cfg, b, target, mode, ssh))
+
+    def do_clean(self, components) -> None:
+        if self.busy:
+            return
+        cfg = self.resolved()
+        if not cfg:
+            return
+        mode, ssh, where = self._ssh_mode()
+        target = cfg["deploy_target"]
+        purge, rm_pg = self.cl_purge.get(), self.cl_pg.get()
+        if rm_pg and not purge:
+            messagebox.showerror("Cleanup", "PostgreSQL-ის წასაშლელად ჩართე „მონაცემების წაშლაც“.")
+            return
+        what = ", ".join(components) if components else "მთელი სტეკი"
+        warn = ("⚠ მონაცემებიც წაიშლება და ვერ აღდგება!" + ("\n⚠ PostgreSQL სერვერიც წაიშლება!" if rm_pg else "")
+                if purge else "მონაცემები დარჩება.")
+        if not messagebox.askyesno("გასუფთავება", f"{target} → {where}\nრა: {what}\n{warn}\nგავაგრძელო?",
+                                   icon="warning"):
+            return
+        self._run_job(cfg, "desktop-clean",
+                      lambda b: deploy.clean(cfg, b, target, mode, ssh, components, purge, rm_pg))
+
+    # ------------------------------------------------------------ projects
+    def refresh_projects(self, select: str | None = None) -> None:
+        names = projects.list_projects()
+        self.proj_box["values"] = names
+        if select:
+            self.proj_var.set(select)
+        elif names and not self.proj_var.get():
+            self.proj_var.set(names[0])
+
+    def _collect_checked(self) -> dict[str, Any] | None:
+        """collect() + validation, without resolving secrets; shows the reason on error."""
+        try:
+            cfg = self.collect()
+            config.resolve(cfg, generate_secrets=False)
+            return cfg
+        except (config.ConfigError, ValueError) as e:
+            messagebox.showerror("არასწორი კონფიგურაცია", str(e))
+            return None
+
+    def save_project(self) -> None:
+        cfg = self._collect_checked()
+        if not cfg:
+            return
+        try:
+            path = projects.save(cfg)
+        except projects.ProjectError as e:
+            messagebox.showerror("შენახვა", str(e))
+            return
+        self.refresh_projects(cfg["project"])
+        self._log(f"✔ პროექტი შენახულია: {path}")
+
+    def do_save_comp(self, comp: str) -> bool:
+        cfg = self._collect_checked()
+        if not cfg:
+            return False
+        try:
+            path = projects.save_component(cfg, comp)
+        except projects.ProjectError as e:
+            messagebox.showerror("შენახვა", str(e))
+            return False
+        self.refresh_projects(cfg["project"])
+        self._log(f"✔ {comp}: შენახულია → {path}")
+        return True
+
+    def load_project(self) -> None:
+        name = self.proj_var.get()
+        if not name:
+            return
+        try:
+            self.apply_config(projects.load_full(name))
+        except projects.ProjectError as e:
+            messagebox.showerror("ჩატვირთვა", str(e))
+            return
+        self._log(f"✔ ჩაიტვირთა: {name}")
+
+    def apply_config(self, d: dict[str, Any]) -> None:
+        """Fill every widget from a (defaults + saved) config dict."""
+        def look(path):
+            cur = d
+            for k in path.split("."):
+                cur = cur.get(k, "") if isinstance(cur, dict) else ""
+            return cur
+        for path, var in self.vars.items():
+            if path.startswith("_") or path.startswith("ssh."):
+                continue
+            val = look(path)
+            if isinstance(var, tk.BooleanVar):
+                var.set(bool(val))
+            else:
+                var.set("" if val in (None, "") else str(val))
+        for name, selected in (("comp", [k for k, v in d["components"].items() if v]),
+                               ("ext", d["postgres"]["extensions"]), ("gsext", d["geoserver"]["extensions"]),
+                               ("grid", d["mapproxy"]["grids"]), ("target", d["targets"])):
+            for iid, v in self.checks[name].items():
+                v.set(iid in selected)
+        self.tls_var.set(next((k for k, v in self.tls_map.items() if v == d["tls"]), self.tls_var.get()))
+        self.ch_var.set(next((k for k, v in self.ch_map.items() if v == d["geoserver"]["channel"]), self.ch_var.get()))
+        self.layers_txt.delete("1.0", "end")
+        self.layers_txt.insert("1.0", layers_to_text(d["mapproxy"]["layers"]))
+
+    def do_apply(self, comp: str) -> None:
+        """Save one program's settings, then roll out only that program."""
+        if self.busy:
+            return
+        cfg = self.resolved()
+        if not cfg:
+            return
+        mode, ssh, where = self._ssh_mode()
+        target = cfg["deploy_target"]
+        if not messagebox.askyesno("გამოყენება", f"{comp}: შენახვა და გამოყენება\n{target} → {where}\n"
+                                   "მხოლოდ ეს პროგრამა დაინსტალირდება/გადაიტვირთება. გავაგრძელო?"):
+            return
+        if not self.do_save_comp(comp):
+            return
+        self._run_job(cfg, "desktop-apply", lambda b: deploy.apply_component(cfg, b, target, mode, ssh, comp))
+
+
+def main() -> None:
+    App().mainloop()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,24 @@
+:root { --bar: #14385c; --accent: #f2b134; }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex; flex-direction: column;
+  font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans Georgian", "BPG Nino Mtavruli", sans-serif;
+}
+#bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 8px 14px; background: var(--bar); color: #fff;
+}
+#bar h1 { margin: 0; font-size: 1.05rem; font-weight: 600; }
+#lang button {
+  border: 1px solid rgba(255, 255, 255, .5); background: transparent; color: #fff;
+  padding: 4px 10px; cursor: pointer; font: inherit;
+}
+#lang button:first-child { border-radius: 4px 0 0 4px; }
+#lang button:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
+#lang button.active { background: var(--accent); color: #1b1b1b; border-color: var(--accent); }
+#map { flex: 1; min-height: 0; background: #dfe7ee; }
+#status { padding: 3px 10px; font-size: .78rem; background: #f4f6f8; color: #444; min-height: 1.6em; }
+.leaflet-control-reset a { font-size: 18px; line-height: 26px; text-align: center; text-decoration: none; }
+.err { color: #b00020; }
+@media (max-width: 520px) { #bar h1 { font-size: .95rem; } }

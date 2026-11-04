@@ -1,0 +1,8 @@
+[Unit]
+Description=QGIS Server FastCGI socket (gisstack)
+
+[Socket]
+ListenStream=@BIND@:9993
+
+[Install]
+WantedBy=sockets.target

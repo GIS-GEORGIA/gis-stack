@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="ka">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GIS Stack Installer</title>
+<style>
+  :root { --bg:#f4f6f8; --card:#fff; --ink:#1c2630; --mut:#5b6b7a; --pri:#14385c; --acc:#f2b134; --bad:#b00020; --ok:#1b7f3b; --line:#d8e0e7; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,-apple-system,"Segoe UI","Noto Sans Georgian",sans-serif; }
+  header { background:var(--pri); color:#fff; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; }
+  header h1 { margin:0; font-size:1.15rem; }
+  header small { opacity:.75; }
+  main { display:grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap:16px; padding:16px; max-width:1500px; margin:0 auto; }
+  @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
+  fieldset { background:var(--card); border:1px solid var(--line); border-radius:8px; margin:0 0 14px; padding:10px 14px 14px; }
+  legend { font-weight:600; padding:0 6px; color:var(--pri); }
+  label { display:inline-flex; align-items:center; gap:6px; margin:3px 12px 3px 0; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(210px,1fr)); gap:2px 10px; }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin:6px 0; }
+  .f { display:flex; flex-direction:column; font-size:.85rem; color:var(--mut); }
+  .f input, .f select { font:inherit; color:var(--ink); padding:5px 7px; border:1px solid var(--line); border-radius:5px; min-width:120px; }
+  .f.w { flex:1; min-width:170px; }
+  .note { font-size:.8rem; color:var(--mut); margin:4px 0 0; }
+  table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  td, th { padding:3px; } th { text-align:left; color:var(--mut); font-weight:500; }
+  td input, td select { width:100%; font:inherit; padding:4px; border:1px solid var(--line); border-radius:4px; }
+  button { font:inherit; border:0; border-radius:6px; padding:8px 14px; cursor:pointer; background:var(--pri); color:#fff; }
+  .compbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; padding:8px 10px; background:#eef3f7; border:1px solid var(--line); border-radius:6px; }
+  .compbar b { flex:1; min-width:140px; color:var(--pri); }
+  #msg { background:#e3f4e8; color:var(--ok); border:1px solid #b6dfc2; padding:8px 12px; border-radius:6px; display:none; white-space:pre-wrap; margin-bottom:10px; }
+  button.danger { background:var(--bad); }
+  .clrow { display:flex; align-items:center; gap:10px; padding:3px 0; border-bottom:1px solid var(--line); } .clrow span { flex:1; }
+  button.sec { background:#e6ecf1; color:var(--ink); } button.go { background:var(--ok); } button.x { background:#fff; color:var(--bad); border:1px solid var(--line); padding:3px 8px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .bar { position:sticky; bottom:0; background:var(--bg); padding:10px 0; display:flex; gap:10px; flex-wrap:wrap; }
+  #side { position:sticky; top:8px; align-self:start; max-height:calc(100vh - 16px); display:flex; flex-direction:column; gap:10px; }
+  #files { display:flex; gap:8px; } #files select { flex:1; font:inherit; padding:5px; }
+  pre { margin:0; padding:10px; background:#0f1b26; color:#d7e3ee; border-radius:6px; overflow:auto; font:12px/1.4 ui-monospace,Consolas,monospace; white-space:pre-wrap; word-break:break-all; }
+  #view { height:34vh; } #log { height:26vh; }
+  #err { background:#fde8ec; color:var(--bad); border:1px solid #f3b8c2; padding:8px 12px; border-radius:6px; display:none; white-space:pre-wrap; }
+  #warn { background:#fff6dd; border:1px solid #f0d48a; padding:8px 12px; border-radius:6px; display:none; font-size:.85rem; }
+  .sshbox { display:none; }
+</style>
+</head>
+<body>
+<header><h1>GIS Stack Installer</h1><small>v{{ version }}</small></header>
+<main>
+<form id="form" onsubmit="return false">
+  <div id="err"></div>
+  <div id="msg"></div>
+
+  <fieldset><legend>1. ზოგადი</legend>
+    <div class="row">
+      <div class="f"><span>პროექტი (a-z, 0-9, _)</span><input id="project"></div>
+      <div class="f w"><span>დომენი</span><input id="domain" placeholder="gis.example.ge"></div>
+      <div class="f w"><span>ელ-ფოსტა (Let's Encrypt)</span><input id="email" type="email"></div>
+    </div>
+    <div class="row">
+      <div class="f w"><span>HTTPS</span><select id="tls"></select></div>
+    </div>
+    <div class="compbar" data-comp="caddy"></div>
+    <div class="compbar" id="projbar">
+      <b>შენახული პროექტები</b>
+      <select id="proj_sel"></select>
+      <button type="button" class="sec" id="btn-proj-load">ჩატვირთვა</button>
+      <button type="button" class="sec" id="btn-proj-save">მთელი პროექტის შენახვა</button>
+    </div>
+  </fieldset>
+
+  <fieldset><legend>2. კომპონენტები</legend>
+    <div class="grid" id="components"></div>
+    <p class="note">GeoServer native რეჟიმში Tomcat-ში ინსტალირდება — Tomcat ავტომატურად დაემატება.</p>
+  </fieldset>
+
+  <fieldset><legend>3. PostgreSQL / PostGIS</legend>
+    <div class="row">
+      <div class="f"><span>ვერსია</span><select id="pg_version"></select></div>
+      <div class="f"><span>ბაზა</span><input id="pg_db"></div>
+      <div class="f"><span>მომხმარებელი</span><input id="pg_user"></div>
+      <div class="f w"><span>პაროლი (ცარიელი = შემთხვევითი)</span><input id="pg_password" autocomplete="off"></div>
+    </div>
+    <div class="row">
+      <div class="f"><span>RAM (GB) ტიუნინგისთვის</span><input id="pg_ram" type="number" min="1"></div>
+      <div class="f"><span>max_connections</span><input id="pg_maxconn" type="number" min="20"></div>
+      <label><input type="checkbox" id="pg_remote"> გარე წვდომა</label>
+      <div class="f"><span>დაშვებული CIDR</span><input id="pg_cidr"></div>
+    </div>
+    <b style="font-size:.85rem">ექსთენშენები</b>
+    <div class="grid" id="pg_ext"></div>
+    <div class="compbar" data-comp="postgis"></div>
+  </fieldset>
+
+  <fieldset><legend>4. GeoServer / Tomcat / QGIS Server</legend>
+    <div class="row">
+      <div class="f w"><span>GeoServer ხაზი</span><select id="gs_channel"></select></div>
+      <div class="f"><span>GeoServer heap (MB)</span><input id="gs_heap" type="number" min="512"></div>
+      <div class="f"><span>Tomcat heap (MB)</span><input id="tc_heap" type="number" min="256"></div>
+      <div class="f"><span>QGIS პროცესები</span><input id="qgis_procs" type="number" min="1"></div>
+    </div>
+    <div class="row"><div class="f w"><span>admin პაროლი (ცარიელი = შემთხვევითი)</span><input id="gs_password" autocomplete="off"></div></div>
+    <b style="font-size:.85rem">GeoServer გაფართოებები</b>
+    <div class="grid" id="gs_ext"></div>
+    <p class="note" id="tc_note"></p>
+    <div class="compbar" data-comp="geoserver"></div>
+    <div class="compbar" data-comp="tomcat"></div>
+    <div class="compbar" data-comp="qgis_server"></div>
+  </fieldset>
+
+  <fieldset><legend>5. MapProxy</legend>
+    <div class="row">
+      <div class="f"><span>ქეშის ტიპი</span><select id="mp_cache"></select></div>
+      <div class="f"><span>ფორმატი</span><select id="mp_format"></select></div>
+      <div class="f"><span>workers</span><input id="mp_workers" type="number" min="1"></div>
+      <div class="f"><span>ფონი</span><select id="mp_basemap"><option value="none">არცერთი</option><option value="osm">OSM (ქეშირებული, მცირე დატვირთვა)</option></select></div>
+    </div>
+    <b style="font-size:.85rem">Grid-ები</b><div class="grid" id="mp_grids"></div>
+    <b style="font-size:.85rem">ფენები</b>
+    <table><thead><tr><th>სახელი</th><th>სათაური EN</th><th>სათაური KA</th><th>წყარო</th><th>WMS ფენა</th><th>URL (wms/tiles)</th><th></th></tr></thead><tbody id="layers"></tbody></table>
+    <button type="button" class="sec" id="addlayer" style="margin-top:6px">+ ფენა</button>
+    <div class="row">
+      <label><input type="checkbox" id="seed_on"> წინასწარი seed</label>
+      <div class="f"><span>დონეები</span><span><input id="seed_from" type="number" style="width:60px"> – <input id="seed_to" type="number" style="width:60px"></span></div>
+      <div class="f w"><span>bbox (W,S,E,N)</span><input id="seed_bbox"></div>
+    </div>
+    <div class="compbar" data-comp="mapproxy"></div>
+  </fieldset>
+
+  <fieldset><legend>6. ვებ რუკა და მობილური</legend>
+    <div class="row">
+      <div class="f w"><span>სათაური (KA)</span><input id="wm_ka"></div>
+      <div class="f w"><span>Title (EN)</span><input id="wm_en"></div>
+      <div class="f"><span>ენა</span><select id="wm_lang"><option value="ka">ქართული</option><option value="en">English</option></select></div>
+    </div>
+    <div class="row">
+      <div class="f"><span>ცენტრი lat</span><input id="wm_lat" type="number" step="any"></div>
+      <div class="f"><span>ცენტრი lon</span><input id="wm_lon" type="number" step="any"></div>
+      <div class="f"><span>zoom</span><input id="wm_zoom" type="number" min="1" max="19"></div>
+      <div class="f w"><span>ფონური რუკა</span><select id="wm_basemap"></select></div>
+    </div>
+    <div class="row"><div class="f w"><span>საკუთარი XYZ URL (თუ „საკუთარი“)</span><input id="wm_url" placeholder="https://…/{z}/{x}/{y}.png"></div></div>
+    <div class="compbar" data-comp="webmap"></div>
+  </fieldset>
+
+  <fieldset><legend>7. სამიზნე და Deploy</legend>
+    <div class="row" id="targets"></div>
+    <div class="row">
+      <div class="f"><span>Docker / Podman</span><select id="runtime"></select></div>
+      <div class="f"><span>K8s namespace</span><input id="k8s_ns"></div>
+      <div class="f"><span>StorageClass</span><input id="k8s_sc"></div>
+      <div class="f"><span>Service ტიპი</span><select id="k8s_svc"><option>LoadBalancer</option><option>NodePort</option><option>ClusterIP</option></select></div>
+    </div>
+    <div class="row">
+      <div class="f"><span>რომელი გავუშვა</span><select id="deploy_target"></select></div>
+      <div class="f w"><span>სად</span>
+        <select id="mode"><option value="download">მხოლოდ ZIP (არ გავუშვა)</option><option value="local">ამ მანქანაზე</option><option value="ssh">SSH-ით სხვა სერვერზე</option></select></div>
+    </div>
+    <div class="row sshbox" id="sshbox">
+      <div class="f w"><span>Host</span><input id="ssh_host"></div>
+      <div class="f"><span>Port</span><input id="ssh_port" type="number" value="22"></div>
+      <div class="f"><span>User</span><input id="ssh_user" value="root"></div>
+      <div class="f w"><span>Key (გზა ამ მანქანაზე)</span><input id="ssh_key" placeholder="~/.ssh/id_ed25519"></div>
+    </div>
+    <p class="note" id="rootnote"></p>
+  </fieldset>
+
+  <fieldset><legend>8. გასუფთავება / Cleanup</legend>
+    <p class="note">იყენებს ზემოთ არჩეულ სამიზნეს და „სად“-ს (ამ მანქანაზე / SSH). ბანდლის ჩამოტვირთვის რეჟიმში არ მუშაობს.</p>
+    <div id="cleanrows"></div>
+    <div class="row">
+      <label><input type="checkbox" id="cl_purge"> მონაცემების წაშლაც (ბაზა, GeoServer data, ქეშები, volume-ები)</label>
+      <label><input type="checkbox" id="cl_pg"> PostgreSQL სერვერის პაკეტების წაშლაც (native, მოითხოვს მონაცემების წაშლას)</label>
+    </div>
+    <div class="row"><button type="button" class="danger" id="btn-clean-all">მთელი სტეკის გასუფთავება</button></div>
+    <p class="note">Kubernetes-ზე მთელი სტეკის გასუფთავება შლის namespace-ს, ანუ ყველა volume-საც.</p>
+  </fieldset>
+
+  <div class="bar">
+    <button type="button" class="sec" id="btn-preview">წინასწარი ნახვა</button>
+    <button type="button" class="sec" id="btn-zip">ZIP ჩამოტვირთვა</button>
+    <button type="button" class="go" id="btn-deploy">Deploy</button>
+  </div>
+</form>
+
+<aside id="side">
+  <div id="warn"></div>
+  <div id="files"><select id="filesel"></select></div>
+  <pre id="view">აირჩიე „წინასწარი ნახვა“…</pre>
+  <pre id="log">ლოგი აქ გამოჩნდება.</pre>
+</aside>
+</main>
+
+<script>
+"use strict";
+const H = {"Content-Type": "application/json", "X-GisStack": "1"};
+const $ = (s) => document.querySelector(s);
+let CAT, DEF, FILES = {};
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function checks(container, items, name, checked, labelKey) {
+  $(container).innerHTML = items.map((it) => {
+    const id = it.id || it;
+    return `<label><input type="checkbox" name="${name}" value="${esc(id)}" ${checked.includes(id) ? "checked" : ""}> ${esc(it[labelKey || "ka"] || id)}</label>`;
+  }).join("");
+}
+const picked = (name) => [...document.querySelectorAll(`input[name="${name}"]:checked`)].map((e) => e.value);
+function opts(sel, items, cur, label) {
+  $(sel).innerHTML = items.map((it) => { const v = it.id || it; return `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(label ? label(it) : (it.ka || v))}</option>`; }).join("");
+}
+function showErr(msg) { const e = $("#err"); e.textContent = msg || ""; e.style.display = msg ? "block" : "none"; if (msg) e.scrollIntoView({block: "center"}); }
+
+function addLayer(l) {
+  l = l || {name: "", title: "", title_ka: "", source: "geoserver", wms_layers: "", url: ""};
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td><input class="l-name" value="${esc(l.name)}"></td><td><input class="l-title" value="${esc(l.title)}"></td>
+    <td><input class="l-ka" value="${esc(l.title_ka || "")}"></td>
+    <td><select class="l-src">${["geoserver","qgis","wms","tiles"].map((s) => `<option ${s === l.source ? "selected" : ""}>${s}</option>`).join("")}</select></td>
+    <td><input class="l-wms" value="${esc(l.wms_layers || "")}" placeholder="workspace:layer"></td>
+    <td><input class="l-url" value="${esc(l.url || "")}"></td><td><button type="button" class="x">×</button></td>`;
+  tr.querySelector(".x").onclick = () => tr.remove();
+  $("#layers").appendChild(tr);
+}
+
+function fill(d) {
+  $("#project").value = d.project; $("#domain").value = d.domain; $("#email").value = d.email;
+  opts("#tls", CAT.tls_modes, d.tls);
+  checks("#components", CAT.components, "comp", Object.keys(d.components).filter((k) => d.components[k]));
+  opts("#pg_version", CAT.postgres_versions, d.postgres.version, (v) => "PostgreSQL " + v);
+  $("#pg_db").value = d.postgres.db; $("#pg_user").value = d.postgres.user; $("#pg_password").value = "";
+  $("#pg_ram").value = d.postgres.ram_gb; $("#pg_maxconn").value = d.postgres.max_connections;
+  $("#pg_remote").checked = d.postgres.remote_access; $("#pg_cidr").value = d.postgres.allowed_cidr;
+  checks("#pg_ext", CAT.extensions, "ext", d.postgres.extensions);
+  document.querySelector('input[name="ext"][value="postgis"]').disabled = true;
+  opts("#gs_channel", Object.keys(CAT.geoserver_channels), d.geoserver.channel,
+       (k) => `${CAT.geoserver_channels[k].label} — ${CAT.geoserver_channels[k].version}`);
+  $("#gs_heap").value = d.geoserver.heap_mb; $("#tc_heap").value = d.tomcat.heap_mb;
+  $("#qgis_procs").value = d.qgis.processes; $("#gs_password").value = "";
+  checks("#gs_ext", CAT.geoserver_extensions, "gsext", d.geoserver.extensions, "id");
+  opts("#mp_cache", CAT.cache_types, d.mapproxy.cache_type, (v) => v);
+  opts("#mp_format", CAT.tile_formats, d.mapproxy.format, (v) => v);
+  $("#mp_workers").value = d.mapproxy.workers; $("#mp_basemap").value = d.mapproxy.upstream_basemap;
+  checks("#mp_grids", CAT.grids, "grid", d.mapproxy.grids);
+  $("#layers").innerHTML = ""; d.mapproxy.layers.forEach(addLayer);
+  $("#seed_on").checked = d.mapproxy.seed.enabled; $("#seed_from").value = d.mapproxy.seed.levels[0];
+  $("#seed_to").value = d.mapproxy.seed.levels[1]; $("#seed_bbox").value = d.mapproxy.seed.bbox.join(", ");
+  $("#wm_ka").value = d.webmap.title_ka; $("#wm_en").value = d.webmap.title_en; $("#wm_lang").value = d.webmap.default_lang;
+  $("#wm_lat").value = d.webmap.center[0]; $("#wm_lon").value = d.webmap.center[1]; $("#wm_zoom").value = d.webmap.zoom;
+  opts("#wm_basemap", CAT.basemaps, d.webmap.basemap); $("#wm_url").value = d.webmap.basemap_url;
+  checks("#targets", CAT.targets, "target", d.targets);
+  opts("#runtime", CAT.runtimes, d.runtime, (v) => v);
+  $("#k8s_ns").value = d.k8s.namespace; $("#k8s_sc").value = d.k8s.storage_class; $("#k8s_svc").value = d.k8s.service_type;
+  opts("#deploy_target", CAT.targets, d.deploy_target);
+  document.querySelectorAll('input[name="comp"],#gs_channel').forEach((e) => e.addEventListener("change", tomcatNote));
+  tomcatNote();
+}
+
+function tomcatNote() {
+  const ch = CAT.geoserver_channels[$("#gs_channel").value];
+  const gs = picked("comp").includes("geoserver");
+  $("#tc_note").textContent = gs
+    ? `${ch.label}: Tomcat ${ch.tomcat_major}, Java ${ch.java}. ${ch.tomcat_major === "11" ? "GeoServer 3 არ მუშაობს Tomcat 10.1-ზე." : ""}`
+    : "";
+}
+
+function collect() {
+  const comp = {}; CAT.components.forEach((c) => comp[c.id] = picked("comp").includes(c.id));
+  const num = (s) => Number($(s).value);
+  const layers = [...document.querySelectorAll("#layers tr")].map((tr) => ({
+    name: tr.querySelector(".l-name").value.trim(), title: tr.querySelector(".l-title").value.trim() || tr.querySelector(".l-name").value,
+    title_ka: tr.querySelector(".l-ka").value.trim(), source: tr.querySelector(".l-src").value,
+    wms_layers: tr.querySelector(".l-wms").value.trim(), url: tr.querySelector(".l-url").value.trim(),
+  }));
+  const targets = picked("target");
+  const cfg = {
+    project: $("#project").value.trim(), domain: $("#domain").value.trim(), email: $("#email").value.trim(),
+    tls: $("#tls").value, targets, deploy_target: $("#deploy_target").value, runtime: $("#runtime").value,
+    components: comp,
+    postgres: {version: $("#pg_version").value, db: $("#pg_db").value.trim(), user: $("#pg_user").value.trim(),
+      password: $("#pg_password").value, extensions: picked("ext"), ram_gb: num("#pg_ram"), max_connections: num("#pg_maxconn"),
+      remote_access: $("#pg_remote").checked, allowed_cidr: $("#pg_cidr").value.trim()},
+    tomcat: {heap_mb: num("#tc_heap")},
+    geoserver: {channel: $("#gs_channel").value, heap_mb: num("#gs_heap"), admin_password: $("#gs_password").value, extensions: picked("gsext")},
+    qgis: {processes: num("#qgis_procs")},
+    mapproxy: {grids: picked("grid"), cache_type: $("#mp_cache").value, format: $("#mp_format").value, workers: num("#mp_workers"),
+      upstream_basemap: $("#mp_basemap").value, layers,
+      seed: {enabled: $("#seed_on").checked, levels: [num("#seed_from"), num("#seed_to")],
+             bbox: $("#seed_bbox").value.split(",").map((x) => Number(x.trim()))}},
+    webmap: {title_ka: $("#wm_ka").value, title_en: $("#wm_en").value, default_lang: $("#wm_lang").value,
+      center: [num("#wm_lat"), num("#wm_lon")], zoom: num("#wm_zoom"), basemap: $("#wm_basemap").value, basemap_url: $("#wm_url").value.trim()},
+    k8s: {namespace: $("#k8s_ns").value.trim(), storage_class: $("#k8s_sc").value.trim(), service_type: $("#k8s_svc").value},
+  };
+  return cfg;
+}
+
+async function api(path, body) {
+  const r = await fetch(path, {method: "POST", headers: H, body: JSON.stringify(body)});
+  if (!r.ok) {
+    let msg = r.status + " " + r.statusText;
+    try { msg = (await r.json()).error || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  return r;
+}
+
+async function preview() {
+  showErr("");
+  try {
+    const j = await (await api("/api/preview", collect())).json();
+    FILES = j.files; const names = Object.keys(FILES);
+    $("#filesel").innerHTML = names.map((n) => `<option>${esc(n)}</option>`).join("");
+    $("#view").textContent = names.length ? FILES[names[0]] : "";
+    const w = $("#warn"); w.style.display = j.warnings.length ? "block" : "none"; w.innerHTML = j.warnings.map(esc).join("<br>");
+  } catch (e) { showErr(e.message); }
+}
+$("#filesel").onchange = () => { $("#view").textContent = FILES[$("#filesel").value] || ""; };
+
+async function zip() {
+  showErr("");
+  try {
+    const r = await api("/api/bundle", collect());
+    const blob = await r.blob(), a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = `gisstack-${$("#project").value}.zip`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  } catch (e) { showErr(e.message); }
+}
+
+async function deploy() {
+  showErr("");
+  const mode = $("#mode").value;
+  if (mode === "download") return zip();
+  const cfg = collect();
+  const where = mode === "ssh" ? `${$("#ssh_user").value}@${$("#ssh_host").value}` : "ამ მანქანაზე";
+  if (!confirm(`Deploy (${cfg.deploy_target}) → ${where}.\nეს დააინსტალირებს/გაუშვებს სერვისებს. გავაგრძელო?`)) return;
+  $("#btn-deploy").disabled = true;
+  const log = $("#log"); log.textContent = "";
+  try {
+    const body = {config: cfg, mode, ssh: {host: $("#ssh_host").value.trim(), port: Number($("#ssh_port").value), user: $("#ssh_user").value.trim(), key: $("#ssh_key").value.trim()}};
+    const {job} = await (await api("/api/deploy", body)).json();
+    let next = 0, done = false;
+    while (!done) {
+      const j = await (await fetch(`/api/jobs/${job}?since=${next}`)).json();
+      if (j.lines.length) { log.textContent += j.lines.join("\n") + "\n"; log.scrollTop = log.scrollHeight; }
+      next = j.next; done = j.done;
+      if (done) log.textContent += j.ok ? "\n✔ დასრულდა\n" : "\n✘ ვერ დასრულდა\n";
+      if (!done) await new Promise((r) => setTimeout(r, 1000));
+    }
+  } catch (e) { showErr(e.message); }
+  $("#btn-deploy").disabled = false;
+}
+
+async function runJob(url, body) {
+  const log = $("#log"); log.textContent = "";
+  const {job} = await (await api(url, body)).json();
+  let next = 0, done = false;
+  while (!done) {
+    const j = await (await fetch(`/api/jobs/${job}?since=${next}`)).json();
+    if (j.lines.length) { log.textContent += j.lines.join("\n") + "\n"; log.scrollTop = log.scrollHeight; }
+    next = j.next; done = j.done;
+    if (done) log.textContent += j.ok ? "\n✔ დასრულდა\n" : "\n✘ ვერ დასრულდა\n";
+    if (!done) await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
+async function cleanup(components) {
+  showErr("");
+  const mode = $("#mode").value;
+  if (mode === "download") return showErr("გასუფთავებისთვის აირჩიე „ამ მანქანაზე“ ან SSH (სექცია 7, „სად“).");
+  const cfg = collect();
+  const purge = $("#cl_purge").checked, pg = $("#cl_pg").checked;
+  if (pg && !purge) return showErr("PostgreSQL-ის წასაშლელად ჩართე „მონაცემების წაშლაც“.");
+  const where = mode === "ssh" ? `${$("#ssh_user").value}@${$("#ssh_host").value}` : "ამ მანქანაზე";
+  const what = components ? components.join(", ") : "მთელი სტეკი";
+  const msg = `გასუფთავება (${cfg.deploy_target}) → ${where}\nრა: ${what}\n` +
+    (purge ? "⚠ მონაცემებიც წაიშლება და ვერ აღდგება!" + (pg ? "\n⚠ PostgreSQL სერვერიც წაიშლება!" : "") : "მონაცემები დარჩება.") + "\nგავაგრძელო?";
+  if (!confirm(msg)) return;
+  const btns = document.querySelectorAll("button"); btns.forEach((b) => b.disabled = true);
+  try {
+    await runJob("/api/clean", {config: cfg, mode, components, purge, remove_postgres: pg,
+      ssh: {host: $("#ssh_host").value.trim(), port: Number($("#ssh_port").value), user: $("#ssh_user").value.trim(), key: $("#ssh_key").value.trim()}});
+  } catch (e) { showErr(e.message); }
+  btns.forEach((b) => b.disabled = false);
+}
+
+function cleanRows() {
+  const box = $("#cleanrows"); box.textContent = "";
+  CAT.components.forEach((c) => {
+    const row = document.createElement("div"); row.className = "clrow";
+    const name = document.createElement("span"); name.textContent = c.ka;
+    const b = document.createElement("button"); b.type = "button"; b.className = "sec"; b.textContent = "გასუფთავება";
+    b.onclick = () => cleanup([c.id]);
+    row.append(name, b); box.append(row);
+  });
+}
+
+function showMsg(msg) { const e = $("#msg"); e.textContent = msg || ""; e.style.display = msg ? "block" : "none"; }
+function sshInfo() { return {host: $("#ssh_host").value.trim(), port: Number($("#ssh_port").value), user: $("#ssh_user").value.trim(), key: $("#ssh_key").value.trim()}; }
+
+function compName(id) { const c = CAT.components.find((x) => x.id === id); return c ? c.ka : id; }
+function gridBox(id) { return document.querySelector(`input[name="comp"][value="${id}"]`); }
+
+function buildBars() {
+  document.querySelectorAll(".compbar[data-comp]").forEach((bar) => {
+    const id = bar.dataset.comp;
+    bar.textContent = "";
+    const title = document.createElement("b"); title.textContent = compName(id);
+    const lab = document.createElement("label");
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.className = "bar-on"; cb.dataset.comp = id;
+    cb.onchange = () => { const g = gridBox(id); if (g && !g.disabled) { g.checked = cb.checked; g.dispatchEvent(new Event("change")); } };
+    lab.append(cb, " ჩართულია");
+    const save = document.createElement("button"); save.type = "button"; save.className = "sec"; save.textContent = "შენახვა";
+    save.onclick = () => saveComp(id, false);
+    const apply = document.createElement("button"); apply.type = "button"; apply.textContent = "შენახვა და გამოყენება";
+    apply.onclick = () => saveComp(id, true);
+    bar.append(title, lab, save, apply);
+  });
+  document.querySelectorAll('input[name="comp"]').forEach((g) => g.addEventListener("change", syncBars));
+  syncBars();
+}
+function syncBars() {
+  document.querySelectorAll(".bar-on").forEach((cb) => { const g = gridBox(cb.dataset.comp); if (g) cb.checked = g.checked; });
+}
+
+async function saveComp(id, andApply) {
+  showErr(""); showMsg("");
+  const cfg = collect();
+  try {
+    if (!andApply) {
+      const j = await (await api("/api/save", {config: cfg, component: id})).json();
+      await loadProjects(cfg.project);
+      showMsg(`✔ ${compName(id)}: შენახულია\n${j.saved}`);
+      return;
+    }
+    const mode = $("#mode").value;
+    if (mode === "download") return showErr("გამოსაყენებლად აირჩიე „ამ მანქანაზე“ ან SSH (სექცია 7, „სად“).");
+    const where = mode === "ssh" ? `${$("#ssh_user").value}@${$("#ssh_host").value}` : "ამ მანქანაზე";
+    if (!confirm(`${compName(id)}: შენახვა და გამოყენება (${cfg.deploy_target}) → ${where}.\nმხოლოდ ეს პროგრამა დაინსტალირდება/გადაიტვირთება. გავაგრძელო?`)) return;
+    const btns = document.querySelectorAll("button"); btns.forEach((b) => b.disabled = true);
+    try { await runJob("/api/apply", {config: cfg, component: id, save: true, mode, ssh: sshInfo()}); }
+    finally { btns.forEach((b) => b.disabled = false); }
+  } catch (e) { showErr(e.message); }
+}
+
+async function loadProjects(select) {
+  const j = await (await fetch("/api/projects")).json();
+  const sel = $("#proj_sel");
+  sel.innerHTML = j.projects.length ? j.projects.map((n) => `<option>${esc(n)}</option>`).join("") : '<option value="">— ჯერ არაა —</option>';
+  if (select) sel.value = select;
+}
+async function loadProject() {
+  showErr(""); showMsg("");
+  const name = $("#proj_sel").value;
+  if (!name) return;
+  try {
+    const r = await fetch("/api/projects/" + encodeURIComponent(name));
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    fill(j.config); buildBars();
+    showMsg(`✔ ჩაიტვირთა: ${name}`);
+  } catch (e) { showErr(e.message); }
+}
+async function saveProject() {
+  showErr(""); showMsg("");
+  try {
+    const cfg = collect();
+    const j = await (await api("/api/save", {config: cfg})).json();
+    await loadProjects(cfg.project);
+    showMsg(`✔ პროექტი შენახულია\n${j.saved}`);
+  } catch (e) { showErr(e.message); }
+}
+
+(async function init() {
+  const j = await (await fetch("/api/catalog")).json();
+  CAT = j.catalog; DEF = j.defaults;
+  fill(DEF);
+  cleanRows();
+  buildBars();
+  await loadProjects();
+  $("#btn-proj-load").onclick = loadProject; $("#btn-proj-save").onclick = saveProject;
+  $("#rootnote").textContent = j.is_root ? "" : "გაფრთხილება: ეს პროცესი root-ით არ მუშაობს — „ამ მანქანაზე“ native ინსტალაცია არ იმუშავებს.";
+  $("#addlayer").onclick = () => addLayer();
+  $("#mode").onchange = () => { $("#sshbox").style.display = $("#mode").value === "ssh" ? "flex" : "none"; };
+  $("#btn-preview").onclick = preview; $("#btn-zip").onclick = zip; $("#btn-deploy").onclick = deploy; $("#btn-clean-all").onclick = () => cleanup(null);
+})();
+</script>
+</body>
+</html>

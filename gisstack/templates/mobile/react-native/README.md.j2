@@ -1,0 +1,22 @@
+# React Native (Expo) map — generated for {{ public }}
+
+The files here are pre-wired to your server (`src/config.js`). Because Expo/React Native
+versions move quickly, we do not pin them — create a fresh project and drop these files in:
+
+```bash
+npx create-expo-app@latest {{ project }}-map --template blank
+cd {{ project }}-map
+npx expo install react-native-webview react-native-safe-area-context
+# copy App.js and src/ from this folder over the new project, then:
+npx expo start
+```
+
+* `App.js` — bilingual (KA/EN) wrapper around your server's web map. Works in Expo Go,
+  no API keys.
+* `src/MapLibreScreen.js` — optional fully native, open-source map (MapLibre) with a layer
+  switcher. Needs a development build; see the header comment in that file.
+
+{% if tls == 'none' %}
+**Plain HTTP:** Android blocks cleartext traffic in release builds. Either enable HTTPS in the
+installer or set `"android": {"usesCleartextTraffic": true}` via `expo-build-properties`.
+{% endif %}

@@ -1,0 +1,27 @@
+# Alternative to rpmbuild: nfpm builds both deb and rpm from the staged tree.
+#   VERSION=0.1.1 STAGE=build/stage nfpm package -f packaging/nfpm.yaml -p rpm -t dist/
+name: gisstack-installer
+arch: all
+platform: linux
+version: ${VERSION}
+section: utils
+maintainer: GIS-GEORGIA <noreply@example.invalid>
+description: One-click GIS server stack installer (PostGIS, GeoServer, Tomcat, MapProxy, QGIS Server, Caddy, web and mobile maps)
+homepage: https://github.com/GIS-GEORGIA
+license: MIT
+contents:
+  - src: ${STAGE}/usr/lib/gisstack
+    dst: /usr/lib/gisstack
+    type: tree
+  - src: ${STAGE}/usr/bin/gisstack
+    dst: /usr/bin/gisstack
+    file_info: { mode: 0755 }
+  - src: ${STAGE}/lib/systemd/system/gisstack-web.service
+    dst: /lib/systemd/system/gisstack-web.service
+  - src: ${STAGE}/usr/share/doc/gisstack-installer/README.md
+    dst: /usr/share/doc/gisstack-installer/README.md
+overrides:
+  deb:
+    depends: [python3, python3-flask, python3-jinja2, python3-yaml]
+  rpm:
+    depends: [python3, python3-flask, python3-jinja2, python3-pyyaml]

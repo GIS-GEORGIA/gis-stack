@@ -1,0 +1,20 @@
+[Unit]
+Description=Apache Tomcat (gisstack)
+After=network.target
+
+[Service]
+Type=simple
+User=tomcat
+Group=tomcat
+EnvironmentFile=/etc/gisstack/tomcat.env
+ExecStart=/opt/tomcat/bin/catalina.sh run
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt /var/lib/gisstack
+
+[Install]
+WantedBy=multi-user.target

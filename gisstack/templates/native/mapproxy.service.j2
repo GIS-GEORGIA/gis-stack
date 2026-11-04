@@ -1,0 +1,18 @@
+[Unit]
+Description=MapProxy (gisstack)
+After=network.target
+
+[Service]
+Type=simple
+User=mapproxy
+Group=mapproxy
+WorkingDirectory=/etc/gisstack/mapproxy
+ExecStart=/opt/gisstack/mapproxy-venv/bin/gunicorn --workers @WORKERS@ --timeout 120 --bind @BIND@:8081 app:application
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/gisstack/mapproxy
+
+[Install]
+WantedBy=multi-user.target
