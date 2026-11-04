@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### მონიტორინგი (Phase 8, feature flag `monitoring`)
+- `gisstack monitor collect|watch|show|history|alerts|rules|prune|prometheus`: **რეალური** მაჩვენებლები (`/proc`, `df`, systemd cgroup-ები, `pg_stat_*`, curl-ის დროები, `docker stats`, ბექაფის ასაკი) — სინთეზური/შეფასებითი მონაცემი არსად არის; მიუწვდომელი წყარო ჩანს `collect_errors`-ში.
+- SQLite ისტორია (ring buffer, retention), ზღვრული ალერტები (`for` N ნიმუში, გადაწყვეტა, ერთი ავარია = ერთი შეტყობინება), webhook და e-mail შეტყობინებები (პაროლი მხოლოდ გარემოდან/ფაილიდან).
+- ვებ API `/api/v1/monitor/collect`, `/api/v1/metrics[/history]`, `/api/v1/alerts`, `/metrics` (flag `prometheus`). დოკუმენტაცია: `docs/MONITORING.md`.
+
 ## [0.1.3] - 2026-11-04
 
 ### განახლებისას გაითვალისწინე

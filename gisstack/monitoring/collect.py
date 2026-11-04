@@ -429,6 +429,7 @@ def flatten(sample: dict[str, Any]) -> list[tuple[str, dict[str, str], float]]:
     if b:
         add("backup_count", b.get("count"))
         add("backup_last_age_seconds", b.get("last_age_seconds"))
+    add("monitor_reachable", 1.0)                       # a sample exists, so the machine answered (Monitor.tick records 0 when it did not)
     add("collect_seconds", sample.get("took"))
     add("collect_errors", float(len(sample.get("errors", []))))
     return out

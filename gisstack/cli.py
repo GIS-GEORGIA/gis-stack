@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -27,7 +28,7 @@ import time
 from pathlib import Path
 
 from . import __version__, backup as backup_mod, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, services, settings, transport, updater
-from .core import log, paths
+from .core import features, log, paths
 
 
 MAX_CONFIG_BYTES = 1_000_000
@@ -160,6 +161,81 @@ def _update(a: argparse.Namespace) -> int:
                 print(line, flush=True)
         return 0
     except updater.UpdateError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+
+def _duration(text: str) -> float:
+    unit = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    if not text or text[-1] not in unit or not text[:-1].isdigit():
+        raise ValueError(f"bad duration {text!r} (use 30m, 6h, 7d)")
+    return int(text[:-1]) * unit[text[-1]]
+
+
+def _monitor(a: argparse.Namespace, cfg: dict) -> int:
+    from .monitoring import alerts as m_alerts, render, service
+    from .monitoring.store import Store, StoreError
+    if not features.enabled("monitoring"):
+        print("ERROR: monitoring is a feature that is switched off. Enable it with: export GISSTACK_FEATURES=monitoring", file=sys.stderr)
+        return 3
+    ssh = _parse_ssh(a)
+    if ssh is None:
+        return 2
+    cfg = dict(cfg, deploy_target=a.target or cfg["deploy_target"])
+    host = transport.host_label(a.mode, ssh)
+    try:
+        if a.mcmd in ("collect", "watch"):
+            mon = service.Monitor(cfg, a.mode, ssh)
+
+            def show(res: dict) -> None:
+                if getattr(a, "json", False):
+                    print(json.dumps({"errors": res["errors"], "notifications": res["notifications"]}, ensure_ascii=False, default=str), flush=True)
+                else:
+                    print(render.format_snapshot(service.snapshot(mon.store)), flush=True)
+                    for n in res["notifications"]:
+                        print(f"  >> {n['state'].upper()} {n['message']}", flush=True)
+            if a.mcmd == "collect":
+                show(mon.tick())
+                return 0
+            with contextlib.suppress(KeyboardInterrupt):
+                mon.watch(a.interval, max_ticks=a.max_ticks, on_tick=show)
+            return 0
+        if a.mcmd == "rules":
+            rules = m_alerts.load_rules(service.rules_path())
+            print(json.dumps(rules, indent=2, ensure_ascii=False) if a.json else "\n".join(
+                f"{'on ' if r['enabled'] else 'off'} {k:<22} {r['metric']} {r['op']} {r['threshold']:g} for {r['for']} sample(s) [{r['level']}]" for k, r in sorted(rules.items())))
+            return 0
+        db = paths.monitor_db(cfg["project"], host)
+        if not db.exists():
+            print(f"ERROR: no history for {cfg['project']} @ {host} yet - run: gisstack monitor collect", file=sys.stderr)
+            return 1
+        store = Store(db)
+        if a.mcmd == "show":
+            snap = service.snapshot(store)
+            print(json.dumps(snap, ensure_ascii=False, indent=2) if a.json else render.format_snapshot(snap))
+        elif a.mcmd == "alerts":
+            state = [x for x in store.alert_state() if x["state"] == "firing"]
+            ev = store.events(limit=20)
+            if a.json:
+                print(json.dumps({"firing": state, "events": ev}, ensure_ascii=False, indent=2))
+            else:
+                print("\n".join(f"FIRING {x['rule']} [{x['subject']}] {x['message']}" for x in state) or "no alerts firing")
+                for e in ev:
+                    print(f"{time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(e['ts']))}  {e['level']:<5} {e['kind']:<16} {e['subject']}: {e['message']}")
+        elif a.mcmd == "prune":
+            print(f"deleted {store.prune()} rows")
+        elif a.mcmd == "prometheus":
+            print(service.prometheus_text(store, cfg["project"]), end="")
+        elif a.mcmd == "history":
+            labels = dict(x.split("=", 1) for x in a.label if "=" in x) or None
+            pts = store.series(a.name, labels, since=time.time() - _duration(a.since), step=a.step)
+            if a.json:
+                print(json.dumps(pts, ensure_ascii=False))
+            else:
+                for p in pts:
+                    print(f"{time.strftime('%H:%M:%S', time.gmtime(p['ts']))}  {p['value']:g}  {json.dumps(p['labels'], ensure_ascii=False) if p['labels'] else ''}")
+        return 0
+    except (deploy.DeployError, m_alerts.RulesError, StoreError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
 
@@ -480,6 +556,29 @@ def main(argv: list[str] | None = None) -> int:
     b8.add_argument("--components")
     b8.add_argument("--with-cache", action="store_true")
 
+    mo = sub.add_parser("monitor", help="real metrics, history and alerts (feature flag: GISSTACK_FEATURES=monitoring)")
+    msub = mo.add_subparsers(dest="mcmd", required=True)
+    m1 = msub.add_parser("collect", help="take one sample now, store it, evaluate alerts")
+    conn(m1)
+    m1.add_argument("--json", action="store_true")
+    m2 = msub.add_parser("watch", help="sample every N seconds (run it as a service)")
+    conn(m2)
+    m2.add_argument("--interval", type=float, default=30.0)
+    m2.add_argument("--max-ticks", type=int)
+    m2.add_argument("--json", action="store_true")
+    for name, hlp in (("show", "newest stored sample"), ("alerts", "firing alerts and recent events"), ("rules", "effective alert rules"),
+                      ("prune", "apply the retention policy to the history"), ("prometheus", "newest sample as Prometheus text")):
+        sp = msub.add_parser(name, help=hlp)
+        conn(sp)
+        sp.add_argument("--json", action="store_true")
+    m3 = msub.add_parser("history", help="stored values of one metric")
+    conn(m3)
+    m3.add_argument("name")
+    m3.add_argument("--since", default="1h", help="e.g. 30m, 6h, 7d (default 1h)")
+    m3.add_argument("--step", type=float, help="average into buckets of this many seconds")
+    m3.add_argument("--label", action="append", default=[], metavar="K=V")
+    m3.add_argument("--json", action="store_true")
+
     pf = sub.add_parser("preflight", help="can this machine take the selected stack? (disk, memory, OS, network, clock)")
     conn(pf)
     pf.add_argument("--json", action="store_true")
@@ -557,6 +656,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd in ("status", "logs") or a.cmd in ops.ACTIONS:
         return _ops(a, cfg)
 
+    if a.cmd == "monitor":
+        return _monitor(a, cfg)
     if a.cmd == "backup":
         return _backup(a, cfg)
     if a.cmd == "preflight":

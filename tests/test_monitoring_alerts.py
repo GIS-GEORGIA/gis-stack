@@ -349,3 +349,51 @@ class ConfigAndDispatchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SuppressionTests(Base):
+    """One outage must produce one page, not five (a down Caddy makes every ':public' health check fail)."""
+
+    def rules(self):
+        return {k: {**v, "enabled": True, "for": 1} for k, v in alerts.DEFAULT_RULES.items() if k in ("service_down", "probe_failing", "postgres_down")}
+
+    def m(self, caddy_up, public_up, pg_service_up=1.0, pg_up=1.0):
+        return [("service_up", {"service": "caddy"}, caddy_up), ("service_up", {"service": "postgis"}, pg_service_up),
+                ("probe_up", {"probe": "caddy:public"}, public_up), ("probe_up", {"probe": "geoserver:public"}, public_up),
+                ("probe_up", {"probe": "tomcat:http_8080"}, 1.0), ("pg_up", {}, pg_up)]
+
+    def test_symptoms_of_a_reported_cause_are_held_back_and_resolve_silently(self):
+        rules = self.rules()
+        sent = self.step(rules, 1, self.m(0.0, 0.0))
+        self.assertEqual([(n["rule"], n["subject"]) for n in sent], [("service_down", "caddy")])
+        states = {(a["rule"], a["subject"]): a for a in self.s.alert_state()}
+        self.assertEqual(states[("probe_failing", "caddy:public")]["state"], "firing")           # recorded, not announced
+        self.assertEqual(states[("probe_failing", "caddy:public")]["notified"], alerts.SUPPRESSED)
+        self.assertIn("alert.suppressed", [e["kind"] for e in self.s.events()])
+        done = self.step(rules, 2, self.m(1.0, 1.0))
+        self.assertEqual([(n["rule"], n["state"]) for n in done], [("service_down", "resolved")])    # one page up, one page down
+
+    def test_a_symptom_that_outlives_its_cause_is_reported_then(self):
+        rules = self.rules()
+        self.step(rules, 1, self.m(0.0, 0.0))
+        later = self.step(rules, 2, self.m(1.0, 0.0))                                           # Caddy is back, the checks still fail
+        self.assertEqual(sorted((n["rule"], n["subject"], n["state"]) for n in later),
+                         [("probe_failing", "caddy:public", "firing"), ("probe_failing", "geoserver:public", "firing"), ("service_down", "caddy", "resolved")])
+
+    def test_unrelated_failures_are_not_suppressed(self):
+        rules = self.rules()
+        self.step(rules, 1, self.m(0.0, 1.0))
+        sent = self.step(rules, 2, [("service_up", {"service": "caddy"}, 0.0), ("probe_up", {"probe": "tomcat:http_8080"}, 0.0)])
+        self.assertEqual([(n["rule"], n["subject"]) for n in sent], [("probe_failing", "tomcat:http_8080")])
+
+    def test_postgres_symptoms_follow_the_postgis_service(self):
+        rules = self.rules()
+        sent = self.step(rules, 1, self.m(1.0, 1.0, pg_service_up=0.0, pg_up=0.0))
+        self.assertEqual([(n["rule"], n["subject"]) for n in sent], [("service_down", "postgis")])
+        self.assertEqual([n["rule"] for n in self.step(rules, 2, self.m(1.0, 1.0, pg_up=0.0))].count("postgres_down"), 1)    # service back, DB still silent
+
+    def test_reminders_are_not_sent_for_held_back_alerts(self):
+        rules = {k: {**v, "renotify": 10.0} for k, v in self.rules().items()}
+        self.step(rules, 1, self.m(0.0, 0.0))
+        again = self.step(rules, 100, self.m(0.0, 0.0))
+        self.assertEqual([(n["rule"], n.get("reminder")) for n in again], [("service_down", True)])

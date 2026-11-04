@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import hmac
+import json
 import io
 import os
 import secrets
@@ -29,6 +30,7 @@ from flask import Flask, Response, abort, jsonify, make_response, redirect, rend
 
 from . import security
 from ..core import paths
+from ..core import features
 from .. import __version__, backup as backup_mod, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, services, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
@@ -471,6 +473,112 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
         return _backup_job(lambda: backup_mod.restore(cfg, mode, ssh, str(body.get("id", "")), only=only, dry_run=dry, staging=bool(body.get("staging")),
                                                        confirm=body.get("confirm") is True, pre_backup=body.get("pre_backup", True) is not False,
                                                        rollback=body.get("rollback", True) is not False))
+
+    # ------------------------------------------------------------------ monitoring (feature flag "monitoring")
+    def _env(data: Any = None, error: str | None = None, code: str | None = None, status: int = 200, **meta: Any) -> Response:
+        """The envelope /api/v1 answers use: {data, error, meta}."""
+        body = {"data": data, "error": ({"message": error, "code": code} if error else None), "meta": {"version": 1, **meta}}
+        return make_response(jsonify(body), status)
+
+    def _monitor_store() -> tuple[Any, Response | None]:
+        import re as _re
+        from ..core import paths as _paths
+        from ..monitoring.store import Store, StoreError
+        project, host = request.args.get("project", ""), request.args.get("host", "localhost")
+        if not _re.fullmatch(r"[a-z][a-z0-9_]{0,30}", project) or not _re.fullmatch(r"[A-Za-z0-9._:\[\]-]{1,100}", host):
+            return None, _env(error="project and host are required and must be plain names", code="bad_request", status=400)
+        db = _paths.monitor_db(project, host)
+        if not db.exists():                                   # never create a history just because somebody asked for it
+            return None, _env(error="no monitoring history for this machine yet", code="not_found", status=404)
+        try:
+            return Store(db), None
+        except StoreError as e:
+            return None, _env(error=str(e), code=e.code, status=500)
+
+    def _need_monitoring() -> Response | None:
+        if not features.enabled("monitoring"):
+            return _env(error="monitoring is switched off (GISSTACK_FEATURES=monitoring)", code="feature_disabled", status=404)
+        return None
+
+    @app.post("/api/v1/monitor/collect")
+    def api_v1_collect() -> Response:
+        """Body: {config, mode, ssh}.  Takes one real sample now, stores it, evaluates alerts (and notifies)."""
+        if (off := _need_monitoring()) is not None:
+            return off
+        from ..monitoring import service
+        cfg, mode, ssh, target = _ops_args(request.get_json(silent=True) or {})
+        try:
+            mon = service.Monitor(cfg, mode, ssh, target)
+            res = mon.tick()
+            return _env({"snapshot": service.snapshot(mon.store), "notifications": res["notifications"], "errors": res["errors"]})
+        except deploy_mod.DeployError as e:
+            return _env(error=str(e), code=e.code, status=502)
+
+    @app.get("/api/v1/metrics")
+    def api_v1_metrics() -> Response:
+        if (off := _need_monitoring()) is not None:
+            return off
+        from ..monitoring import service
+        store, err = _monitor_store()
+        if err is not None:
+            return err
+        try:
+            return _env(service.snapshot(store))
+        finally:
+            store.close()
+
+    @app.get("/api/v1/metrics/history")
+    def api_v1_history() -> Response:
+        """?project&host&name[&since=<seconds back>][&step=<bucket s>][&limit][&labels=<json object>]"""
+        if (off := _need_monitoring()) is not None:
+            return off
+        store, err = _monitor_store()
+        if err is not None:
+            return err
+        try:
+            name = request.args.get("name", "")
+            if not name:
+                return _env(error="name is required", code="bad_request", status=400)
+            try:
+                since = time.time() - float(request.args.get("since", 3600))
+                step = float(request.args["step"]) if "step" in request.args else None
+                limit = min(20000, int(request.args.get("limit", 5000)))
+                labels = json.loads(request.args["labels"]) if "labels" in request.args else None
+                if labels is not None and not (isinstance(labels, dict) and all(isinstance(v, str) for v in labels.values())):
+                    raise ValueError("labels must be an object of strings")
+            except (ValueError, TypeError) as e:
+                return _env(error=f"bad parameter: {e}", code="bad_request", status=400)
+            return _env(store.series(name, labels, since=since, step=step, limit=limit), name=name)
+        finally:
+            store.close()
+
+    @app.get("/api/v1/alerts")
+    def api_v1_alerts() -> Response:
+        if (off := _need_monitoring()) is not None:
+            return off
+        store, err = _monitor_store()
+        if err is not None:
+            return err
+        try:
+            return _env({"alerts": store.alert_state(), "events": store.events(limit=100)})
+        finally:
+            store.close()
+
+    @app.get("/metrics")
+    def prometheus_metrics() -> Response:
+        """Prometheus text for the newest sample (needs both flags: monitoring and prometheus; same authentication as everything else)."""
+        if (off := _need_monitoring()) is not None:
+            return off
+        if not features.enabled("prometheus"):
+            return _env(error="the Prometheus export is switched off (GISSTACK_FEATURES=monitoring,prometheus)", code="feature_disabled", status=404)
+        from ..monitoring import service
+        store, err = _monitor_store()
+        if err is not None:
+            return err
+        try:
+            return Response(service.prometheus_text(store, request.args.get("project", "")), mimetype="text/plain; version=0.0.4")
+        finally:
+            store.close()
 
     @app.post("/api/ops/status")
     def api_ops_status() -> Response:

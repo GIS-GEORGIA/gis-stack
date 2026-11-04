@@ -54,7 +54,13 @@ jobs:
               open(f"/tmp/rotate-{what}.sh", "w").write(rotation.script(what))
           open("/tmp/preflight.sh", "w").write(preflight.script(config.resolve({}), "native"))
           PY
-          shellcheck -s bash -S warning /tmp/rotate-postgres.sh /tmp/rotate-geoserver.sh /tmp/preflight.sh
+          python3 - <<'PY2'
+          from gisstack import config
+          from gisstack.monitoring import collect
+          for t in ("native", "compose"):
+              open(f"/tmp/monitor-{t}.sh", "w").write(collect.script(config.resolve({"targets": [t], "deploy_target": t}), t))
+          PY2
+          shellcheck -s bash -S warning /tmp/rotate-postgres.sh /tmp/rotate-geoserver.sh /tmp/preflight.sh /tmp/monitor-native.sh /tmp/monitor-compose.sh
       - name: yamllint (workflows and rendered manifests)
         run: |
           printf 'extends: relaxed\nrules:\n  line-length: disable\n  truthy: disable\n' > /tmp/yamllint.yml

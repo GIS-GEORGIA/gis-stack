@@ -271,6 +271,16 @@ gisstack rotate-credentials geoserver --password-file ~/new.pw       # საკ
 
 ვებ GUI: `gisstack web --allow-host gis.example.ge` (სხვა Host სახელი), `--rotate-token` (ახალი წვდომის ტოკენი), `--server waitress` (production სერვერი).
 
+### მონიტორინგი (feature flag)
+
+```bash
+export GISSTACK_FEATURES=monitoring
+gisstack monitor collect --mode ssh --ssh root@server     # რეალური ნიმუში: CPU, მეხსიერება, დისკი, სერვისები, PostgreSQL, health checks
+gisstack monitor watch   --mode ssh --ssh root@server --interval 30
+```
+
+ალერტები, webhook/e-mail და API: [MONITORING.md](MONITORING.md). Feature flag-ები: `GISSTACK_FEATURES=monitoring,prometheus` (ან `all`).
+
 ### ბექაფი და აღდგენა (native)
 
 ```bash

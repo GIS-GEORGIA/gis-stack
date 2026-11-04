@@ -9,6 +9,7 @@ from typing import Iterable
 from . import paths
 
 _ROOT = "gisstack"
+logging.getLogger(_ROOT).addHandler(logging.NullHandler())     # library rule: silent unless configure() is called
 _secrets: set[str] = set()
 
 

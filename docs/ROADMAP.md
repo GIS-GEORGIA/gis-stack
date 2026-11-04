@@ -63,7 +63,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - **Tests:** round-trip in containers (PostgreSQL/PostGIS + GeoServer data dir), corrupted-archive detection, interrupted restore, retention pruning, permission checks.
 - **Exit criteria:** restore reproduces the original state in an automated test; failure paths leave the system recoverable.
 
-### Phase 8 — Monitoring and alerts · **L**
+### Phase 8 — Monitoring and alerts · **L** — ✅ implemented for native/Compose (Kubernetes: service state only; dashboard = Phase 3)
 - **Work:** collectors with real sources (`/proc`, `statvfs`, `ss`, systemd/compose/k8s state, PostgreSQL `pg_stat_*`, GeoServer REST/health, MapProxy/Caddy/QGIS HTTP probes, response times), SQLite ring-buffer history (no external dependency), health/error history, threshold alerts (webhook/e-mail as providers), `/api/v1/metrics` JSON endpoint, optional Prometheus text export behind a flag.
 - **Tests:** collector parsers against captured fixtures, alert evaluation, retention; integration with real services in CI containers.
 - **Exit criteria:** no synthetic data path exists; unit and integration tests cover each collector.

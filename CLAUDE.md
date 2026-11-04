@@ -106,6 +106,12 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - tar 1.35 არ წერს აბსოლუტურ symlink-ზე (`/opt/tomcat`) — არქივში რეალური ბილიკებია (`readlink -f`).
 - `docs/RECOVERY.md` — runbook; ქცევის ცვლილებისას განაახლე.
 
+## მონიტორინგი (Phase 8)
+- `monitoring/collect.py`: ერთი read-only სკრიპტი (`script()`) → სუფთა პარსერები (`parse`, `host_metrics`, `postgres_metrics`...) → `build_sample` → `flatten` (მეტრიკა = (სახელი, labels, მნიშვნელობა)). ფიქსტურები `tests/fixtures/monitor/` — **რეალური** სერვერის გამოტანა; ახალი მაჩვენებელი = სკრიპტში ახალი სექცია + პარსერი + ტესტი ფიქსტურაზე. წყაროს არ ყოფნა → არ არის მეტრიკა + `errors`, არასოდეს გამოგონილი რიცხვი.
+- `store.py` (SQLite ring buffer), `alerts.py` (state machine; `cause_of` = ერთი ავარია ერთი შეტყობინება; ახალი წესი უნდა ეყრდნობოდეს `flatten`-ის მეტრიკას — ამას ტესტი ამოწმებს), `notify.py`, `service.Monitor` (tick/watch).
+- Feature flag-ები `core/features.py`; ახალი დიდი ფუნქცია = ახალი flag, ნაგულისხმევად გამორთული.
+- `docs/MONITORING.md` — მომხმარებლის აღწერა.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

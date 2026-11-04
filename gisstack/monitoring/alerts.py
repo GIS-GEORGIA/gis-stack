@@ -32,6 +32,7 @@ DEFAULT_RULES: dict[str, dict[str, Any]] = {
     "postgres_long_query": {"metric": "pg_longest_query_seconds", "op": ">", "threshold": 300.0, "for": 1, "level": "warn", "text": "a query has been running for {value:.0f} s"},
     "postgres_locks": {"metric": "pg_waiting_locks", "op": ">", "threshold": 5.0, "for": 3, "level": "warn", "text": "{value:.0f} sessions are waiting for locks"},
     "backup_old": {"metric": "backup_last_age_seconds", "op": ">", "threshold": 36 * 3600.0, "for": 1, "level": "warn", "text": "the newest backup is {value:.0f} s old"},
+    "host_unreachable": {"metric": "monitor_reachable", "op": "<", "threshold": 1.0, "for": 3, "level": "crit", "text": "the machine cannot be reached"},
     "collector_errors": {"metric": "collect_errors", "op": ">", "threshold": 0.0, "for": 3, "level": "warn", "text": "{value:.0f} metric source(s) unavailable"},
 }
 _ALLOWED_OVERRIDE = {"threshold", "for", "level", "enabled", "op", "renotify"}
@@ -91,12 +92,28 @@ def subject_of(labels: Labels) -> str:
     return ",".join(f"{v}" for _, v in sorted(labels.items())) or "-"
 
 
+SUPPRESSED = -1.0          # `notified` marker: firing, but held back because its cause is already being reported
+
+
+def cause_of(rule: str, subject: str) -> Optional[tuple[str, str]]:
+    """The alert that already explains this one, so one outage produces one page instead of five.  A failing health check of a
+    component is explained by that component's service being down (every ':public' check goes through Caddy); PostgreSQL not
+    answering is explained by its service being down."""
+    if rule in ("probe_failing", "probe_slow") and ":" in subject:
+        comp, _, what = subject.partition(":")
+        return ("service_down", "caddy" if what == "public" else comp)
+    if rule in ("postgres_down", "postgres_connections", "postgres_long_query", "postgres_locks"):
+        return ("service_down", "postgis")
+    return None
+
+
 def evaluate(store: Store, rules: dict[str, dict[str, Any]], metrics: list[tuple[str, Labels, float]], ts: float, context: Optional[dict[str, str]] = None
              ) -> list[dict[str, Any]]:
     """Advance every rule's state machine with one sample.  Returns the notifications to send (firing / resolved / reminders);
     state changes and events are already written to the store."""
     context = context or {}
     prior = {(a["rule"], a["subject"]): a for a in store.alert_state()}
+    firing_now = {k for k, a in prior.items() if a["state"] == "firing"}
     out: list[dict[str, Any]] = []
     for rid, rule in rules.items():
         if not rule.get("enabled", True):
@@ -114,20 +131,36 @@ def evaluate(store: Store, rules: dict[str, dict[str, Any]], metrics: list[tuple
             text = rule["text"].format(value=value, subject=subject)
             note = {"rule": rid, "subject": subject, "level": rule["level"], "value": value, "ts": ts, "message": text, "metric": name,
                     "threshold": rule["threshold"], **context}
+            cause = cause_of(rid, subject)
+            explained = cause is not None and cause in firing_now and cause != (rid, subject)
             if cmp(value, rule["threshold"]):
                 streak += 1
                 if state != "firing" and streak >= rule["for"]:
-                    state, since, notified = "firing", ts, ts
+                    state, since = "firing", ts
+                    if explained:
+                        notified = SUPPRESSED
+                        store.add_event(ts, "info", "alert.suppressed", f"{rid}:{subject}", f"{text} (explained by {cause[0]}:{cause[1]})")      # type: ignore[index]
+                    else:
+                        notified = ts
+                        store.add_event(ts, rule["level"], "alert.firing", f"{rid}:{subject}", text)
+                        out.append({**note, "state": "firing"})
+                elif state == "firing" and notified == SUPPRESSED and not explained:
+                    notified = ts                                   # its cause is gone but it is still broken: report it now
                     store.add_event(ts, rule["level"], "alert.firing", f"{rid}:{subject}", text)
                     out.append({**note, "state": "firing"})
-                elif state == "firing" and rule.get("renotify", DEFAULT_RENOTIFY) and ts - (notified or since) >= rule.get("renotify", DEFAULT_RENOTIFY):
+                elif state == "firing" and notified not in (None, SUPPRESSED) and rule.get("renotify", DEFAULT_RENOTIFY) \
+                        and ts - (notified or since) >= rule.get("renotify", DEFAULT_RENOTIFY):
                     notified = ts
                     out.append({**note, "state": "firing", "reminder": True})
+                if state == "firing":
+                    firing_now.add((rid, subject))
             else:
                 if state == "firing":
                     store.add_event(ts, "info", "alert.resolved", f"{rid}:{subject}", f"resolved: {text}")
-                    out.append({**note, "state": "resolved", "level": "info", "message": f"resolved: {text}"})
+                    if notified != SUPPRESSED:                        # nobody was told it was broken, so nobody is told it is fixed
+                        out.append({**note, "state": "resolved", "level": "info", "message": f"resolved: {text}"})
                     state, since, notified = "ok", ts, None
+                    firing_now.discard((rid, subject))
                 streak = 0
             store.set_alert(rid, subject, state, since, value, text, streak, notified)
     return out
