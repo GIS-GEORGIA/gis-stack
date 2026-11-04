@@ -205,7 +205,7 @@ class EndpointTests(unittest.TestCase):
 
     def test_everything_is_off_without_the_flag_and_requires_login(self):
         with mock.patch.dict(os.environ, {"GISSTACK_FEATURES": ""}):
-            for method, path in (("get", "/dashboard"), ("get", "/api/v1/dashboard/config"), ("post", "/api/v1/dashboard/summary"), ("get", "/api/v1/journal")):
+            for method, path in (("get", "/dashboard"), ("get", "/api/v1/dashboard/config"), ("post", "/api/v1/dashboard/summary")):
                 r = getattr(self.c, method)(path, headers=self.h, **({"json": self.body} if method == "post" else {}))
                 self.assertEqual(r.status_code, 404, path)
                 self.assertEqual(r.get_json()["error"]["code"], "feature_disabled")
@@ -297,9 +297,14 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(self.c.get("/api/v1/journal?limit=abc", headers=self.h).status_code, 400)
         self.assertEqual(len(self.c.get("/api/v1/journal?limit=1", headers=self.h).get_json()["data"]), 1)
 
-    def test_state_changing_dashboard_calls_need_the_csrf_header(self):
-        r = self.c.post("/api/v1/dashboard/summary", json=self.body, headers={"Authorization": "Bearer tok"})
-        self.assertEqual(r.status_code, 403)
+    def test_browser_sessions_need_the_csrf_header_but_bearer_clients_do_not(self):
+        self.c.get("/?token=tok")                                              # a browser session (cookie)
+        r = self.c.post("/api/v1/dashboard/summary", json=self.body)
+        self.assertEqual(r.status_code, 403)                                  # the cookie is ambient: the custom header is required
+        with mock.patch.object(ops, "status", return_value={"rows": []}):
+            fresh = __import__("gisstack.webgui.app", fromlist=["create_app"]).create_app("tok").test_client()
+            r = fresh.post("/api/v1/dashboard/summary", json=self.body, headers={"Authorization": "Bearer tok"})
+        self.assertEqual(r.status_code, 200)                                  # an explicit Authorization header cannot be forged cross-site
 
 
 class FeatureFlagTests(unittest.TestCase):

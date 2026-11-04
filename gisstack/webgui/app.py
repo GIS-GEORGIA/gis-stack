@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import contextlib
 import hmac
-import json
 import io
 import os
 import secrets
@@ -22,7 +21,6 @@ import sys
 import tempfile
 import threading
 import time
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -30,8 +28,10 @@ from flask import Flask, Response, abort, jsonify, make_response, redirect, rend
 
 from . import security
 from ..core import paths
+from ..api import mount as api_mount
+from ..api.auth import Principal, TokenStore
+from ..api.registry import ApiError, registry as api_registry
 from ..core import features
-from .. import journal as journal_mod, transport as transport_mod
 from .. import __version__, backup as backup_mod, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, services, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
@@ -58,27 +58,7 @@ def rotate_token(path: Path | None = None) -> str:
     return tok
 
 
-MAX_JOB_LINES = 50_000
-MAX_JOBS = 50
-JOB_TTL = 3600
-
-
-class Job:
-    def __init__(self) -> None:
-        self.id = uuid.uuid4().hex[:12]
-        self.lines: list[str] = []
-        self.done = False
-        self.ok = False
-        self.started = time.time()
-        self.lock = threading.Lock()
-        self.stop = threading.Event()      # set by /cancel (log following)
-
-    def add(self, line: str) -> None:
-        with self.lock:
-            if len(self.lines) < MAX_JOB_LINES:
-                self.lines.append(line)
-            elif len(self.lines) == MAX_JOB_LINES:
-                self.lines.append("… (log truncated)")
+from ..api.jobs import JOB_TTL, MAX_JOB_LINES, MAX_JOBS, Job  # noqa: E402,F401 - re-exported: tests and plugins use these names
 
 
 def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None = None) -> Flask:
@@ -92,6 +72,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
     app.config["AUDIT"] = audit = security.AuditLog(paths.audit_log)
     hosts = tuple(allowed_hosts) if allowed_hosts is not None else security.allowed_hosts_from_env()
     app.config["ALLOWED_HOSTS"] = hosts
+    app.config["TOKENS"] = TokenStore()
     COOKIE = "gs_session"
 
     def client_ip() -> str:
@@ -100,11 +81,20 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
     def token_ok(cand: str) -> bool:
         return bool(cand) and hmac.compare_digest(cand, app.config["TOKEN"])
 
-    def authed() -> bool:
+    def principal_of() -> Principal | None:
+        """Who is calling: the web access token and a browser session are full administrators; API tokens carry a scope and only work
+        on /api/v1 (they are never accepted by the legacy /api routes)."""
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
-            return token_ok(auth[7:])
-        return sessions.valid(request.cookies.get(COOKIE, ""))
+            cand = auth[7:]
+            if token_ok(cand):
+                return Principal("static", "web access token", "admin", "static")
+            if cand.startswith("gsk_") and request.path.startswith("/api/v1/"):
+                return app.config["TOKENS"].verify(cand)
+            return None
+        if sessions.valid(request.cookies.get(COOKIE, "")):
+            return Principal("session", "browser session", "admin", "session")
+        return None
 
     def deny(status: int, text: str, why: str) -> Response:
         audit.write(event="denied", why=why, ip=client_ip(), method=request.method, path=request.path, status=status)
@@ -131,10 +121,16 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
                 return resp
             limiter.fail(ip)
             return deny(401, "401 – invalid token.\n", "bad-token")
-        if not authed():
+        principal = principal_of()
+        if principal is None:
             limiter.fail(ip)
+            if request.path.startswith("/api/v1/"):
+                audit.write(event="denied", why="no-credentials", ip=ip, method=request.method, path=request.path, status=401)
+                return api_mount.envelope(error=ApiError(401, "unauthorized", "authentication required (Bearer token or browser session)"), status=401)
             return deny(401, "401 – token required. Open the URL printed by `gisstack web`.\n", "no-session")
-        if request.method not in ("GET", "HEAD") and request.headers.get("X-GisStack") != "1":
+        request.principal = principal
+        # CSRF protection exists for credentials the browser attaches by itself (the cookie); a Bearer header is never ambient
+        if principal.kind == "session" and request.method not in ("GET", "HEAD") and request.headers.get("X-GisStack") != "1":
             return deny(403, "403\n", "csrf-header")
         return None
 
@@ -146,8 +142,10 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
                 body = request.get_json(silent=True)
             except Exception:  # noqa: BLE001 - e.g. 413: the body was refused, there is nothing to summarise
                 body = None
+            who = getattr(request, "principal", None)
             audit.write(event="request", ip=client_ip(), method=request.method, path=request.path, status=resp.status_code,
-                        session=(sid[:6] if sid else "bearer"), **security.summarize(body))
+                        session=(sid[:6] if sid else "bearer"), **({"principal": who.id, "scope": who.scope, "kind": who.kind} if who else {}),
+                        **security.summarize(body))
         return resp
 
     @app.post("/api/logout")
@@ -481,169 +479,36 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
                                                        confirm=body.get("confirm") is True, pre_backup=body.get("pre_backup", True) is not False,
                                                        rollback=body.get("rollback", True) is not False))
 
-    # ------------------------------------------------------------------ dashboard (feature flag "dashboard")
-    def _need_dashboard() -> Response | None:
-        if not features.enabled("dashboard"):
-            return _env(error="the dashboard is switched off (GISSTACK_FEATURES=dashboard)", code="feature_disabled", status=404)
-        return None
-
+    # ------------------------------------------------------------------ pages and exports outside /api/v1
     @app.get("/dashboard")
     def dashboard_page() -> Response | str:
-        if (off := _need_dashboard()) is not None:
-            return off
+        if not features.enabled("dashboard"):
+            return api_mount.envelope(error=ApiError(404, "feature_disabled", "the dashboard is switched off (GISSTACK_FEATURES=dashboard)"), status=404)
         return render_template("dashboard.html", version=__version__)
-
-    @app.get("/api/v1/dashboard/config")
-    def api_v1_dash_config() -> Response:
-        if (off := _need_dashboard()) is not None:
-            return off
-        return _env({"version": __version__, "features": sorted(features.enabled_set()), "is_root": hasattr(os, "geteuid") and os.geteuid() == 0,
-                     "projects": projects_mod.list_projects(), "settings": settings_mod.view()})
-
-    @app.post("/api/v1/dashboard/summary")
-    def api_v1_dash_summary() -> Response:
-        """Body: {config, mode, ssh}.  One round trip for the overview: live service state, the newest stored metrics and the recent
-        operations.  Every part reports its own error, so one failing source never blanks the page."""
-        if (off := _need_dashboard()) is not None:
-            return off
-        cfg, mode, ssh, target = _ops_args(request.get_json(silent=True) or {})
-        out: dict[str, Any] = {"project": cfg["project"], "target": target, "mode": mode, "domain": cfg["domain"], "errors": {}}
-        try:
-            out["status"] = ops_mod.status(cfg, mode, ssh, target)
-        except deploy_mod.DeployError as e:
-            out["status"], out["errors"]["status"] = None, {"message": str(e), "code": e.code}
-        out["monitoring"] = None
-        if features.enabled("monitoring"):
-            from ..core import paths as _paths
-            from ..monitoring import service as _service
-            from ..monitoring.store import Store, StoreError
-            db = _paths.monitor_db(cfg["project"], transport_mod.host_label(mode, ssh))
-            if db.exists():
-                try:
-                    st = Store(db)
-                    try:
-                        out["monitoring"] = _service.snapshot(st)
-                    finally:
-                        st.close()
-                except StoreError as e:
-                    out["errors"]["monitoring"] = {"message": str(e), "code": e.code}
-        out["operations"] = journal_mod.operations(10, cfg["project"])
-        return _env(out)
-
-    @app.get("/api/v1/journal")
-    def api_v1_journal() -> Response:
-        if (off := _need_dashboard()) is not None:
-            return off
-        project = request.args.get("project") or None
-        try:
-            limit = max(1, min(200, int(request.args.get("limit", 50))))
-        except ValueError:
-            return _env(error="limit must be a number", code="bad_request", status=400)
-        return _env(journal_mod.operations(limit, project))
-
-    # ------------------------------------------------------------------ monitoring (feature flag "monitoring")
-    def _env(data: Any = None, error: str | None = None, code: str | None = None, status: int = 200, **meta: Any) -> Response:
-        """The envelope /api/v1 answers use: {data, error, meta}."""
-        body = {"data": data, "error": ({"message": error, "code": code} if error else None), "meta": {"version": 1, **meta}}
-        return make_response(jsonify(body), status)
-
-    def _monitor_store() -> tuple[Any, Response | None]:
-        import re as _re
-        from ..core import paths as _paths
-        from ..monitoring.store import Store, StoreError
-        project, host = request.args.get("project", ""), request.args.get("host", "localhost")
-        if not _re.fullmatch(r"[a-z][a-z0-9_]{0,30}", project) or not _re.fullmatch(r"[A-Za-z0-9._:\[\]-]{1,100}", host):
-            return None, _env(error="project and host are required and must be plain names", code="bad_request", status=400)
-        db = _paths.monitor_db(project, host)
-        if not db.exists():                                   # never create a history just because somebody asked for it
-            return None, _env(error="no monitoring history for this machine yet", code="not_found", status=404)
-        try:
-            return Store(db), None
-        except StoreError as e:
-            return None, _env(error=str(e), code=e.code, status=500)
-
-    def _need_monitoring() -> Response | None:
-        if not features.enabled("monitoring"):
-            return _env(error="monitoring is switched off (GISSTACK_FEATURES=monitoring)", code="feature_disabled", status=404)
-        return None
-
-    @app.post("/api/v1/monitor/collect")
-    def api_v1_collect() -> Response:
-        """Body: {config, mode, ssh}.  Takes one real sample now, stores it, evaluates alerts (and notifies)."""
-        if (off := _need_monitoring()) is not None:
-            return off
-        from ..monitoring import service
-        cfg, mode, ssh, target = _ops_args(request.get_json(silent=True) or {})
-        try:
-            mon = service.Monitor(cfg, mode, ssh, target)
-            res = mon.tick()
-            return _env({"snapshot": service.snapshot(mon.store), "notifications": res["notifications"], "errors": res["errors"]})
-        except deploy_mod.DeployError as e:
-            return _env(error=str(e), code=e.code, status=502)
-
-    @app.get("/api/v1/metrics")
-    def api_v1_metrics() -> Response:
-        if (off := _need_monitoring()) is not None:
-            return off
-        from ..monitoring import service
-        store, err = _monitor_store()
-        if err is not None:
-            return err
-        try:
-            return _env(service.snapshot(store))
-        finally:
-            store.close()
-
-    @app.get("/api/v1/metrics/history")
-    def api_v1_history() -> Response:
-        """?project&host&name[&since=<seconds back>][&step=<bucket s>][&limit][&labels=<json object>]"""
-        if (off := _need_monitoring()) is not None:
-            return off
-        store, err = _monitor_store()
-        if err is not None:
-            return err
-        try:
-            name = request.args.get("name", "")
-            if not name:
-                return _env(error="name is required", code="bad_request", status=400)
-            try:
-                since = time.time() - float(request.args.get("since", 3600))
-                step = float(request.args["step"]) if "step" in request.args else None
-                limit = min(20000, int(request.args.get("limit", 5000)))
-                labels = json.loads(request.args["labels"]) if "labels" in request.args else None
-                if labels is not None and not (isinstance(labels, dict) and all(isinstance(v, str) for v in labels.values())):
-                    raise ValueError("labels must be an object of strings")
-            except (ValueError, TypeError) as e:
-                return _env(error=f"bad parameter: {e}", code="bad_request", status=400)
-            return _env(store.series(name, labels, since=since, step=step, limit=limit), name=name)
-        finally:
-            store.close()
-
-    @app.get("/api/v1/alerts")
-    def api_v1_alerts() -> Response:
-        if (off := _need_monitoring()) is not None:
-            return off
-        store, err = _monitor_store()
-        if err is not None:
-            return err
-        try:
-            return _env({"alerts": store.alert_state(), "events": store.events(limit=100)})
-        finally:
-            store.close()
 
     @app.get("/metrics")
     def prometheus_metrics() -> Response:
         """Prometheus text for the newest sample (needs both flags: monitoring and prometheus; same authentication as everything else)."""
-        if (off := _need_monitoring()) is not None:
-            return off
-        if not features.enabled("prometheus"):
-            return _env(error="the Prometheus export is switched off (GISSTACK_FEATURES=monitoring,prometheus)", code="feature_disabled", status=404)
-        from ..monitoring import service
-        store, err = _monitor_store()
-        if err is not None:
-            return err
+        for flag in ("monitoring", "prometheus"):
+            if not features.enabled(flag):
+                return api_mount.envelope(error=ApiError(404, "feature_disabled", f"switched off (GISSTACK_FEATURES={flag})"), status=404)
+        import re as _re
+
+        from ..core import paths as _paths
+        from ..monitoring import service as _service
+        from ..monitoring.store import Store, StoreError
+        project, host = request.args.get("project", ""), request.args.get("host", "localhost")
+        if not _re.fullmatch(r"[a-z][a-z0-9_]{0,30}", project) or not _re.fullmatch(r"[A-Za-z0-9._:\[\]-]{1,100}", host):
+            return api_mount.envelope(error=ApiError(400, "bad_request", "project and host are required and must be plain names"), status=400)
+        db = _paths.monitor_db(project, host)
+        if not db.exists():
+            return api_mount.envelope(error=ApiError(404, "not_found", "no monitoring history for this machine yet"), status=404)
         try:
-            return Response(service.prometheus_text(store, request.args.get("project", "")), mimetype="text/plain; version=0.0.4")
+            store = Store(db)
+        except StoreError as e:
+            return api_mount.envelope(error=ApiError(500, "store", str(e)), status=500)
+        try:
+            return Response(_service.prometheus_text(store, project), mimetype="text/plain; version=0.0.4")
         finally:
             store.close()
 
@@ -800,6 +665,23 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
         with job.lock:
             lines = job.lines[since:]
         return jsonify({"lines": lines, "next": since + len(lines), "done": job.done, "ok": job.ok})
+
+    # ---------------------------------------------------------------- /api/v1 and the deprecation of the old /api routes
+    from ..api import routes as _routes, routes_monitor as _routes_monitor  # noqa: F401 - importing registers the routes
+    api_mount.mount(app, api_registry, __version__)
+    legacy = {}
+    for r in api_registry.routes:
+        for old in r.legacy:
+            legacy[old] = r.full_path
+
+    @app.after_request
+    def deprecation(resp: Response) -> Response:
+        """The pre-1.0 /api/* routes keep working for one more release; they say so and point at their replacement."""
+        rule = request.url_rule.rule if request.url_rule else ""
+        if rule in legacy:
+            resp.headers["Deprecation"] = "true"
+            resp.headers["Link"] = f'<{legacy[rule]}>; rel="successor-version"'
+        return resp
 
     return app
 

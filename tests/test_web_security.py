@@ -202,9 +202,9 @@ class AppTests(unittest.TestCase):
             self.assertLessEqual(len(self.app.config["JOBS"]), 3)
 
     def test_job_log_is_capped(self):
-        from gisstack.webgui import app as appmod
-        with mock.patch.object(appmod, "MAX_JOB_LINES", 5):
-            j = appmod.Job()
+        from gisstack.api import jobs as jobsmod
+        with mock.patch.object(jobsmod, "MAX_JOB_LINES", 5):
+            j = jobsmod.Job()
             for i in range(20):
                 j.add(str(i))
         self.assertEqual(len(j.lines), 6)

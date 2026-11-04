@@ -48,6 +48,10 @@ def journal_file() -> Path:
     return _sub("journal.jsonl")
 
 
+def tokens_file() -> Path:
+    return _sub("tokens.json")
+
+
 def log_file() -> Path:
     return _sub("gisstack.log")
 
