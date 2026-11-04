@@ -442,7 +442,8 @@ async function deploy() {
     const plan = exPlan();
     const planned = Object.keys(plan).length > 0;
     const r0 = await fetch(planned ? "/api/existing/execute" : "/api/deploy", {method: "POST", headers: H,
-      body: JSON.stringify(planned ? Object.assign({plan, install: true, with_data: $("#ex_data").checked}, body) : body)});
+      body: JSON.stringify(planned ? Object.assign({plan, install: true, with_data: $("#ex_data").checked,
+        confirm_data_loss: Object.values(plan).some((v) => v.purge && (v.action === "remove" || v.action === "reuse"))}, body) : body)});
     const j0 = await r0.json();
     if (r0.status === 409 && j0.existing) { renderEx(j0.existing); throw new Error(j0.error + " (იხილე სექცია 7ა)"); }
     if (!r0.ok) throw new Error(j0.error || r0.statusText);
@@ -792,9 +793,10 @@ async function exRun() {
   const plan = exPlan();
   if (!Object.keys(plan).length) return showErr("გეგმა ცარიელია: აირჩიე მოქმედება მინიმუმ ერთ პროგრამაზე.");
   const what = Object.entries(plan).map(([k, v]) => `${k}: ${v.action}${v.purge ? " + მონაცემები" : ""}`).join("\n");
-  if (!confirm(`შესრულდება (ყოველ წაშლამდე ბექაფი):\n${what}\n\nგავაგრძელო?`)) return;
+  const wipes = Object.values(plan).some((v) => v.purge && (v.action === "remove" || v.action === "reuse"));
+  if (!confirm(`შესრულდება (ყოველ წაშლამდე ბექაფი):\n${what}\n\n` + (wipes ? "⚠ მონაცემებიც წაიშლება და ვერ აღდგება!\n\n" : "") + "გავაგრძელო?")) return;
   try {
-    await streamJob("/api/existing/execute", opsBody({plan, install: false, with_data: $("#ex_data").checked}));
+    await streamJob("/api/existing/execute", opsBody({plan, install: false, with_data: $("#ex_data").checked, confirm_data_loss: wipes}));
     await exScan();
   } catch (e) { showErr(e.message); }
 }

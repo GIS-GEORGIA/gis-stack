@@ -2,7 +2,7 @@
 # gisstack Kubernetes deploy {{ version }}   usage: ./apply.sh [apply|delete|status|only|clean]
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
-NS={{ k8s.namespace }}
+NS={{ k8s.namespace | shq }}
 command -v kubectl >/dev/null || { echo "kubectl not found" >&2; exit 1; }
 
 case "${1:-apply}" in
@@ -20,9 +20,9 @@ case "${1:-apply}" in
 {% if c.caddy %}
     kubectl -n "$NS" rollout status deployment/caddy --timeout=300s
     echo
-    echo "Entry point (Service type {{ k8s.service_type }}):"
+    echo "Entry point (Service type {{ k8s.service_type | shdq }}):"
     kubectl -n "$NS" get svc caddy
-    echo "Point DNS for {{ domain }} at the EXTERNAL-IP above."
+    echo "Point DNS for {{ domain | shdq }} at the EXTERNAL-IP above."
 {% endif %}
     ;;
   delete) kubectl delete -k . ;;

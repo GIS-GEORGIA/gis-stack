@@ -76,6 +76,13 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
   (`os.execv`). `ttk.Style("clam")` + `recolor()` tk ვიჯეტებისთვის.
 - `desktop.LANG` ტესტში პირდაპირ ისმება; `importlib.reload(desktop)` არ გამოიყენო — monkeypatch-ები რეკურსიაში გადადის.
 
+## უსაფრთხოება (Phase 1a)
+- ყველა კონფიგურაციის ველს აქვს წესი `validation.py`-ში; ახალი ველი = ახალი წესი + `InjectionFuzzTests` ავტომატურად ფარავს (ტექსტურ ველებს).
+- შაბლონებში ყოველი მნიშვნელობა კონტექსტის ფილტრით: `shq` (მთელი სიტყვა), `shdq` ("..."), `shdw` ("${V:-...}"; ბაშში `'` ამ კონტექსტში ახალ ციტატას ხსნის → `"'"`), `yq` (YAML).
+- საიდუმლოს ჩაწერა მხოლოდ `fsutil.write_private/write_file`-ით; საქაღალდე `fsutil.private_dir`-ით. პირდაპირი `write_text`+`chmod` არ გამოიყენო.
+- ბექაფის სკრიპტი ვერასოდეს ბეჭდავს `BACKUP_VERIFIED=`-ს ჩავარდნისას; `existing.run` მხოლოდ ამ მარკერზე გადადის წაშლაზე. `GS_BACKUP_ROOT`/`GS_PGRUN` ტესტებისთვისაა.
+- `ss` პროცესის სახელს 15 სიმბოლომდე ჭრის — შედარება prefix-ით (`discover._is_ours_proc`).
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

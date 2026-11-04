@@ -430,7 +430,7 @@ for s in $STEPS; do
 done
 write_credentials
 
-SCHEME={{ scheme }}
+SCHEME={{ scheme | shq }}
 echo
 log "Done."
 echo "  Map / home:   $SCHEME://$DOMAIN/"

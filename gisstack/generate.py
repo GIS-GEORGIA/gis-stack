@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import shutil
 import stat
 import tarfile
@@ -13,7 +14,7 @@ from typing import Any, Iterable
 
 import jinja2
 
-from . import __version__, catalog
+from . import __version__, catalog, fsutil
 
 PKG_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = PKG_DIR / "templates"
@@ -32,7 +33,9 @@ def _env() -> jinja2.Environment:
         autoescape=False,
     )
     env.filters["tojson_c"] = lambda v: json.dumps(v, ensure_ascii=False)
-    env.filters["shq"] = lambda s: "'" + str(s).replace("'", "'\"'\"'") + "'"
+    env.filters["shq"] = lambda s: "'" + str(s).replace("'", "'\"'\"'") + "'"      # a whole word, single-quoted
+    env.filters["shdq"] = _shdq            # inside "double quotes"
+    env.filters["shdw"] = _shdw            # inside "${VAR:-default word}"
     env.filters["yq"] = lambda s: json.dumps(str(s), ensure_ascii=False)  # YAML-safe string
     return env
 
@@ -248,13 +251,21 @@ def _plan(cfg: dict[str, Any]) -> Iterable[tuple[str, str, str, bool]]:
             yield "k8s", "common/mapproxy_app.py.j2", "k8s/files/app.py", False
 
 
+def _shdq(value: Any) -> str:
+    """Escape text for use inside a double-quoted shell string: no expansion, no early end of the string."""
+    return re.sub(r'([\\"$`])', r"\\\1", str(value))
+
+
+def _shdw(value: Any) -> str:
+    """Same, for the default word of "${VAR:-word}" (where an unescaped } would also end the expansion)."""
+    # a single quote would open a quoted section inside the word: close the double quote around it instead
+    return re.sub(r'([\\"$`}])', r"\\\1", str(value)).replace("'", "\"'\"")
+
+
 def _write(path: Path, text: str, executable: bool = False, secret: bool = False) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    mode = 0o755 if executable else 0o644
-    if secret:
-        mode = 0o600
-    path.chmod(mode)
+    """Secret files get 0600 from their first byte; everything else keeps the usual 0644 / 0755."""
+    mode = 0o600 if secret else (0o755 if executable else 0o644)
+    fsutil.write_file(path, text, mode, atomic=False)
 
 
 def _copy_tree(src: Path, dst: Path) -> None:
@@ -296,7 +307,7 @@ def generate_bundle(cfg: dict[str, Any], out_dir: str | os.PathLike) -> Path:
     out = Path(out_dir)
     if out.exists():
         shutil.rmtree(out)
-    out.mkdir(parents=True)
+    fsutil.private_dir(out)            # the bundle holds secrets: owner-only from the start
     env = _env()
     targets = cfg["targets"]
     ctx_any = build_context(cfg, targets[0] if targets else "native")

@@ -8,7 +8,7 @@ metadata:
 spec:
   accessModes: ["ReadWriteOnce"]
 {% if k8s.storage_class %}
-  storageClassName: {{ k8s.storage_class }}
+  storageClassName: {{ k8s.storage_class | yq }}
 {% endif %}
   resources:
     requests:

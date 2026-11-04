@@ -5,6 +5,16 @@
 
 > **ქართულად, მოკლედ:** აუდიტმა იპოვა 2 კრიტიკული (P0) საკითხი: (1) კონფიგურაციის მნიშვნელობები უსაფრთხოდ არ გადადის გენერირებულ shell სკრიპტებში და root-ით გაშვებულ `install.sh`-ში (დადასტურებულია), (2) არსებული პროგრამების წაშლისას ბექაფის ჩავარდნა წაშლას არ აჩერებს. დანარჩენი დეტალები და პრიორიტეტები ქვემოთაა.
 
+## Remediation status
+
+| ID | Status | Notes |
+|---|---|---|
+| S-01 | **Fixed (Phase 1a)** | `validation.py`, quoting filters in every shell/YAML template, fuzz test (mutation-checked). |
+| S-02 | **Fixed (Phase 1a)** | Fail-closed backup script, SHA-256 manifest, archive/dump verification, exclusive creation, confirm token for `+purge`. Restore command: Phase 7. |
+| S-05 | **Fixed (Phase 1a)** | `fsutil`, 0600/0700 at creation, atomic replace, remote `umask 077`. |
+| discover | **Fixed (found while testing Phase 1a)** | A foreign process on a port of one of *our own* services (nginx on :80) was not reported as a conflict. |
+| S-03, S-04, S-06…S-12, R-01…R-07, A-*, T-* | Open | Scheduled in ROADMAP phases 1b, 2, 11a. |
+
 ## 1. Method
 
 | What | How |

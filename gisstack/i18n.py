@@ -441,6 +441,22 @@ EN.update({
     "დიახ": "Yes",
 })
 
+
+# Phase 1a: validation and safer backups
+EN.update({
+    "ბექაფის ფაილი უკვე არსებობს და არ გადაიწერება:": "The backup file already exists and will not be overwritten:",
+    "ბექაფში SHA256SUMS არ არის": "The backup has no SHA256SUMS",
+    "ბექაფში ფაილი აკლია:": "A file is missing from the backup:",
+    "ბექაფის ფაილი დაზიანებულია (SHA-256):": "A backup file is corrupted (SHA-256):",
+    "ბექაფის არქივი ვერ იკითხება:": "The backup archive cannot be read:",
+    "ბექაფის ასლი ამ მანქანაზე:": "backup copy on this machine:",
+    "ფაილი": "file",
+    "ბექაფი ვერ შეიქმნა ან ვერ გადამოწმდა": "The backup could not be created or verified",
+    "ბექაფი ვერ შეიქმნა ან ვერ გადამოწმდა — არაფერი წაშლილა": "The backup could not be created or verified - nothing was deleted",
+    "მონაცემების წაშლა ('+purge') მოითხოვს ექსპლიციტურ დადასტურებას:": "Deleting data ('+purge') requires explicit confirmation:",
+    "მონაცემების წაშლა მოითხოვს ექსპლიციტურ დადასტურებას (confirm_data_loss)": "Deleting data requires explicit confirmation (confirm_data_loss)",
+})
+
 _GEO = "Ⴀ-ჿ"
 _compiled: tuple[re.Pattern[str], dict[str, str]] | None = None
 

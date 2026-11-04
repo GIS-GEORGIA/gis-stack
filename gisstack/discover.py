@@ -277,8 +277,13 @@ def needed_ports(cfg: dict[str, Any], target: str = "native") -> dict[str, list[
 
 
 # processes that belong to a component, for telling "ours" from "somebody else's" on a port
-_PROC = {"postgis": {"postgres", "postmaster"}, "tomcat": {"java"}, "qgis_server": {"qgis_mapserv.f", "spawn-fcgi", "systemd", "init"},
+_PROC = {"postgis": {"postgres", "postmaster"}, "tomcat": {"java"}, "qgis_server": {"qgis_mapserv", "spawn-fcgi", "systemd", "init"},
          "mapproxy": {"gunicorn", "python3", "python"}, "caddy": {"caddy"}}
+
+
+def _is_ours_proc(comp: str, name: str) -> bool:
+    """Process names in `ss` are cut to 15 characters, so compare by prefix (qgis_mapserv.fc)."""
+    return any(name == p or name.startswith(p) for p in _PROC.get(comp, set()))
 
 
 def conflicts(report: dict[str, Any], cfg: dict[str, Any], target: str = "native") -> list[dict[str, Any]]:
@@ -291,15 +296,15 @@ def conflicts(report: dict[str, Any], cfg: dict[str, Any], target: str = "native
         for l in report["listeners"]:
             if l["port"] not in ports:
                 continue
-            if c is not None and c["ours"] and not c["foreign"]:
-                continue                      # our own, already running
             who = l["proc"] or "?"
+            if c is not None and c["ours"] and not c["foreign"] and (not l["proc"] or _is_ours_proc(comp, who)):
+                continue                      # our own, already running (a different process on our port is still a conflict)
             key = (comp, l["port"])
             if key in seen:                       # same listener on IPv4 and IPv6
                 seen[key]["addr"] += ", " + l["addr"]
                 continue
             seen[key] = {"component": comp, "port": l["port"], "addr": l["addr"], "process": who, "pid": l["pid"],
-                         "owner": comp if (c and c["foreign"] and who in _PROC.get(comp, set())) else "other"}
+                         "owner": comp if (c and c["foreign"] and _is_ours_proc(comp, who)) else "other"}
             out.append(seen[key])
     return out
 

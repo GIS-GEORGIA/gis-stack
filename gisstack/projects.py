@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from . import config, deploy
+from . import config, deploy, fsutil
 
 # component id -> top-level config sections it owns
 SECTIONS: dict[str, list[str]] = {
@@ -65,12 +65,8 @@ def load_full(name: str) -> dict[str, Any]:
 
 
 def _write(name: str, data: dict[str, Any]) -> Path:
-    p = _path(name)
-    tmp = p.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-    tmp.chmod(0o600)       # may contain passwords the user typed
-    tmp.replace(p)
-    return p
+    # may contain passwords the user typed: owner-only from the first byte, replaced atomically
+    return fsutil.write_private(_path(name), json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def _validate(data: dict[str, Any]) -> None:

@@ -9,7 +9,7 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from . import catalog
+from . import catalog, fsutil, validation
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 _SECRET_RE = re.compile(r"^[A-Za-z0-9_.\-]{8,64}$")
@@ -109,8 +109,16 @@ def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,
 
     persist_secrets: remember generated passwords per project (~/.gisstack/secrets/<project>.json, mode 600)
     and reuse them, so re-deploying or cleaning the same project does not rotate them on every run."""
-    cfg = _merge(default_config(), user_cfg or {})
+    template = default_config()
+    if user_cfg is not None and not isinstance(user_cfg, dict):
+        raise ConfigError("config: must be an object")
+    cfg = _merge(template, user_cfg or {})
+    shape = validation.check_shape(cfg, template)
+    if shape:                                 # a malformed file must produce a clear error, never a traceback
+        raise ConfigError("\n".join(shape))
     errors: list[str] = []
+    v_errors, v_warnings = validation.validate(cfg, template, [b["id"] for b in catalog.BASEMAPS])
+    errors.extend(dict.fromkeys(v_errors))
 
     if not _NAME_RE.match(cfg["project"]):
         errors.append("project: მხოლოდ a-z, 0-9, _ (პატარა ასოებით დაწყებული)")
@@ -179,7 +187,7 @@ def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,
         if val and not _SECRET_RE.match(str(val)):
             errors.append(f"{label}: 8-64 სიმბოლო, მხოლოდ A-Z a-z 0-9 _ . -")
 
-    meta_warnings: list[str] = []
+    meta_warnings: list[str] = list(v_warnings)
     if not comps["caddy"] and any(comps[c] for c in ("geoserver", "mapproxy", "webmap", "qgis_server")):
         meta_warnings.append("Caddy გამორთულია: სერვისები პირდაპირ პორტებზე იქნება ხელმისაწვდომი")
     if comps["geoserver"] and comps["tomcat"] and "native" not in cfg["targets"]:
@@ -228,9 +236,8 @@ def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,
         fill(cfg["geoserver"], "admin_password", "geoserver.admin_password")
         fill(cfg["tomcat"], "manager_password", "tomcat.manager_password")
         if store is not None and saved != before:
-            store.parent.mkdir(parents=True, exist_ok=True)
-            store.write_text(json.dumps(saved))
-            store.chmod(0o600)
+            fsutil.private_dir(store.parent)
+            fsutil.write_private(store, json.dumps(saved))
 
     cfg["_meta"] = {"warnings": meta_warnings}
     return cfg

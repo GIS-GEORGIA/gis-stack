@@ -5,7 +5,7 @@ import json
 import os
 from typing import Any
 
-from . import deploy
+from . import deploy, fsutil
 
 LANGS = ("auto", "ka", "en")
 THEMES = ("auto", "light", "dark")
@@ -41,9 +41,7 @@ def save(lang: str | None = None, theme: str | None = None) -> dict[str, str]:
         if theme not in THEMES:
             raise ValueError(f"theme must be one of {', '.join(THEMES)}")
         cur["theme"] = theme
-    p = _path()
-    p.write_text(json.dumps(cur, indent=2), encoding="utf-8")
-    p.chmod(0o600)
+    fsutil.write_private(_path(), json.dumps(cur, indent=2))
     return cur
 
 

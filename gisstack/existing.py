@@ -12,14 +12,17 @@ A *plan* maps a program to an action:
 Backups stay on the server in /var/backups/gisstack/<timestamp>/ and a copy is downloaded to this machine."""
 from __future__ import annotations
 
+import io
+import os
 import re
+import secrets
 import shlex
 import subprocess
 import time
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from . import deploy, discover, ops
+from . import deploy, discover, fsutil, ops
 
 ACTIONS = ("ignore", "adopt", "remove", "reuse", "disable")
 REMOTE_BACKUPS = "/var/backups/gisstack"
@@ -125,9 +128,26 @@ def _q(s: str) -> str:
     return shlex.quote(s)
 
 
+def new_backup_id() -> str:
+    """Timestamp plus a random suffix: two backups in the same second can never collide."""
+    return time.strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(4)
+
+
 def backup_script(rep: dict[str, Any], comps: list[str], ts: str, with_data: bool) -> str:
-    d = f"{REMOTE_BACKUPS}/{ts}"
-    out = ["set -u", f"D={_q(d)}", 'umask 077', 'mkdir -p "$D"', f'echo "gisstack backup {ts}" > "$D/manifest.txt"']
+    """Back up the settings (and, with_data / for PostgreSQL re-use, the databases) of the given programs.
+
+    The script FAILS CLOSED: any tar / dump / verification error makes it exit non-zero without printing
+    BACKUP_VERIFIED, so nothing destructive may follow.  It refuses to reuse an existing backup directory,
+    writes SHA-256 sums for every artefact and re-reads every archive and dump before declaring success.
+    GS_BACKUP_ROOT and GS_PGRUN exist so the script can be exercised without root (tests)."""
+    if not re.fullmatch(r"[0-9A-Za-z-]{8,40}", ts):
+        raise PlanError("bad backup id")
+    out = ["set -u", 'umask 077', f'ROOT="${{GS_BACKUP_ROOT:-{REMOTE_BACKUPS}}}"', f'D="$ROOT/{ts}"',
+           'PGRUN="${GS_PGRUN-runuser -u postgres --}"',
+           'mkdir -p "$ROOT" && chmod 700 "$ROOT"',
+           'mkdir "$D" 2>/dev/null || { echo "BACKUP_EXISTS: $D"; exit 1; }',
+           'FAIL=0', 'fail() { echo "  FAILED: $*"; FAIL=1; }',
+           f'echo "gisstack backup {ts}" > "$D/manifest.txt"']
     for comp in comps:
         paths = BACKUP_PATHS.get(comp, [])
         out.append(f'echo "== backup {comp}"')
@@ -139,17 +159,66 @@ def backup_script(rep: dict[str, Any], comps: list[str], ts: str, with_data: boo
             out.append('for p in $L; do s=$(du -sm "/$p" 2>/dev/null | cut -f1); '
                        '[ "${s:-0}" -gt 500 ] && { echo "skipped (too big: ${s} MB, use --with-data): /$p"; '
                        'L="$(echo " $L " | sed "s# $p # #")"; }; done')
-        out.append(f'[ -n "$L" ] && tar czf "$D/{comp}.tar.gz" --ignore-failed-read -C / $L 2>/dev/null && echo "  {comp}.tar.gz ok" || echo "  (no files)"')
+        out.append(f'if [ -n "$L" ]; then tar czf "$D/{comp}.tar.gz" --ignore-failed-read -C / $L 2>"$D/.tar-{comp}.err"; '
+                   f'rc=$?; [ "$rc" -le 1 ] && echo "  {comp}.tar.gz written" || fail "tar {comp} (exit $rc)"; '
+                   f'rm -f "$D/.tar-{comp}.err"; else echo "  (no files for {comp})"; fi')
         if comp == "tomcat":
-            out.append('ls -1d /var/lib/tomcat*/webapps/* /opt/tomcat*/webapps/* /opt/apache-tomcat*/webapps/* /usr/share/tomcat*/webapps/* 2>/dev/null > "$D/tomcat-webapps.txt"')
+            out.append('ls -1d /var/lib/tomcat*/webapps/* /opt/tomcat*/webapps/* /opt/apache-tomcat*/webapps/* /usr/share/tomcat*/webapps/* 2>/dev/null > "$D/tomcat-webapps.txt"; true')
         if comp == "postgis":
             dbs = [x for x in rep["components"]["postgis"].get("databases", []) if _DB.match(x)]
-            out.append('(cd /tmp && runuser -u postgres -- pg_dumpall --globals-only > "$D/pg-globals.sql" 2>/dev/null) && echo "  pg-globals.sql ok"')
+            out.append('(cd /tmp && $PGRUN pg_dumpall --globals-only > "$D/pg-globals.sql") 2>/dev/null '
+                       '&& echo "  pg-globals.sql written" || fail "pg_dumpall --globals-only"')
             if with_data:
                 for db in dbs:
-                    out.append(f'(cd /tmp && runuser -u postgres -- pg_dump -Fc {_q(db)} > "$D/pg-db-{db}.dump") && echo "  pg-db-{db}.dump ok" || echo "  FAILED dump {db}"')
-    out.append('echo "BACKUP_DIR=$D"')
+                    out.append(f'(cd /tmp && $PGRUN pg_dump -Fc {_q(db)} > "$D/pg-db-{db}.dump") '
+                               f'&& echo "  pg-db-{db}.dump written" || fail "pg_dump {db}"')
+    out += [
+        # --- verification: checksums, readable archives, restorable dumps
+        'cd "$D" || exit 1',
+        'ls -1 | grep -v "^SHA256SUMS$" > .files',
+        'if [ -s .files ]; then xargs -d "\\n" sha256sum < .files > SHA256SUMS || fail "sha256sum"; fi',
+        'rm -f .files',
+        'for f in *.tar.gz; do [ -e "$f" ] || continue; tar tzf "$f" >/dev/null 2>&1 || fail "archive unreadable: $f"; done',
+        'for f in pg-db-*.dump; do [ -e "$f" ] || continue; (cd /tmp && $PGRUN pg_restore -l < "$D/$f" >/dev/null 2>&1) || fail "dump not restorable: $f"; done',
+        '[ ! -s SHA256SUMS ] || sha256sum -c --quiet SHA256SUMS >/dev/null 2>&1 || fail "checksum verification"',
+        'if [ "$FAIL" != 0 ]; then mv "$D" "$D.FAILED" 2>/dev/null; echo "BACKUP_FAILED: kept as $D.FAILED - nothing was deleted"; exit 1; fi',
+        'echo "BACKUP_VERIFIED=$D"', 'echo "BACKUP_DIR=$D"',
+    ]
     return "\n".join(out) + "\n"
+
+
+def verify_backup_archive(path: str | Path) -> int:
+    """Check a downloaded backup.tar.gz against the SHA256SUMS inside it.  Returns the number of verified files."""
+    import hashlib
+    import tarfile
+    want: dict[str, str] = {}
+    try:
+        with tarfile.open(path, "r:gz") as tf:
+            members = {m.name: m for m in tf.getmembers() if m.isfile()}
+            sums = next((n for n in members if n.endswith("/SHA256SUMS")), None)
+            if sums is None:
+                raise deploy.DeployError("ბექაფში SHA256SUMS არ არის")
+            for line in (tf.extractfile(members[sums]) or io.BytesIO()).read().decode("utf-8", "replace").splitlines():
+                parts = line.split()
+                if len(parts) == 2 and re.fullmatch(r"[0-9a-f]{64}", parts[0]):
+                    want[parts[1].lstrip("*")] = parts[0]
+            prefix = sums[: -len("SHA256SUMS")]
+            for name, digest in want.items():
+                m = members.get(prefix + name)
+                if m is None:
+                    raise deploy.DeployError(f"ბექაფში ფაილი აკლია: {name}")
+                h = hashlib.sha256()
+                fh = tf.extractfile(m)
+                while fh is not None:
+                    chunk = fh.read(1 << 20)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+                if h.hexdigest() != digest:
+                    raise deploy.DeployError(f"ბექაფის ფაილი დაზიანებულია (SHA-256): {name}")
+    except (tarfile.TarError, EOFError, OSError) as e:
+        raise deploy.DeployError(f"ბექაფის არქივი ვერ იკითხება: {e}") from e
+    return len(want)
 
 
 def _pkgs(c: dict[str, Any], pattern: str | None = None) -> list[str]:
@@ -290,17 +359,20 @@ else echo "  (nothing to import)"; fi''')
 # --------------------------------------------------------------------------- backups on this machine
 def fetch_backup(mode: str, ssh: dict[str, Any] | None, ts: str, dest_dir: str | Path | None, host_label: str) -> Path:
     """Download /var/backups/gisstack/<ts> as one tar.gz into dest_dir/<host>/."""
-    dest = (Path(dest_dir).expanduser() if dest_dir else deploy.home_dir() / "backups") / re.sub(r"[^A-Za-z0-9._-]", "_", host_label)
-    dest.mkdir(parents=True, exist_ok=True)
+    dest = fsutil.private_dir((Path(dest_dir).expanduser() if dest_dir else deploy.home_dir() / "backups")
+                              / re.sub(r"[^A-Za-z0-9._-]", "_", host_label))
     out = dest / f"{ts}.tar.gz"
     script = f"tar czf - -C {_q(REMOTE_BACKUPS)} {_q(ts)}"
-    with open(out, "wb") as fh:
+    try:
+        fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)        # never overwrites an existing backup
+    except FileExistsError as e:
+        raise deploy.DeployError(f"ბექაფის ფაილი უკვე არსებობს და არ გადაიწერება: {out}") from e
+    with os.fdopen(fd, "wb") as fh:
         p = subprocess.run(ops._argv(mode, ssh, script, root=True), stdin=subprocess.DEVNULL, stdout=fh,
                            stderr=subprocess.PIPE, timeout=900)
     if p.returncode != 0 or out.stat().st_size == 0:
         out.unlink(missing_ok=True)
         raise deploy.DeployError("ბექაფის ჩამოტვირთვა ვერ მოხერხდა: " + p.stderr.decode(errors="replace").strip()[-200:])
-    out.chmod(0o600)
     return out
 
 
@@ -318,13 +390,15 @@ def backup(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | No
     comps = [c for c in comps if c in discover.COMPONENTS]
     if not comps:
         raise PlanError("კომპონენტი არ არის არჩეული")
-    ts = time.strftime("%Y%m%d-%H%M%S")
+    ts = new_backup_id()
     yield f"== ბექაფი: {', '.join(comps)}  ({REMOTE_BACKUPS}/{ts})"
     out = ops._run(mode, ssh, backup_script(rep, comps, ts, with_data), root=True, timeout=900)
     yield from _tail(out)
-    if "BACKUP_DIR=" not in out:
-        raise deploy.DeployError("ბექაფი ვერ შეიქმნა")
-    yield f"ბექაფის ასლი ამ მანქანაზე: {fetch_backup(mode, ssh, ts, backup_dir, host_label(mode, ssh))}"
+    if "BACKUP_VERIFIED=" not in out:
+        raise deploy.DeployError("ბექაფი ვერ შეიქმნა ან ვერ გადამოწმდა")
+    local = fetch_backup(mode, ssh, ts, backup_dir, host_label(mode, ssh))
+    n = verify_backup_archive(local)
+    yield f"ბექაფის ასლი ამ მანქანაზე: {local} (SHA-256 ✔ {n} ფაილი)"
     yield "== დასრულდა"
 
 
@@ -336,13 +410,16 @@ def _tail(text: str) -> Iterator[str]:
 
 def run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None, plan: dict[str, Any] | None,
         make_bundle: Callable[[dict[str, Any]], Path], *, with_data: bool = False, backup_dir: str | None = None,
-        install: bool = True) -> Iterator[str]:
+        install: bool = True, confirm_data_loss: bool = False) -> Iterator[str]:
     """scan -> check plan -> backup -> remove -> install (build on top where asked) -> import.  Yields log lines.
 
     make_bundle(cfg) must render the bundle for the (possibly adjusted) cfg and return its folder."""
     if target != "native":
         raise PlanError("არსებული პროგრამების მართვა ახლა მხოლოდ native სამიზნეზეა")
     plan = _norm(plan)
+    wipes = [c for c, p in plan.items() if p["purge"] and p["action"] in ("remove", "reuse")]
+    if wipes and not confirm_data_loss:
+        raise PlanError("მონაცემების წაშლა ('+purge') მოითხოვს ექსპლიციტურ დადასტურებას: " + ", ".join(wipes))
     yield "== არსებული პროგრამების შემოწმება"
     rep = discover.scan(cfg, mode, ssh, target)
     problems = validate(plan, rep, cfg)
@@ -352,17 +429,18 @@ def run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None,
     cfg = dict(cfg)
     flags: list[str] = []
     todo_backup = [c for c, p in plan.items() if c in discover.COMPONENTS and p["action"] in ("remove", "reuse")]
-    ts = time.strftime("%Y%m%d-%H%M%S")
+    ts = new_backup_id()
     if todo_backup:
         # PostgreSQL databases are only dumped when they will be re-used (or when asked for)
         yield f"== ბექაფი: {', '.join(todo_backup)}  ({REMOTE_BACKUPS}/{ts})"
         dump_pg = with_data or plan.get("postgis", {}).get("action") == "reuse"
         out = ops._run(mode, ssh, backup_script(rep, todo_backup, ts, with_data or dump_pg), root=True, timeout=900)
         yield from _tail(out)
-        if "BACKUP_DIR=" not in out:
-            raise deploy.DeployError("ბექაფი ვერ შეიქმნა — არაფერი წაშლილა")
+        if "BACKUP_VERIFIED=" not in out:       # fail closed: no verified backup, nothing is removed
+            raise deploy.DeployError("ბექაფი ვერ შეიქმნა ან ვერ გადამოწმდა — არაფერი წაშლილა")
         local = fetch_backup(mode, ssh, ts, backup_dir, host_label(mode, ssh))
-        yield f"ბექაფის ასლი ამ მანქანაზე: {local}"
+        n = verify_backup_archive(local)
+        yield f"ბექაფის ასლი ამ მანქანაზე: {local} (SHA-256 ✔ {n} ფაილი)"
     for comp, p in plan.items():
         if comp in discover.WEB_SERVERS and p["action"] == "disable":
             yield from _tail(ops._run(mode, ssh, disable_script(comp + ".service"), root=True))

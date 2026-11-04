@@ -1,8 +1,12 @@
+import copy
 import json
 import os
 import re
+import stat
+import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +14,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gisstack import config, deploy, deps, discover, existing, generate, i18n, ops, projects, settings, updater  # noqa: E402
+from gisstack import config, deploy, deps, discover, existing, fsutil, generate, i18n, ops, projects, settings, updater, validation  # noqa: E402
 
 
 def make(user=None):
@@ -754,6 +758,19 @@ ours=yes
         self.assertEqual(discover.conflicts(rep, self.cfg), [])
         self.assertTrue(any("დარჩენილი ფაილები" in d for d in c["tomcat"]["details"]))
 
+    def test_a_foreign_process_on_a_port_of_our_own_service_is_still_a_conflict(self):
+        out = self.OURS_OUT.replace("LISTEN 0 100 0.0.0.0:443 0.0.0.0:* users:((\"caddy\",pid=10,fd=1))",
+                                    "LISTEN 0 100 0.0.0.0:443 0.0.0.0:* users:((\"caddy\",pid=10,fd=1))\nLISTEN 0 100 0.0.0.0:80 0.0.0.0:* users:((\"nginx\",pid=77,fd=1))")
+        rep = discover.analyse(discover.parse(out), self.cfg)
+        got = discover.conflicts(rep, self.cfg)
+        self.assertEqual([(x["component"], x["port"], x["process"]) for x in got], [("caddy", 80, "nginx")])
+        # ...while our own caddy on 443 is not, and neither is our QGIS worker (its process name is cut to 15 characters)
+        self.assertNotIn(443, [x["port"] for x in got])
+        qgis = out.replace("LISTEN 0 4096 127.0.0.1:9993  0.0.0.0:* users:((\"qgis_mapserv.fc\",pid=1,fd=1))", "")
+        qgis = qgis.replace("@@paths", "LISTEN 0 4096 127.0.0.1:9993 0.0.0.0:* users:((\"qgis_mapserv.fc\",pid=1,fd=1))\n@@paths").replace("gisstack-mapproxy.service active running", "gisstack-mapproxy.service active running\ngisstack-qgis.service active running")
+        rep2 = discover.analyse(discover.parse(qgis), self.cfg)
+        self.assertNotIn(9993, [x["port"] for x in discover.conflicts(rep2, self.cfg)])
+
     def test_plan_spec_and_validation(self):
         self.assertEqual(existing.parse_plan_spec("qgis=remove, caddy=reuse+purge")["qgis_server"], {"action": "remove", "purge": False})
         self.assertTrue(existing.parse_plan_spec("caddy=remove+purge")["caddy"]["purge"])
@@ -1022,6 +1039,444 @@ class DepsTests(unittest.TestCase):
         self.assertIn("Install it now? [y/N]", sh)
         self.assertIn("[ -t 0 ]", sh)                     # only on a terminal
         self.assertIn("--no-tk", sh)
+
+
+class ConfigValidationTests(unittest.TestCase):
+    """Phase 1a / S-01: every field has a type, a range or a pattern; hostile and malformed input is rejected."""
+
+    def rejects(self, **patch):
+        cfg = copy.deepcopy(config.default_config())
+        for path, value in patch.items():
+            cur = cfg
+            keys = path.split("__")
+            for k in keys[:-1]:
+                cur = cur[k]
+            cur[keys[-1]] = value
+        with self.assertRaises(config.ConfigError) as cm:
+            config.resolve(cfg)
+        return str(cm.exception)
+
+    def test_defaults_and_numeric_strings_still_work(self):
+        c = config.resolve({"postgres": {"port": "5433", "ram_gb": "16"}, "webmap": {"center": ["41.7", "44.8"]}})
+        self.assertEqual((c["postgres"]["port"], c["postgres"]["ram_gb"]), (5433, 16))
+        self.assertEqual(c["webmap"]["center"], [41.7, 44.8])
+        self.assertEqual(c["_meta"]["warnings"], [])
+
+    def test_ranges_and_types(self):
+        for bad in ({"postgres__port": 99999}, {"postgres__port": 0}, {"postgres__port": "abc"}, {"postgres__port": True},
+                    {"postgres__ram_gb": -1}, {"postgres__max_connections": 5}, {"tomcat__heap_mb": 1}, {"qgis__processes": 1000},
+                    {"mapproxy__workers": 0}, {"webmap__zoom": 40}, {"webmap__center": [91, 0]}, {"postgres__remote_access": "yes"},
+                    {"mapproxy__seed__levels": [10, 2]}, {"mapproxy__seed__bbox": [10, 0, 5, 1]}, {"mapproxy__meta_size": [0, 4]}):
+            self.rejects(**bad)
+
+    def test_patterns_for_values_that_reach_shell_caddy_pg_hba_and_yaml(self):
+        self.assertIn("allowed_cidr", self.rejects(postgres__allowed_cidr="0.0.0.0/0 trust # "))
+        self.assertIn("allowed_cidr", self.rejects(postgres__allowed_cidr="10.0.0.0/33"))
+        self.assertIn("email", self.rejects(email="a@b.c\n\theader_up X-Evil 1"))
+        self.assertIn("email", self.rejects(email="not-an-email"))
+        self.assertIn("k8s.namespace", self.rejects(k8s__namespace="x; touch /tmp/pwn #"))
+        self.assertIn("k8s.namespace", self.rejects(k8s__namespace="UPPER"))
+        self.assertIn("projects_dir", self.rejects(qgis__projects_dir="/srv/q$(touch /tmp/pwn)"))
+        self.assertIn("projects_dir", self.rejects(qgis__projects_dir="/srv/../etc"))
+        self.assertIn("projects_dir", self.rejects(qgis__projects_dir="relative/path"))
+        self.assertIn("image", self.rejects(geoserver__image="evil/image:1; rm -rf /"))
+        self.assertIn("basemap_url", self.rejects(webmap__basemap_url="javascript:alert(1)"))
+        self.assertIn("storage", self.rejects(k8s__pg_storage="20GB; x"))
+        self.assertIn("service_type", self.rejects(k8s__service_type="Evil"))
+
+    def test_control_characters_are_rejected_everywhere(self):
+        for field in ("webmap__title_en", "webmap__title_ka", "domain", "geoserver__version"):
+            self.rejects(**{field: "a\nb"})
+        self.rejects(mapproxy__layers=[{"name": "a", "title": "x\u0000y", "source": "geoserver"}])
+
+    def test_layer_items_are_validated(self):
+        self.rejects(mapproxy__layers=[{"name": "bad name", "title": "t", "source": "geoserver"}])
+        self.rejects(mapproxy__layers=[{"name": "ok", "title": "t", "source": "evil"}])
+        self.rejects(mapproxy__layers=[{"name": "ok", "title": "t", "source": "wms", "url": "ftp://x"}])
+        self.assertIn("unknown key", self.rejects(mapproxy__layers=[{"name": "ok", "title": "t", "source": "wms", "extra": 1}]))
+        self.rejects(mapproxy__layers=[{"name": "l%d" % i, "title": "t", "source": "geoserver"} for i in range(600)])
+
+    def test_malformed_files_give_errors_not_tracebacks(self):
+        for bad in ({"postgres": "x"}, {"components": []}, {"mapproxy": {"layers": "x"}}, {"webmap": {"center": 5}},
+                    {"k8s": None}, {"postgres": {"port": [1]}}, {"targets": "native"}, {"geoserver": {"extensions": 3}}):
+            with self.assertRaises(config.ConfigError, msg=str(bad)):
+                config.resolve(bad)
+        with self.assertRaises(config.ConfigError):
+            config.resolve([1, 2])             # type: ignore[arg-type]
+
+    def test_unknown_keys_warn_by_default_and_fail_in_strict_mode(self):
+        c = config.resolve({"postgres": {"prot": 5432}, "typo_section": {"a": 1}})
+        self.assertTrue(any("postgres.prot" in w and "typo_section" in w for w in c["_meta"]["warnings"]))
+        os.environ[validation.STRICT_ENV] = "error"
+        self.addCleanup(os.environ.pop, validation.STRICT_ENV, None)
+        with self.assertRaises(config.ConfigError) as cm:
+            config.resolve({"postgres": {"prot": 5432}})
+        self.assertIn("postgres.prot", str(cm.exception))
+
+    def test_cli_reports_a_broken_config_file_cleanly(self):
+        with tempfile.TemporaryDirectory() as td:
+            bad = Path(td) / "bad.json"
+            bad.write_text("{ not json")
+            r = subprocess.run([sys.executable, "-m", "gisstack", "generate", "-c", str(bad), "-o", str(Path(td) / "o")],
+                               capture_output=True, text=True, cwd=Path(__file__).resolve().parents[1])
+            self.assertNotEqual(r.returncode, 0)
+            self.assertNotIn("Traceback", r.stderr)
+
+
+class ShellQuotingTests(unittest.TestCase):
+    """The quoting filters must round-trip arbitrary text through real bash without expansion."""
+    SAMPLES = ["plain", "a b", "$(echo PWNED)", "`echo PWNED`", 'q"uote', "back\\slash", "a}b", "${HOME}", "x'y", "$$", "!history", "multi\nline", "*?[x]", ";|&<>"]
+
+    def test_double_quote_and_default_word_filters_roundtrip(self):
+        for text in self.SAMPLES:
+            for tmpl in ('printf %s "{}"', 'X=; printf %s "${{X:-{}}}"'):
+                filt = generate._shdw if "X:-" in tmpl else generate._shdq
+                r = subprocess.run(["bash", "-c", tmpl.format(filt(text))], capture_output=True, text=True)
+                self.assertEqual(r.stdout, text, (tmpl, text))
+
+    def test_single_quote_filter_roundtrips(self):
+        env = generate._env() if hasattr(generate, "_env") else None
+        shq = env.filters["shq"]
+        for text in self.SAMPLES:
+            r = subprocess.run(["bash", "-c", f"printf %s {shq(text)}"], capture_output=True, text=True)
+            self.assertEqual(r.stdout, text)
+
+
+class InjectionFuzzTests(unittest.TestCase):
+    """Phase 1a / S-01 regression: hostile text in ANY string field is either rejected or completely inert in every
+    generated file.  'Inert' is checked by actually sourcing stack.env and running apply.sh / up.sh with stub tools."""
+    PAYLOADS = ["$(touch {m})", "`touch {m}`", "x\"; touch {m}; \"", "x'; touch {m}; '", "a\ntouch {m}",
+                "0.0.0.0/0 trust\n\theader_up X-Evil 1", "../../etc/passwd | tee {m}", "${{IFS}}{m}"]
+
+    @staticmethod
+    def string_paths(node, prefix=""):
+        out = []
+        for k, v in node.items():
+            path = f"{prefix}{k}"
+            if isinstance(v, dict):
+                out += InjectionFuzzTests.string_paths(v, path + ".")
+            elif isinstance(v, str) or (isinstance(v, list) and v and all(isinstance(x, str) for x in v)):
+                out.append(path)
+            elif isinstance(v, (int, float)) and not isinstance(v, bool):
+                out.append(path)
+        return out
+
+    def test_every_field_with_every_payload(self):
+        base = copy.deepcopy(config.default_config())
+        base["targets"] = ["native", "compose", "k8s"]
+        base["components"].update({"qgis_server": True, "geoserver": True, "mapproxy": True, "caddy": True, "webmap": True})
+        paths = [p for p in self.string_paths(base) if not p.startswith("ssh.")]
+        self.assertGreater(len(paths), 40)
+        accepted = rejected = 0
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            bindir = td / "bin"
+            bindir.mkdir()
+            for tool in ("docker", "kubectl"):
+                (bindir / tool).write_text("#!/bin/sh\nexit 0\n")
+                (bindir / tool).chmod(0o755)
+            env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}")
+            n = 0
+            for path in paths:
+                for payload in self.PAYLOADS:
+                    n += 1
+                    marker = td / f"pwn{n}"
+                    cfg = copy.deepcopy(base)
+                    cur = cfg
+                    keys = path.split(".")
+                    for k in keys[:-1]:
+                        cur = cur[k]
+                    orig = cur[keys[-1]]
+                    text = payload.format(m=marker)
+                    cur[keys[-1]] = [text] if isinstance(orig, list) else text
+                    try:
+                        resolved = config.resolve(cfg)
+                    except config.ConfigError:
+                        rejected += 1
+                        continue
+                    accepted += 1
+                    out = generate.generate_bundle(resolved, td / f"b{n}")
+                    for yml in list(out.rglob("*.yaml")) + list(out.rglob("*.yml")):
+                        list(yaml.safe_load_all(yml.read_text(encoding="utf-8")))
+                    subprocess.run(["bash", "-c", ". ./stack.env"], cwd=out / "native", env=env, capture_output=True)
+                    subprocess.run(["bash", "apply.sh", "status"], cwd=out / "k8s", env=env, capture_output=True)
+                    subprocess.run(["bash", "up.sh", "ps"], cwd=out / "compose", env=env, capture_output=True)
+                    self.assertFalse(marker.exists(), f"command execution via {path} = {text!r}")
+                    caddy = (out / "native/config/Caddyfile").read_text()
+                    self.assertNotIn("header_up X-Evil", caddy, f"Caddyfile injection via {path}")
+                    self.assertNotIn("0.0.0.0/0 trust", (out / "native/stack.env").read_text().split("PG_ALLOWED_CIDR")[1].split("\n")[0]
+                                     if "PG_ALLOWED_CIDR" in (out / "native/stack.env").read_text() else "")
+                    shutil.rmtree(out, ignore_errors=True)
+        self.assertGreater(rejected, 200)       # most hostile values never get past validation
+        self.assertGreater(accepted, 20)        # free-text fields are accepted, and were proven inert above
+
+
+class SecureFileTests(unittest.TestCase):
+    """Phase 1a / S-05: secrets are never written with loose permissions, not even briefly."""
+
+    def test_write_private_has_the_final_mode_from_the_first_byte(self):
+        old = os.umask(0o000)                      # the worst case: a umask that would make everything world-writable
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                f = Path(td) / "secret.json"
+                fsutil.write_private(f, "one")
+                fsutil.write_private(f, "two")     # atomic replace keeps the mode
+                self.assertEqual(stat.S_IMODE(f.stat().st_mode), 0o600)
+                self.assertEqual(f.read_text(), "two")
+                self.assertEqual([x.name for x in Path(td).iterdir()], ["secret.json"])   # no temp leftovers
+        finally:
+            os.umask(old)
+
+    def test_private_dir_creates_and_tightens(self):
+        with tempfile.TemporaryDirectory() as td:
+            d = Path(td) / "a" / "b"
+            fsutil.private_dir(d)
+            self.assertEqual(stat.S_IMODE(d.stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE(d.parent.stat().st_mode), 0o700)      # intermediate directories too
+            loose = Path(td) / "loose"
+            loose.mkdir(mode=0o755)
+            os.chmod(loose, 0o755)
+            fsutil.private_dir(loose)
+            self.assertEqual(stat.S_IMODE(loose.stat().st_mode), 0o700)
+
+    def test_home_dir_token_and_settings_are_private(self):
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["GISSTACK_HOME"] = str(Path(td) / "home")
+            self.addCleanup(os.environ.pop, "GISSTACK_HOME", None)
+            home = deploy.home_dir()
+            self.assertEqual(stat.S_IMODE(home.stat().st_mode), 0o700)
+            settings.save(lang="en")
+            self.assertEqual(stat.S_IMODE((home / "settings.json").stat().st_mode), 0o600)
+            try:
+                from gisstack.webgui.app import load_or_create_token
+            except ImportError:
+                return
+            load_or_create_token()
+            self.assertEqual(stat.S_IMODE((home / "web.token").stat().st_mode), 0o600)
+            config.resolve({"project": "perm"}, persist_secrets=True)
+            self.assertEqual(stat.S_IMODE((home / "secrets" / "perm.json").stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE((home / "secrets").stat().st_mode), 0o700)
+
+    def test_bundle_secret_files_are_created_0600_never_wider(self):
+        created = []
+        real_open = os.open
+
+        def spy(path, flags, mode=0o777, *a, **kw):
+            created.append((str(path), mode))
+            return real_open(path, flags, mode, *a, **kw)
+        old = os.umask(0o000)
+        os.open = spy
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                cfg = config.resolve({"targets": ["native", "compose", "k8s"]})
+                out = generate.generate_bundle(cfg, Path(td) / "b")
+                self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o700)
+                for rel in ("native/stack.env", "compose/.env", "k8s/secret.yaml", "stack.json"):
+                    self.assertEqual(stat.S_IMODE((out / rel).stat().st_mode), 0o600, rel)
+                    modes = [m for p, m in created if p.endswith(rel)]
+                    self.assertEqual(modes, [0o600], f"{rel} must be created 0600 (no write-then-chmod window)")
+                self.assertEqual(stat.S_IMODE((out / "native/install.sh").stat().st_mode), 0o755)
+                self.assertEqual(stat.S_IMODE((out / "native/config/Caddyfile").stat().st_mode), 0o644)
+        finally:
+            os.open = real_open
+            os.umask(old)
+
+    def test_remote_upload_uses_a_private_umask(self):
+        src = (Path(__file__).resolve().parents[1] / "gisstack/deploy.py").read_text()
+        self.assertIn("umask 077 && mkdir -p", src)
+
+
+class BackupSafetyTests(unittest.TestCase):
+    """Phase 1a / S-02: backups fail closed, are verified, never overwrite, and gate every destructive step."""
+
+    def setUp(self):
+        self.td = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(self.td, ignore_errors=True))
+        self.bin = self.td / "bin"
+        self.bin.mkdir()
+        self.stub("pg_dump", 'for a in "$@"; do last="$a"; done\n[ "$last" = "${GS_FAIL_DB:-none}" ] && exit 1\necho "DUMP of $last"')
+        self.stub("pg_dumpall", 'echo "-- globals"')
+        self.stub("pg_restore", 'if [ -n "${GS_FAIL_RESTORE:-}" ]; then exit 1; fi\ncat >/dev/null')
+        self.rep = {"components": {"postgis": {"databases": ["legacy", "gis"]}}, "family": "deb", "pkgs_all": []}
+        self.root = self.td / "backups"
+
+    def stub(self, name, body):
+        f = self.bin / name
+        f.write_text("#!/bin/bash\n" + body + "\n")
+        f.chmod(0o755)
+
+    def env(self, **extra):
+        return dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", GS_BACKUP_ROOT=str(self.root), GS_PGRUN="", **extra)
+
+    def run_backup(self, ts="20260101-000000-abcd", comps=("postgis",), with_data=True, **extra):
+        script = existing.backup_script(self.rep, list(comps), ts, with_data)
+        return subprocess.run(["bash", "-c", script], env=self.env(**extra), capture_output=True, text=True)
+
+    def test_success_writes_checksums_and_a_private_directory(self):
+        r = self.run_backup()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("BACKUP_VERIFIED=", r.stdout)
+        d = self.root / "20260101-000000-abcd"
+        self.assertEqual(stat.S_IMODE(d.stat().st_mode), 0o700)
+        sums = (d / "SHA256SUMS").read_text()
+        for name in ("pg-db-legacy.dump", "pg-db-gis.dump", "pg-globals.sql", "manifest.txt"):
+            self.assertIn(name, sums)
+        self.assertEqual(subprocess.run(["sha256sum", "-c", "--quiet", "SHA256SUMS"], cwd=d).returncode, 0)
+
+    def test_a_failed_dump_fails_closed(self):
+        r = self.run_backup(GS_FAIL_DB="gis")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("BACKUP_FAILED", r.stdout)
+        self.assertNotIn("BACKUP_VERIFIED", r.stdout)
+        self.assertNotIn("BACKUP_DIR=", r.stdout)
+        self.assertTrue((self.root / "20260101-000000-abcd.FAILED").is_dir())      # kept for inspection, never reused
+
+    def test_an_unrestorable_dump_fails_closed(self):
+        r = self.run_backup(GS_FAIL_RESTORE="1")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("BACKUP_VERIFIED", r.stdout)
+        self.assertIn("not restorable", r.stdout)
+
+    def test_a_failing_tar_fails_closed(self):
+        f = self.td / "etc" / "caddy" / "Caddyfile"
+        f.parent.mkdir(parents=True)
+        f.write_text("x")
+        old = existing.BACKUP_PATHS["caddy"]
+        existing.BACKUP_PATHS["caddy"] = [str(self.td / "etc" / "caddy")]
+        self.addCleanup(existing.BACKUP_PATHS.__setitem__, "caddy", old)
+        self.stub("tar", "exit 2")
+        r = self.run_backup(comps=("caddy",))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertNotIn("BACKUP_VERIFIED", r.stdout)
+        self.assertIn("tar caddy", r.stdout)
+
+    def test_an_existing_backup_directory_is_never_reused(self):
+        self.assertEqual(self.run_backup().returncode, 0)
+        marker = self.root / "20260101-000000-abcd" / "manifest.txt"
+        before = marker.read_text()
+        r = self.run_backup()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("BACKUP_EXISTS", r.stdout)
+        self.assertEqual(marker.read_text(), before)
+
+    def test_backup_ids_do_not_collide(self):
+        self.assertEqual(len({existing.new_backup_id() for _ in range(200)}), 200)
+
+    def make_archive(self, tamper=None, drop_sums=False):
+        shutil.rmtree(self.td / "pack", ignore_errors=True)
+        d = self.td / "pack" / "20260101-000000-abcd"
+        d.mkdir(parents=True)
+        (d / "a.txt").write_text("alpha")
+        (d / "b.txt").write_text("beta")
+        if not drop_sums:
+            subprocess.run("sha256sum a.txt b.txt > SHA256SUMS", shell=True, cwd=d, check=True)
+        if tamper:
+            (d / tamper).write_text("tampered")
+        out = self.td / "x.tar.gz"
+        with tarfile.open(out, "w:gz") as tf:
+            tf.add(d, arcname="20260101-000000-abcd")
+        return out
+
+    def test_downloaded_archives_are_verified(self):
+        self.assertEqual(existing.verify_backup_archive(self.make_archive()), 2)
+        for kwargs in ({"tamper": "b.txt"}, {"drop_sums": True}):
+            with self.assertRaises(deploy.DeployError):
+                existing.verify_backup_archive(self.make_archive(**kwargs))
+        broken = self.td / "broken.tar.gz"
+        broken.write_bytes(b"not a gzip")
+        with self.assertRaises(deploy.DeployError):
+            existing.verify_backup_archive(broken)
+
+    def test_local_copy_never_overwrites_an_existing_backup(self):
+        os.environ["GISSTACK_HOME"] = str(self.td / "home")
+        self.addCleanup(os.environ.pop, "GISSTACK_HOME", None)
+        dest = self.td / "dl" / "h"
+        dest.mkdir(parents=True)
+        (dest / "20260101-000000-abcd.tar.gz").write_text("precious")
+        with self.assertRaises(deploy.DeployError):
+            existing.fetch_backup("local", None, "20260101-000000-abcd", self.td / "dl", "h")
+        self.assertEqual((dest / "20260101-000000-abcd.tar.gz").read_text(), "precious")
+
+    # --- orchestration: nothing destructive may run unless a verified backup exists
+    def orchestrate(self, **env_extra):
+        rep = discover.analyse(discover.parse(SCAN_OUT), config.resolve({"components": {"geoserver": True, "qgis_server": True, "mapproxy": True, "caddy": True, "webmap": True}}, generate_secrets=False))
+        rep["conflicts"] = discover.conflicts(rep, config.resolve({}, generate_secrets=False))
+        ran = []
+        env = self.env(**env_extra)
+        real = (discover.scan, ops._run, existing.fetch_backup, deploy.deploy)
+
+        def fake_run(mode, ssh, script, **kw):
+            if "BACKUP_ROOT" in script:
+                r = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+                return r.stdout
+            ran.append(script[:60])
+            return ""
+
+        def fake_fetch(mode, ssh, ts, dest, label):
+            out = self.td / f"{ts}.tar.gz"
+            with tarfile.open(out, "w:gz") as tf:
+                tf.add(self.root / ts, arcname=ts)
+            return out
+        discover.scan = lambda *a, **k: rep
+        ops._run = fake_run
+        existing.fetch_backup = fake_fetch
+        deploy.deploy = lambda *a, **k: iter(["DEPLOYED"])
+        try:
+            plan = {"postgis": {"action": "reuse", "purge": False}, "tomcat": {"action": "remove", "purge": False},
+                    "nginx": {"action": "disable", "purge": False}}
+            lines = []
+            err = None
+            try:
+                for line in existing.run(config.resolve({}), "native", "local", None, plan, lambda c: self.td, backup_dir=str(self.td)):
+                    lines.append(line)
+            except deploy.DeployError as e:
+                err = e
+            return lines, ran, err
+        finally:
+            discover.scan, ops._run, existing.fetch_backup, deploy.deploy = real
+
+    def test_no_removal_after_a_failed_backup(self):
+        lines, ran, err = self.orchestrate(GS_FAIL_DB="gis")
+        self.assertIsNotNone(err)
+        self.assertEqual(ran, [], "no remove/disable/import script may run when the backup failed")
+        self.assertNotIn("DEPLOYED", lines)
+
+    def test_removal_and_install_follow_a_verified_backup(self):
+        lines, ran, err = self.orchestrate()
+        self.assertIsNone(err, err)
+        self.assertTrue(any("SHA-256 ✔" in l for l in lines))
+        self.assertIn("DEPLOYED", lines)
+        self.assertGreaterEqual(len(ran), 3)         # disable nginx, remove postgis, remove tomcat, import
+
+    def test_purge_needs_explicit_confirmation(self):
+        rep_calls = []
+        real = discover.scan
+        discover.scan = lambda *a, **k: rep_calls.append(1)
+        try:
+            with self.assertRaises(existing.PlanError):
+                list(existing.run(config.resolve({}), "native", "local", None, {"tomcat": {"action": "remove", "purge": True}},
+                                  lambda c: self.td))
+            self.assertEqual(rep_calls, [])           # refused before even scanning the server
+        finally:
+            discover.scan = real
+
+    def test_web_api_refuses_purge_without_confirmation(self):
+        try:
+            from gisstack.webgui.app import create_app
+        except ImportError:
+            self.skipTest("flask not installed")
+        os.environ["GISSTACK_HOME"] = str(self.td / "h2")
+        self.addCleanup(os.environ.pop, "GISSTACK_HOME", None)
+        c = create_app("tok").test_client()
+        c.get("/?token=tok")
+        h = {"X-GisStack": "1"}
+        body = {"mode": "local", "config": {"deploy_target": "native"}, "plan": {"tomcat": {"action": "remove", "purge": True}}}
+        real = deploy.preflight
+        deploy.preflight = lambda *a, **k: []
+        self.addCleanup(setattr, deploy, "preflight", real)
+        r = c.post("/api/existing/execute", json=body, headers=h)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("confirm_data_loss", r.get_json()["error"])
 
 
 if __name__ == "__main__":

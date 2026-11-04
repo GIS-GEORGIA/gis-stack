@@ -23,7 +23,7 @@ from typing import Any
 
 from flask import Flask, Response, abort, jsonify, make_response, redirect, render_template, request, send_file
 
-from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, generate, ops as ops_mod, projects as projects_mod, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
+from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, projects as projects_mod, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
 MAX_PREVIEW_BYTES = 120_000
@@ -37,8 +37,7 @@ def load_or_create_token(path: Path | None = None) -> str:
     if path.exists():
         return path.read_text().strip()
     tok = secrets.token_urlsafe(24)
-    path.write_text(tok)
-    path.chmod(0o600)
+    fsutil.write_private(path, tok)
     return tok
 
 
@@ -297,6 +296,9 @@ def create_app(token: str | None = None) -> Flask:
         if problems:
             return make_response(jsonify({"error": "; ".join(problems)}), 400)
         wd = bool(body.get("with_data"))
+        confirm = body.get("confirm_data_loss") is True
+        if any(v["purge"] and v["action"] in ("remove", "reuse") for v in plan.values()) and not confirm:
+            return make_response(jsonify({"error": "მონაცემების წაშლა მოითხოვს ექსპლიციტურ დადასტურებას (confirm_data_loss)"}), 400)
 
         def steps(job: Job) -> Any:
             bundle_dir = deploy_mod.home_dir() / "bundles" / f"{cfg['project']}-{job.id}"
@@ -305,7 +307,8 @@ def create_app(token: str | None = None) -> Flask:
                 generate.generate_bundle(c, bundle_dir)
                 os.chmod(bundle_dir, 0o700)
                 return bundle_dir
-            yield from existing_mod.run(cfg, target, mode, ssh, plan, make, with_data=wd, install=bool(install))
+            yield from existing_mod.run(cfg, target, mode, ssh, plan, make, with_data=wd, install=bool(install),
+                                        confirm_data_loss=confirm)
         return _plain_job(steps, locked=True)
 
     @app.post("/api/ops/status")

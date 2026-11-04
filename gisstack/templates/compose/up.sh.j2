@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-RUNTIME="${RUNTIME:-{{ runtime }}}"
+RUNTIME="${RUNTIME:-{{ runtime | shdw }}}"
 if [ "$RUNTIME" = podman ]; then
   if podman compose version >/dev/null 2>&1; then COMPOSE="podman compose"
   elif command -v podman-compose >/dev/null; then COMPOSE="podman-compose"
@@ -21,12 +21,12 @@ case "${1:-up}" in
     $COMPOSE --env-file .env up -d --build
     echo
     echo "Started. Check:  $COMPOSE ps"
-    echo "Open:  {{ public }}/"
+    echo "Open:  {{ public | shdq }}/"
 {% if c.geoserver %}
-    echo "GeoServer:  {{ public }}/geoserver/web/   (user admin, password in .env: GS_ADMIN_PASSWORD)"
+    echo "GeoServer:  {{ public | shdq }}/geoserver/web/   (user admin, password in .env: GS_ADMIN_PASSWORD)"
 {% endif %}
 {% if c.mapproxy %}
-    echo "MapProxy:   {{ public }}/mapproxy/demo/"
+    echo "MapProxy:   {{ public | shdq }}/mapproxy/demo/"
 {% endif %}
     ;;
   down)  $COMPOSE --env-file .env down ;;
@@ -70,7 +70,7 @@ case "${1:-up}" in
               caddy)     vols="caddy_data caddy_config" ;;
               *)         vols="" ;;
             esac
-            for v in $vols; do "$RUNTIME" volume rm -f "{{ project }}_$v" || true; done
+            for v in $vols; do "$RUNTIME" volume rm -f "{{ project | shdq }}_$v" || true; done
           done
         fi
       fi

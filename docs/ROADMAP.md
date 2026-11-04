@@ -35,7 +35,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 
 ## 3. Phases
 
-### Phase 1a — P0 fixes · **M**
+### Phase 1a — P0 fixes · **M** — ✅ implemented (see CHANGELOG *Unreleased* and `SECURITY.md`)
 - **Scope:** S-01, S-02, S-05 (quick wins).
 - **Work:** (1) `core/validation`: strict schema for the *whole* config (types, ranges, patterns, CIDR, e-mail, URL/image, K8s names, absolute paths, no control characters, `additionalProperties: false` with a clear migration message); (2) apply `shq`/YAML/Caddy-safe filters to **every** value in templates; (3) fail-closed backups: manifest + SHA-256, abort on any error, verify downloaded archive, never reuse a backup directory, explicit confirmation token before data-destroying actions; (4) atomic secret writes (`0600`/`0700`), `~/.gisstack` `0700`.
 - **Tests:** a *config fuzz* test injects metacharacters (`$()`, backticks, `;`, newline, `|`, quotes, `../`) into every string field and asserts either rejection or inert output in every generated file (and sources `stack.env` in a sandbox); backup tests with a failing `pg_dump` must never reach removal; permission tests.

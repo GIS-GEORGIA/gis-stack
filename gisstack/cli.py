@@ -28,10 +28,27 @@ from pathlib import Path
 from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, projects, settings, updater
 
 
+MAX_CONFIG_BYTES = 1_000_000
+
+
 def _load(path: str | None) -> dict:
+    """Read a JSON config file; any problem is reported as a ConfigError (clean message, exit code 2), not a traceback."""
     if not path:
         return {}
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        p = Path(path)
+        if p.stat().st_size > MAX_CONFIG_BYTES:
+            raise config.ConfigError(f"{path}: file is larger than {MAX_CONFIG_BYTES // 1000} kB")
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except config.ConfigError:
+        raise
+    except (OSError, UnicodeDecodeError) as e:
+        raise config.ConfigError(f"{path}: cannot be read ({e.__class__.__name__}: {e})") from e
+    except ValueError as e:
+        raise config.ConfigError(f"{path}: not valid JSON ({e})") from e
+    if not isinstance(data, dict):
+        raise config.ConfigError(f"{path}: the top level must be a JSON object")
+    return data
 
 
 def _parse_ssh(a: argparse.Namespace) -> dict | None:
@@ -174,13 +191,17 @@ def _existing(a: argparse.Namespace, cfg: dict) -> int:
         if a.action == "backup":
             rep = discover.scan(cfg, a.mode, ssh, target)
             import time as _t
-            ts = _t.strftime("%Y%m%d-%H%M%S")
+            ts = existing.new_backup_id()
             out = ops._run(a.mode, ssh, existing.backup_script(rep, comps, ts, a.with_data), root=True, timeout=900)
             print(out, end="")
-            print("ასლი ამ მანქანაზე:", existing.fetch_backup(a.mode, ssh, ts, a.backup_dir, existing.host_label(a.mode, ssh)))
+            if "BACKUP_VERIFIED=" not in out:
+                print("ERROR: ბექაფი ვერ შეიქმნა ან ვერ გადამოწმდა", file=sys.stderr)
+                return 1
+            local = existing.fetch_backup(a.mode, ssh, ts, a.backup_dir, existing.host_label(a.mode, ssh))
+            print("ასლი ამ მანქანაზე:", local, f"(SHA-256 ✔ {existing.verify_backup_archive(local)} ფაილი)")
             return 0
         for line in existing.run(cfg, target, a.mode, ssh, plan, lambda c: None, with_data=a.with_data,
-                                 backup_dir=a.backup_dir, install=False):
+                                 backup_dir=a.backup_dir, install=False, confirm_data_loss=True):   # confirmed above
             print(line, flush=True)
         return 0
     except deploy.DeployError as e:
@@ -233,6 +254,8 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--existing", metavar="PLAN", help="what to do with programs already on the server: "
                    "comma list like postgis=adopt,tomcat=remove,caddy=reuse,nginx=disable (see: gisstack scan)")
     d.add_argument("--with-data", action="store_true", help="with --existing: also dump databases before removing")
+    d.add_argument("--confirm-data-loss", action="store_true",
+                   help="with --existing: allow '+purge' actions (they delete the program's data after a verified backup)")
     d.add_argument("--backup-dir", default=None, help="default: ~/.gisstack/backups")
 
     c = sub.add_parser("clean", help="remove the whole stack, or just some components")
@@ -398,7 +421,8 @@ def main(argv: list[str] | None = None) -> int:
                 def make(c: dict) -> Path:
                     generate.generate_bundle(c, out)
                     return out
-                lines = existing.run(cfg, target, a.mode, ssh, plan, make, with_data=a.with_data, backup_dir=a.backup_dir)
+                lines = existing.run(cfg, target, a.mode, ssh, plan, make, with_data=a.with_data, backup_dir=a.backup_dir,
+                                     confirm_data_loss=a.confirm_data_loss)
             else:
                 # no plan given: refuse only when someone else holds a port we need
                 if target == "native":

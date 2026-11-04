@@ -509,7 +509,8 @@ class App(tk.Tk):
         if not messagebox.askyesno("გეგმის შესრულება", f"შესრულდება (ყოველ წაშლამდე ბექაფი):\n{what}\n\nგავაგრძელო?", icon="warning"):
             return
         plan, wd = dict(self.exist_plan), self.exist_data.get()
-        self._exist_job("run", lambda: existing.run(cfg, "native", mode, ssh, plan, lambda c: None, with_data=wd, install=False))
+        self._exist_job("run", lambda: existing.run(cfg, "native", mode, ssh, plan, lambda c: None, with_data=wd, install=False,
+                                                    confirm_data_loss=True))     # the dialog above listed the plan, +purge included
 
     def _tab_clean(self, nb):
         f = self._tab(nb, "გასუფთავება / Cleanup")
@@ -886,13 +887,17 @@ class App(tk.Tk):
             return
         if target == "native":
             plan, wd = dict(self.exist_plan), self.exist_data.get()
+            if any(v["purge"] and v["action"] in ("remove", "reuse") for v in plan.values()):
+                if not messagebox.askyesno("გასუფთავება", "⚠ მონაცემებიც წაიშლება და ვერ აღდგება!\n" + "\n".join(
+                        f"{k}: {self._plan_label(k)}" for k in plan) + "\nგავაგრძელო?", icon="warning"):
+                    return
 
             def steps(b):
                 if plan:
                     def make(c):
                         generate.generate_bundle(c, b)
                         return b
-                    yield from existing.run(cfg, target, mode, ssh, plan, make, with_data=wd)
+                    yield from existing.run(cfg, target, mode, ssh, plan, make, with_data=wd, confirm_data_loss=True)
                     return
                 rep = discover.scan(cfg, mode, ssh, target)
                 if rep["conflicts"]:

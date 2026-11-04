@@ -6,11 +6,11 @@ metadata:
 spec:
   accessModes: ["ReadWriteOnce"]
 {% if k8s.storage_class %}
-  storageClassName: {{ k8s.storage_class }}
+  storageClassName: {{ k8s.storage_class | yq }}
 {% endif %}
   resources:
     requests:
-      storage: {{ k8s.mp_storage }}
+      storage: {{ k8s.mp_storage | yq }}
 ---
 apiVersion: v1
 kind: Service
@@ -43,7 +43,7 @@ spec:
       containers:
         - name: mapproxy
 {% if k8s.mapproxy_image %}
-          image: {{ k8s.mapproxy_image }}
+          image: {{ k8s.mapproxy_image | yq }}
           command: ["gunicorn", "--chdir", "/etc/mapproxy", "--workers", "{{ mp.workers }}", "--timeout", "120", "--bind", "0.0.0.0:8081", "app:application"]
 {% else %}
           # No custom image configured: installs MapProxy at start-up (needs internet

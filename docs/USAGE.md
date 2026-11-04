@@ -316,6 +316,10 @@ gisstack clean    -c stack.json --purge -y         # მთელი სტე�
   ფაილი დარჩება `/etc/gisstack/imported/Caddyfile.foreign`-ში.
 - **Tomcat, MapProxy:** ავტომატურად არაფერი გადმოდის; პარამეტრები ბექაფშია სახელმძღვანელოდ.
 
+**უსაფრთხოების გარანტიები:** წაშლამდე ბექაფი სრულად მოწმდება (არქივები იკითხება, დამპები აღდგება, SHA-256). თუ ბექაფი ვერ შეიქმნა ან ვერ გადამოწმდა,
+**არაფერი იშლება** (ჩავარდნილი ბექაფი რჩება `<id>.FAILED` სახელით). მონაცემების წაშლა (`remove+purge`) მოითხოვს დადასტურებას: GUI-ში გამაფრთხილებელ დიალოგს, CLI-ში
+`--confirm-data-loss`. ბექაფის ფაილი არასოდეს გადაიწერება.
+
 **ბრძანების ხაზიდან:**
 ```bash
 gisstack scan -c stack.json --mode ssh --ssh user@server --key ~/.ssh/id_ed25519      # რა დგას?
@@ -324,7 +328,7 @@ gisstack existing remove tomcat -c stack.json --mode ssh ...                    
 gisstack deploy -c stack.json --mode ssh ... \
     --existing "postgis=reuse,tomcat=remove,caddy=reuse,nginx=disable"                 # გეგმით
 ```
-მოქმედებები: `ignore`, `adopt`, `remove`, `reuse`, `disable`; `+purge` (მაგ. `tomcat=remove+purge`) შლის მონაცემებსაც.
+მოქმედებები: `ignore`, `adopt`, `remove`, `reuse`, `disable`; `+purge` (მაგ. `tomcat=remove+purge`) შლის მონაცემებსაც და მოითხოვს `--confirm-data-loss`-ს.
 `gisstack scan` აბრუნებს კოდს 3-ს, თუ პორტების კონფლიქტია.
 
 ## 12. პარამეტრები: ენა, თემა, GitHub

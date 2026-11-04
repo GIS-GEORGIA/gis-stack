@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterator
 
+from . import fsutil
+
 _HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$|^\[[0-9a-fA-F:]+\]$")
 _USER_RE = re.compile(r"^[a-z_][a-z0-9_\-]{0,31}$")
 _ENTRY = {"native": "install.sh", "compose": "up.sh", "k8s": "apply.sh"}
@@ -22,8 +24,7 @@ class DeployError(RuntimeError):
 
 def home_dir() -> Path:
     p = Path(os.environ.get("GISSTACK_HOME") or (Path.home() / ".gisstack"))
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+    return fsutil.private_dir(p)        # holds secrets, tokens, backups: owner-only (0700)
 
 
 def _stream(cmd: list[str], cwd: str | None = None, env: dict | None = None) -> Iterator[str]:
@@ -139,7 +140,7 @@ def _run_entry(cfg: dict[str, Any], bundle: Path, target: str, mode: str, ssh: d
             tf.add(bundle / target, arcname=target)   # webmap etc. are already inside <target>/
         yield "ბანდლის ატვირთვა…"
         with open(tmp_path, "rb") as fh:
-            p = subprocess.run(base + [f"mkdir -p {remote_dir} && tar xzf - -C {remote_dir}"],
+            p = subprocess.run(base + [f"umask 077 && mkdir -p {remote_dir} && tar xzf - -C {remote_dir}"],
                                stdin=fh, capture_output=True, text=True)
         if p.returncode != 0:
             raise DeployError("ატვირთვა ვერ მოხერხდა: " + (p.stderr or p.stdout).strip())
