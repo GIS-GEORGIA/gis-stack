@@ -123,7 +123,7 @@ def allowed_hosts_from_env() -> tuple[str, ...]:
 
 
 SAFE_BODY_KEYS = ("mode", "component", "components", "action", "purge", "remove_postgres", "with_data", "skip_preflight", "lines", "follow",
-                  "install", "confirm_data_loss", "save")
+                  "install", "confirm_data_loss", "save", "id", "only", "dry_run", "staging", "confirm", "keep", "days", "with_cache")
 
 
 def summarize(body: Any) -> dict[str, Any]:

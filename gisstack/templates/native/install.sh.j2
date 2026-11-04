@@ -13,7 +13,7 @@ set -Eeuo pipefail
 trap 'echo "ERROR: failed near line $LINENO (step: ${CURRENT_STEP:-init})" >&2' ERR
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ALL_STEPS="base{% if c.postgis %} postgis{% endif %}{% if c.tomcat %} tomcat{% endif %}{% if c.geoserver %} geoserver{% endif %}{% if c.qgis_server %} qgis{% endif %}{% if c.mapproxy %} mapproxy{% endif %}{% if c.caddy %} caddy{% endif %}{% if c.webmap %} webmap{% endif %} firewall"
+ALL_STEPS="base{% if c.postgis %} postgis{% endif %}{% if c.tomcat %} tomcat{% endif %}{% if c.geoserver %} geoserver{% endif %}{% if c.qgis_server %} qgis{% endif %}{% if c.mapproxy %} mapproxy{% endif %}{% if c.caddy %} caddy{% endif %}{% if c.webmap %} webmap{% endif %} backup firewall"
 
 # ---------------------------------------------------------------- helpers
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -439,6 +439,13 @@ step_webmap() {
   chmod -R a+rX /var/www/gisstack
 }
 {% endif %}
+
+step_backup() {      # gisstack-backup: verified backups, safe restores (docs/USAGE.md)
+  install -d -m 755 /usr/local/sbin
+  install -m 755 "$HERE/gisstack-backup" /usr/local/sbin/gisstack-backup
+  install -d -m 700 /var/backups/gisstack/stack
+  log "backup tool installed: gisstack-backup create|list|verify|restore|prune"
+}
 
 step_firewall() {
   if command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q 'Status: active'; then

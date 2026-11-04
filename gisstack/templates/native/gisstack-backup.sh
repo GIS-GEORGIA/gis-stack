@@ -249,7 +249,18 @@ members_ok() {   # members_ok ARCHIVE REGEX: no absolute paths, no "..", no esca
     echo "  refused: link pointing outside the archive in $(basename "$arc")"; return 1; fi
 }
 
-wait_http() { local i; for i in $(seq 1 "$2"); do curl -fsS -o /dev/null -m 3 "$1" 2>/dev/null && return 0; sleep 1; done; return 1; }
+http_ok() {   # http_ok URL: 2xx/3xx answer; curl when present, otherwise plain bash for http://host:port/path
+  if command -v curl >/dev/null 2>&1; then curl -fsS -o /dev/null -m 3 "$1" 2>/dev/null; return; fi
+  local rest hp host port path code
+  rest="${1#http://}"; hp="${rest%%/*}"; path="/${rest#*/}"; [ "$hp" = "$rest" ] && path="/"
+  host="${hp%%:*}"; port="${hp##*:}"; [ "$port" = "$hp" ] && port=80
+  exec 8<>"/dev/tcp/$host/$port" 2>/dev/null || return 1
+  printf 'GET %s HTTP/1.0\r\nHost: %s\r\n\r\n' "$path" "$hp" >&8
+  read -r -t 3 _ code _ <&8 || { exec 8>&-; return 1; }
+  exec 8>&-
+  [[ "$code" =~ ^[23][0-9][0-9]$ ]]
+}
+wait_http() { local i; for i in $(seq 1 "$2"); do http_ok "$1" && return 0; sleep 1; done; return 1; }
 
 cmd_restore() {
   local id="${1:-}"; shift || true

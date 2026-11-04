@@ -149,6 +149,11 @@ if has postgis; then
   fi
 fi
 
+if [ "$FULL" = 1 ]; then
+  systemctl disable --now gisstack-backup.timer >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/gisstack-backup.timer /etc/systemd/system/gisstack-backup.service /usr/local/sbin/gisstack-backup
+  [ -d /var/backups/gisstack ] && echo "kept: /var/backups/gisstack (your backups are never deleted by uninstall, not even with --purge)"
+fi
 systemctl daemon-reload
 systemctl reset-failed >/dev/null 2>&1 || true
 

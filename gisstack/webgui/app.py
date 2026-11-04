@@ -29,7 +29,7 @@ from flask import Flask, Response, abort, jsonify, make_response, redirect, rend
 
 from . import security
 from ..core import paths
-from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, services, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
+from .. import __version__, backup as backup_mod, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, services, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
 MAX_PREVIEW_BYTES = 120_000
@@ -404,6 +404,73 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
             yield from existing_mod.run(cfg, target, mode, ssh, plan, make, with_data=wd, install=bool(install),
                                         confirm_data_loss=confirm)
         return _plain_job(steps, locked=True)
+
+    def _backup_args(body: dict[str, Any]) -> tuple[dict[str, Any], str, dict[str, Any]]:
+        cfg, mode, ssh, _ = _ops_args(body)
+        if cfg["deploy_target"] != "native":
+            abort(make_response(jsonify({"error": "native სამიზნე სჭირდება", "code": "deploy"}), 400))
+        return cfg, mode, ssh
+
+    def _backup_job(make: Any) -> Response:
+        """Validate eagerly (400 with a code), then run the generator as a locked background job."""
+        try:
+            gen = make()
+            first = next(gen, None)            # validation errors are raised before the first line
+        except deploy_mod.DeployError as e:
+            return make_response(jsonify({"error": str(e), "code": e.code}), 400)
+        import itertools
+        return _plain_job(lambda job: itertools.chain([first] if first is not None else [], gen), locked=True)
+
+    @app.post("/api/backup/list")
+    def api_backup_list() -> Response:
+        cfg, mode, ssh = _backup_args(request.get_json(silent=True) or {})
+        try:
+            return jsonify({"backups": backup_mod.list_backups(cfg, mode, ssh)})
+        except deploy_mod.DeployError as e:
+            return make_response(jsonify({"error": str(e), "code": e.code}), 502)
+
+    @app.post("/api/backup/create")
+    def api_backup_create() -> Response:
+        """Body: {config, mode, ssh, components?, with_cache?, note?}."""
+        body = request.get_json(silent=True) or {}
+        cfg, mode, ssh = _backup_args(body)
+        comps = body.get("components")
+        if comps is not None and not isinstance(comps, list):
+            return make_response(jsonify({"error": "components must be a list", "code": "deploy"}), 400)
+        return _backup_job(lambda: backup_mod.create(cfg, mode, ssh, comps, with_cache=bool(body.get("with_cache")), note=str(body.get("note") or "")))
+
+    @app.post("/api/backup/verify")
+    def api_backup_verify() -> Response:
+        body = request.get_json(silent=True) or {}
+        cfg, mode, ssh = _backup_args(body)
+        return _backup_job(lambda: backup_mod.verify(cfg, mode, ssh, str(body.get("id", ""))))
+
+    @app.post("/api/backup/prune")
+    def api_backup_prune() -> Response:
+        """Body: {config, mode, ssh, keep?, days?, keep_pre?, dry_run?}.  dry_run defaults to TRUE: deleting needs dry_run=false."""
+        body = request.get_json(silent=True) or {}
+        cfg, mode, ssh = _backup_args(body)
+        try:
+            keep, keep_pre = int(body.get("keep", 14)), int(body.get("keep_pre", 5))
+            days = int(body["days"]) if body.get("days") is not None else None
+        except (TypeError, ValueError):
+            return make_response(jsonify({"error": "keep/days must be numbers", "code": "deploy"}), 400)
+        return _backup_job(lambda: backup_mod.prune(cfg, mode, ssh, keep, days, keep_pre, dry_run=body.get("dry_run", True) is not False))
+
+    @app.post("/api/backup/restore")
+    def api_backup_restore() -> Response:
+        """Body: {config, mode, ssh, id, only?, dry_run?, staging?, confirm?, pre_backup?, rollback?}.
+
+        dry_run defaults to TRUE (a plan).  Replacing live data needs dry_run=false AND confirm=true."""
+        body = request.get_json(silent=True) or {}
+        cfg, mode, ssh = _backup_args(body)
+        only = body.get("only")
+        if only is not None and not isinstance(only, list):
+            return make_response(jsonify({"error": "only must be a list", "code": "deploy"}), 400)
+        dry = body.get("dry_run", True) is not False
+        return _backup_job(lambda: backup_mod.restore(cfg, mode, ssh, str(body.get("id", "")), only=only, dry_run=dry, staging=bool(body.get("staging")),
+                                                       confirm=body.get("confirm") is True, pre_backup=body.get("pre_backup", True) is not False,
+                                                       rollback=body.get("rollback", True) is not False))
 
     @app.post("/api/ops/status")
     def api_ops_status() -> Response:

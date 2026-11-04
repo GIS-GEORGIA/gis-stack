@@ -325,6 +325,8 @@ def generate_bundle(cfg: dict[str, Any], out_dir: str | os.PathLike) -> Path:
 
     if "native" in targets:       # what install.sh verifies its downloads against
         _write(out / "native/config/pins.sha256", pins.pins_file())
+        tool = (TEMPLATE_DIR / "native/gisstack-backup.sh").read_text(encoding="utf-8")
+        _write(out / "native/gisstack-backup", tool.replace('"${GS_VERSION_STAMP:-}"', f'"${{GS_VERSION_STAMP:-{__version__}}}"'), executable=True)
         if effective_components(cfg, "native")["mapproxy"]:
             for name in ("mapproxy-requirements.txt", "mapproxy-requirements-py310.txt"):
                 _write(out / "native/config" / name, (TEMPLATE_DIR / "native" / name).read_text())

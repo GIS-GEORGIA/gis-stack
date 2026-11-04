@@ -252,7 +252,7 @@ class RestoreTests(Base):
         r = self.box.run("restore", bid, "--yes")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(f"RESTORE_OK={bid}", r.stdout)
-        self.assertEqual(self.box.tree_state(), {k: v for k, v in original.items()})
+        self.assertEqual(self.box.tree_state(), dict(original))
         pre = list(self.box.root.glob("pre-*"))
         self.assertEqual(len(pre), 1)                                          # automatic pre-restore backup, verified
         self.assertIn("VERIFY_OK", self.box.run("verify", pre[0].name).stdout)
@@ -346,7 +346,9 @@ class RestoreTests(Base):
         m = (d / "MANIFEST.json").read_text()
         for line in sums.splitlines():
             h, n = line.split()
-            m = re.sub(r'("name": "%s", "bytes": )\d+(, "sha256": ")[0-9a-f]+' % re.escape(n), lambda mo: f"{mo.group(1)}{(d / n).stat().st_size}{mo.group(2)}{h}", m)
+            size = (d / n).stat().st_size
+            pattern = r'("name": "' + re.escape(n) + r'", "bytes": )\d+(, "sha256": ")[0-9a-f]+'
+            m = re.sub(pattern, lambda mo, size=size, h=h: f"{mo.group(1)}{size}{mo.group(2)}{h}", m)
         (d / "MANIFEST.json").write_text(m)
         self.assertIn("VERIFY_OK", self.box.run("verify", bid).stdout)             # the forgery is internally consistent
 
@@ -379,8 +381,10 @@ class RestoreTests(Base):
 def _docker_pg_available():
     if not shutil.which("docker"):
         return False
-    return subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True).returncode == 0 or \
-        subprocess.run(["docker", "pull", "-q", IMAGE], capture_output=True).returncode == 0
+    if subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True).returncode == 0:
+        return True
+    # pulling a ~400 MB image is opt-in (CI sets GISSTACK_TEST_DOCKER=1 on one matrix entry)
+    return os.environ.get("GISSTACK_TEST_DOCKER") == "1" and subprocess.run(["docker", "pull", "-q", IMAGE], capture_output=True).returncode == 0
 
 
 @unittest.skipUnless(_docker_pg_available(), f"Docker and {IMAGE} needed")
@@ -413,7 +417,7 @@ class PostgresRoundTripTests(unittest.TestCase):
     def setUp(self):
         self.td = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.td, True)
-        self.db = f"gis"
+        self.db = "gis"
         self.sql(f'DROP DATABASE IF EXISTS "{self.db}" WITH (FORCE)')
         for d in self.sql("select datname from pg_database where datname like 'gis\\_%'").split():
             self.sql(f'DROP DATABASE "{d}" WITH (FORCE)')

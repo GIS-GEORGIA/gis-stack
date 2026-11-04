@@ -26,7 +26,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, services, settings, transport, updater
+from . import __version__, backup as backup_mod, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, services, settings, transport, updater
 from .core import log, paths
 
 
@@ -162,6 +162,76 @@ def _update(a: argparse.Namespace) -> int:
     except updater.UpdateError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
+
+
+def _backup(a: argparse.Namespace, cfg: dict) -> int:
+    ssh = _parse_ssh(a)
+    if ssh is None:
+        return 2
+    cfg = dict(cfg, deploy_target=a.target or cfg["deploy_target"])
+    comps = [c for c in (getattr(a, "components", None) or "").split(",") if c] or None
+    try:
+        if a.bcmd == "create":
+            lines: list[str] = []
+            for line in backup_mod.create(cfg, a.mode, ssh, comps, with_cache=a.with_cache, note=a.note):
+                lines.append(line)
+                print(line, flush=True)
+            bid = backup_mod.created_id(lines)
+            if a.download is not None:
+                path = backup_mod.download(cfg, a.mode, ssh, bid, a.download or None)
+                print(f"ასლი ამ კომპიუტერზე: {path} (SHA-256 ✔)")
+            return 0
+        if a.bcmd == "list":
+            rows = backup_mod.list_backups(cfg, a.mode, ssh)
+            print(json.dumps(rows, ensure_ascii=False, indent=2) if a.json else backup_mod.format_table(rows))
+            return 0
+        if a.bcmd == "verify":
+            for line in backup_mod.verify(cfg, a.mode, ssh, a.id):
+                print(line, flush=True)
+            return 0
+        if a.bcmd == "restore":
+            return _backup_restore(a, cfg, ssh, comps)
+        if a.bcmd == "prune":
+            for line in backup_mod.prune(cfg, a.mode, ssh, a.keep, a.days, a.keep_pre, a.dry_run):
+                print(line, flush=True)
+            return 0
+        if a.bcmd == "download":
+            print(backup_mod.download(cfg, a.mode, ssh, a.id, a.dest))
+            return 0
+        if a.bcmd == "upload":
+            print("UPLOAD_OK=" + backup_mod.upload(cfg, a.mode, ssh, a.file))
+            return 0
+        if a.bcmd == "schedule":
+            if a.action == "enable":
+                print(backup_mod.schedule_enable(cfg, a.mode, ssh, calendar=a.calendar, keep=a.keep, days=a.days, components=comps,
+                                                 with_cache=a.with_cache))
+            elif a.action == "disable":
+                print(backup_mod.schedule_disable(cfg, a.mode, ssh))
+            else:
+                print(backup_mod.schedule_status(cfg, a.mode, ssh))
+            return 0
+    except deploy.DeployError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    return 2
+
+
+def _backup_restore(a: argparse.Namespace, cfg: dict, ssh: dict, comps: list[str] | None) -> int:
+    only = [c for c in (a.only or "").split(",") if c] or None
+    # the wizard: always show the plan first (nothing is touched), then ask
+    for line in backup_mod.restore(cfg, a.mode, ssh, a.id, only=only, dry_run=True):
+        print(line, flush=True)
+    if a.dry_run:
+        return 0
+    if not a.staging and not a.yes:
+        print("\nეს ცოცხალ მონაცემებს ჩაანაცვლებს (ძველი დარჩება გვერდით, ჯერ ავტომატური ბექაფი შეიქმნება).")
+        if input("Type 'yes' to restore: ").strip() != "yes":
+            print("aborted")
+            return 1
+    for line in backup_mod.restore(cfg, a.mode, ssh, a.id, only=only, dry_run=False, staging=a.staging, confirm=True,
+                                   pre_backup=not a.no_pre_backup, rollback=not a.no_rollback):
+        print(line, flush=True)
+    return 0
 
 
 def _rotate(a: argparse.Namespace, cfg: dict) -> int:
@@ -363,6 +433,53 @@ def main(argv: list[str] | None = None) -> int:
     rt.add_argument("what", choices=rotation.WHAT)
     rt.add_argument("--password-file", metavar="FILE", help="read the new password from this file (mode 600) instead of generating one")
 
+    bk = sub.add_parser("backup", help="verified backups and safe restores of an installed (native) stack")
+    bsub = bk.add_subparsers(dest="bcmd", required=True)
+
+    def bconn(sp: argparse.ArgumentParser) -> None:
+        conn(sp)
+        sp.add_argument("--json", action="store_true")
+    b1 = bsub.add_parser("create", help="create a backup on the server (config, PostgreSQL, GeoServer data, QGIS projects)")
+    bconn(b1)
+    b1.add_argument("--components", help="comma list of: " + ",".join(backup_mod.COMPONENTS) + " (default: everything that exists)")
+    b1.add_argument("--with-cache", action="store_true", help="also the MapProxy tile cache (can be very large)")
+    b1.add_argument("--note", default="")
+    b1.add_argument("--download", metavar="DIR", nargs="?", const="", help="also copy the verified backup to this machine")
+    bconn(bsub.add_parser("list", help="backups on the server"))
+    b3 = bsub.add_parser("verify", help="re-read a backup and check every checksum")
+    bconn(b3)
+    b3.add_argument("id")
+    b4 = bsub.add_parser("restore", help="restore a backup (shows the plan first, asks before touching anything)")
+    bconn(b4)
+    b4.add_argument("id")
+    b4.add_argument("--only", help="comma list of components")
+    b4.add_argument("--dry-run", action="store_true", help="only show the plan")
+    b4.add_argument("--staging", action="store_true", help="unpack next to the live data (DB under a new name) instead of replacing it")
+    b4.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
+    b4.add_argument("--no-pre-backup", action="store_true", help="skip the automatic backup of the current state (not recommended)")
+    b4.add_argument("--no-rollback", action="store_true", help="keep the half-restored state on failure instead of rolling back")
+    b5 = bsub.add_parser("prune", help="delete old backups (the newest is never deleted)")
+    bconn(b5)
+    b5.add_argument("--keep", type=int, default=14)
+    b5.add_argument("--days", type=int, help="only delete backups older than this many days (beyond --keep)")
+    b5.add_argument("--keep-pre", type=int, default=5, help="how many pre-restore backups to keep")
+    b5.add_argument("--dry-run", action="store_true")
+    b6 = bsub.add_parser("download", help="copy a backup to this machine (verified, never overwrites)")
+    bconn(b6)
+    b6.add_argument("id")
+    b6.add_argument("--dest", help="default: ~/.gisstack/backups/stack/<host>/")
+    b7 = bsub.add_parser("upload", help="put a downloaded backup on a (new) server, e.g. for disaster recovery")
+    bconn(b7)
+    b7.add_argument("file")
+    b8 = bsub.add_parser("schedule", help="automatic backups with a systemd timer")
+    bconn(b8)
+    b8.add_argument("action", choices=["enable", "disable", "status"])
+    b8.add_argument("--calendar", default="daily", help="systemd OnCalendar value, e.g. daily, 'Mon *-*-* 03:00' (default: daily)")
+    b8.add_argument("--keep", type=int, default=14)
+    b8.add_argument("--days", type=int)
+    b8.add_argument("--components")
+    b8.add_argument("--with-cache", action="store_true")
+
     pf = sub.add_parser("preflight", help="can this machine take the selected stack? (disk, memory, OS, network, clock)")
     conn(pf)
     pf.add_argument("--json", action="store_true")
@@ -440,6 +557,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd in ("status", "logs") or a.cmd in ops.ACTIONS:
         return _ops(a, cfg)
 
+    if a.cmd == "backup":
+        return _backup(a, cfg)
     if a.cmd == "preflight":
         return _preflight(a, cfg)
     if a.cmd == "rotate-credentials":

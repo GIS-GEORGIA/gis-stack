@@ -44,7 +44,7 @@ jobs:
       - name: shellcheck (repository scripts and rendered scripts)
         run: |
           shellcheck --version
-          shellcheck -S warning install.sh packaging/*.sh
+          shellcheck -S warning install.sh packaging/*.sh gisstack/templates/native/gisstack-backup.sh
           shellcheck -S warning /tmp/bundle/native/install.sh /tmp/bundle/native/uninstall.sh /tmp/bundle/compose/up.sh /tmp/bundle/k8s/apply.sh
       - name: shellcheck (credential-rotation and pre-flight scripts)
         run: |
@@ -83,7 +83,12 @@ jobs:
         run: |
           pip install flask jinja2 pyyaml "coverage[toml]"
           if python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then pip install mapproxy; fi
+      - name: PostGIS image for the backup round-trip tests (one matrix entry only)
+        if: matrix.python == '3.12'
+        run: docker pull -q postgis/postgis:17-3.5
       - name: Run the test suite with coverage
+        env:
+          GISSTACK_TEST_DOCKER: ${{ matrix.python == '3.12' && '1' || '0' }}
         run: |
           coverage run -m unittest discover -s tests
           coverage report
