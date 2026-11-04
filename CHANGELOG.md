@@ -5,6 +5,15 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-04
+
+### განახლებისას გაითვალისწინე
+- ვებ GUI-ის წვდომა ახლა ვადიან სესიაზეა: ძველი ბრაუზერის cookie აღარ მუშაობს — გახსენი `gisstack web`-ის დაბეჭდილი ბმული თავიდან. სხვა `Host` სახელით (არა localhost) შესასვლელად საჭიროა `--allow-host`.
+- `gisstack deploy` ახლა ჯერ `preflight`-ს ატარებს (გამორთვა: `--skip-preflight`); საჭირო ჩამოტვირთვას უცნობი ვერსიისთვის (მაგ. საკუთარი `GS_VERSION`) SHA-256 არ აქვს და ინსტალაცია წყდება — `GS_ALLOW_UNVERIFIED=1` საკუთარი რისკით.
+- კონფიგურაციის ფაილში ახლა ჩაიწერება `schema_version`; ძველი ფაილები უცვლელად მუშაობს.
+- MapProxy-ის venv ახლა დამაგრებული ვერსიებით და ჰეშებით დგება (Python 3.11+: Pillow 13); Python 3.10-ზე გამოიყენება სარეზერვო სია გაფრთხილებით.
+- native ინსტალაცია ამატებს `gisstack-backup`-ს (`/usr/local/sbin`); `uninstall` ბექაფებს არასდროს შლის.
+
 ### ხარისხი და CI (Phase 11a)
 - **CI-ს კარიბჭეები:** ruff, mypy, shellcheck (საცავის და გენერირებული სკრიპტები), yamllint, `docker compose config`, `kubeconform`, `pip-audit`, bandit, CodeQL,
   Dependabot; ტესტები Python **3.9 – 3.13**-ზე; დაფარვის ზღვარი (≥70 %); sdist/wheel/deb/rpm-ის აგება და დაყენების შემოწმება.

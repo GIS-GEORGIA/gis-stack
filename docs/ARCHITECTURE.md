@@ -1,6 +1,6 @@
 # GIS-STACK — Architecture (current state)
 
-*Describes the code at the audited revision (package 0.1.2 + unreleased work). This document is descriptive: it records how the system works today. Proposed changes live in [ROADMAP.md](ROADMAP.md); problems are catalogued in [TECHNICAL_AUDIT.md](TECHNICAL_AUDIT.md).*
+*Describes the code at the audited revision (package 0.1.2 + the work released as 0.1.3). This document is descriptive: it records how the system works today. Proposed changes live in [ROADMAP.md](ROADMAP.md); problems are catalogued in [TECHNICAL_AUDIT.md](TECHNICAL_AUDIT.md).*
 
 ## 1. What the system is
 

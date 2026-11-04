@@ -74,7 +74,7 @@ gisstack web
 ტერმინალი დაბეჭდავს მსგავს ბმულს:
 
 ```
-gisstack web installer 0.1.2
+gisstack web installer 0.1.3
   open:  http://127.0.0.1:8765/?token=AbCd...
 ```
 
