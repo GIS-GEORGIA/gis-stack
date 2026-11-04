@@ -137,6 +137,12 @@ class CliBasicsTests(CliBase):
 class CliOperationsTests(CliBase):
     """Commands that talk to servers, with the collaborators replaced."""
 
+    def setUp(self):
+        super().setUp()
+        p = mock.patch("gisstack.preflight.run", return_value={"ok": True, "checks": [], "target": "native", "facts": {}})   # no network here
+        p.start()
+        self.addCleanup(p.stop)
+
     def rows(self, ok=True):
         row = {"id": "caddy", "name": "Caddy", "state": "running" if ok else "failed", "detail": "", "enabled": True, "pid": 1,
                "since": "", "restarts": 0, "listen": ["0.0.0.0:443"], "urls": [], "checks": [], "ok": ok, "unit": "caddy.service"}

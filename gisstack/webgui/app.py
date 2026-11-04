@@ -22,7 +22,7 @@ from typing import Any
 
 from flask import Flask, Response, abort, jsonify, make_response, redirect, render_template, request, send_file
 
-from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, projects as projects_mod, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
+from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
 MAX_PREVIEW_BYTES = 120_000
@@ -174,6 +174,15 @@ def create_app(token: str | None = None) -> Flask:
         threading.Thread(target=run, daemon=True).start()
         return jsonify({"job": job.id})
 
+    @app.post("/api/preflight")
+    def api_preflight() -> Response:
+        """Body: {config, mode, ssh}. Disk, memory, OS, network and clock checks for the selected stack."""
+        cfg, mode, ssh, target = _ops_args(request.get_json(silent=True) or {})
+        try:
+            return jsonify(preflight_mod.run(cfg, mode, ssh, target))
+        except deploy_mod.DeployError as e:
+            return make_response(jsonify({"error": str(e)}), 502)
+
     @app.post("/api/deploy")
     def api_deploy() -> Response:
         body = request.get_json(silent=True) or {}
@@ -186,6 +195,13 @@ def create_app(token: str | None = None) -> Flask:
         problems = deploy_mod.preflight(target, mode)
         if problems:
             return make_response(jsonify({"error": "; ".join(problems)}), 400)
+        if not body.get("skip_preflight"):
+            try:
+                pre = preflight_mod.run(cfg, mode, ssh, target)
+            except deploy_mod.DeployError as e:
+                return make_response(jsonify({"error": str(e)}), 502)
+            if not pre["ok"]:
+                return make_response(jsonify({"error": "მანქანა არჩეული სტეკისთვის არ ვარგა", "preflight": pre}), 409)
         if target == "native":
             # somebody else's program on a port we need: do not start, show what is there so the user can decide
             try:

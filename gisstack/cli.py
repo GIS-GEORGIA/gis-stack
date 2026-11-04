@@ -25,7 +25,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, projects, settings, updater
+from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, settings, updater
 
 
 MAX_CONFIG_BYTES = 1_000_000
@@ -162,6 +162,19 @@ def _update(a: argparse.Namespace) -> int:
         return 1
 
 
+def _preflight(a: argparse.Namespace, cfg: dict) -> int:
+    ssh = _parse_ssh(a)
+    if ssh is None:
+        return 2
+    try:
+        res = preflight.run(cfg, a.mode, ssh, a.target or cfg["deploy_target"])
+    except deploy.DeployError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print(json.dumps(res, ensure_ascii=False, indent=2) if a.json else preflight.format_table(res))
+    return 0 if res["ok"] else 4
+
+
 def _scan(a: argparse.Namespace, cfg: dict) -> int:
     ssh = _parse_ssh(a)
     if ssh is None:
@@ -257,6 +270,7 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--confirm-data-loss", action="store_true",
                    help="with --existing: allow '+purge' actions (they delete the program's data after a verified backup)")
     d.add_argument("--backup-dir", default=None, help="default: ~/.gisstack/backups")
+    d.add_argument("--skip-preflight", action="store_true", help="do not check disk, memory, network and OS before installing")
 
     c = sub.add_parser("clean", help="remove the whole stack, or just some components")
     c.add_argument("-c", "--config")
@@ -316,6 +330,10 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("component", choices=[*ops.ORDER, "qgis"])
     lg.add_argument("-n", "--lines", type=int, default=100)
     lg.add_argument("-f", "--follow", action="store_true")
+
+    pf = sub.add_parser("preflight", help="can this machine take the selected stack? (disk, memory, OS, network, clock)")
+    conn(pf)
+    pf.add_argument("--json", action="store_true")
 
     sc = sub.add_parser("scan", help="what is already installed on the server? (before installing ours)")
     conn(sc)
@@ -389,6 +407,9 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd in ("status", "logs") or a.cmd in ops.ACTIONS:
         return _ops(a, cfg)
 
+    if a.cmd == "preflight":
+        return _preflight(a, cfg)
+
     if a.cmd == "save":
         try:
             raw = dict(config._merge(config.default_config(), _load(a.config)), project=cfg["project"])
@@ -415,6 +436,13 @@ def main(argv: list[str] | None = None) -> int:
             user, _, host = userhost.rpartition("@")
             ssh = {"user": user or "root", "host": host, "port": int(port or 22), "key": a.key or ""}
         try:
+            if not a.skip_preflight:
+                res = preflight.run(cfg, a.mode, ssh, target)
+                if not (res["ok"] and all(c["status"] == "ok" for c in res["checks"])):
+                    print(preflight.format_table(res), file=sys.stderr)
+                if not res["ok"]:
+                    print("\nERROR: მანქანა არჩეული სტეკისთვის არ ვარგა (გვერდის ავლა: --skip-preflight)", file=sys.stderr)
+                    return 4
             if a.existing is not None:
                 plan = existing.parse_plan_spec(a.existing) if a.existing else {}
 
