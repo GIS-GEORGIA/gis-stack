@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### API და გაფართოებები (Phase 10, flags `api`, `plugins`)
+- **`/api/v1`**: ერთი სქემებით აღწერილი კონტრაქტი (მოთხოვნა ვალიდდება, უცნობი ველი უარყოფილია), პასუხი `{data, error, meta}`, სტაბილური შეცდომის კოდები, OpenAPI 3.1 გენერირდება მარშრუტების ცხრილიდან (`gisstack api openapi|docs`, `docs/openapi.json`, `docs/API.md` — ტესტი ამოწმებს, რომ ძველი არ არის).
+- **ტოკენის სკოუპები** `read < operate < admin`: `gisstack token create|list|revoke` (ინახება მხოლოდ SHA-256, ვადა, გაუქმება, აუდიტში მოქმედი პირი). API ტოკენი მუშაობს მხოლოდ `/api/v1`-ზე; ვებ-ტოკენი და ბრაუზერის სესია = admin.
+- ძველი `/api/*` მარშრუტები ამ გამოშვებაში მუშაობს უცვლელად, პასუხზე `Deprecation: true` და `Link: <…>; rel="successor-version"`; შემდეგ გამოშვებაში ამოვა. დაფა (`/dashboard`) მხოლოდ `/api/v1`-ს იყენებს.
+- **პლაგინები** (`GISSTACK_FEATURES=plugins`): `ServiceProvider`, `MonitoringProvider`, `BackupProvider`, `AuthProvider`, `DataSource` entry point-ებით, ვერსიონირებული კონტრაქტი (`api_version = 1`), გატეხილი პლაგინი მხოლოდ ფიქსირდება (`GET /api/v1/plugins`), შესაბამისობის ტესტების ნაკრები `gisstack.plugins.kit`. დოკუმენტაცია: `docs/PLUGINS.md`.
+
 ### ვებ დაფა (Phase 3, feature flag `dashboard`)
 - `/dashboard`: მთავარი (ჯანმრთელობა, სერვისების ბარათები, CPU/RAM/დისკი, PostgreSQL კავშირები, GeoServer, MapProxy ქეში, ბოლო ბექაფი), ინფრასტრუქტურა (გაშვება/გაჩერება/გადატვირთვა), გვერდი ყოველი პროგრამისთვის,
   ოპერაციების ჟურნალი, მონიტორინგი (გრაფიკები, ალერტები), ბექაფები (აღდგენის ოსტატი), ლოგები (live), პარამეტრები. ქართული/ინგლისური, ღია/მუქი თემა, მობილური განლაგება, ხელმისაწვდომობა.

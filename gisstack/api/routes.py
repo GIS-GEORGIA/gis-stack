@@ -11,7 +11,7 @@ from typing import Any, Iterator, Optional
 
 from flask import Response, make_response
 
-from .. import (__version__, backup as backup_mod, catalog, config, deploy, discover, existing, generate, i18n, journal, ops, preflight as preflight_mod,
+from .. import (__version__, plugins, backup as backup_mod, catalog, config, deploy, discover, existing, generate, i18n, journal, ops, preflight as preflight_mod,
                 projects, rotation, services, settings, updater)
 from ..core import features, paths
 from ..core.errors import ConfigError, DeployError, GisStackError, PlanError, ProjectError
@@ -429,6 +429,14 @@ def backups_verify(req: Req) -> str:
     return lines_job(req, lambda: backup_mod.verify(cfg, mode, ssh, req.body["id"]))
 
 
+@R("POST", "/backups/offsite", "Copy a verified backup to every BackupProvider plugin (job)", "admin", tags=("backups", "plugins"), feature="plugins",
+   job=True, body=body({"id": BACKUP_ID}, ("id",)))
+def backups_offsite(req: Req) -> str:
+    cfg, mode, ssh, _ = machine(req)
+    need_native(cfg)
+    return lines_job(req, lambda: backup_mod.offsite(cfg, mode, ssh, req.body["id"]))
+
+
 @R("POST", "/backups/prune", "Delete old backups (job). Defaults to a dry run; the newest backup is never deleted", "admin", tags=("backups",), legacy=("/api/backup/prune",),
    job=True, body=body({"keep": {"type": "integer", "minimum": 1}, "keep_pre": {"type": "integer", "minimum": 0}, "days": {"type": ["integer", "null"], "minimum": 0},
                         "dry_run": BOOL}))
@@ -483,3 +491,24 @@ def updates_apply(req: Req) -> str:
         with tempfile.TemporaryDirectory() as td:
             yield from updater.apply(info, td)
     return start_job(req, steps)
+
+
+# --------------------------------------------------------------------------- plugins
+@R("GET", "/plugins", "Installed plugins, the plugin API version and plugins that failed to load", "read", tags=("plugins",),
+   response={"type": "object", "required": ["enabled", "api_version", "plugins", "failures"], "properties": {
+       "enabled": BOOL, "api_version": INT,
+       "plugins": {"type": "array", "items": {"type": "object", "required": ["kind", "name"], "properties": {"kind": STR, "name": STR, "description": STR, "api_version": INT}}},
+       "failures": {"type": "array", "items": {"type": "object", "required": ["kind", "entry", "reason"], "properties": {"kind": STR, "entry": STR, "reason": STR}}}}})
+def get_plugins(req: Req) -> dict[str, Any]:
+    return plugins.describe()
+
+
+@R("GET", "/datasources", "Spatial data sources contributed by DataSource plugins", "read", tags=("plugins",), feature="plugins",
+   response={"type": "array", "items": {"type": "object", "required": ["source", "id", "title", "kind"], "properties": {"source": STR, "id": STR, "title": STR, "kind": STR}}})
+def get_datasources(req: Req) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for plug in plugins.get("data_source"):
+        for lay in plugins.safe_call(plug, "layers", default=[]) or []:
+            if isinstance(lay, dict) and all(isinstance(lay.get(k), str) for k in ("id", "title", "kind")):
+                out.append({"source": plug.name, "id": lay["id"], "title": lay["title"], "kind": lay["kind"]})
+    return out

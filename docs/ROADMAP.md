@@ -68,7 +68,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - **Tests:** collector parsers against captured fixtures, alert evaluation, retention; integration with real services in CI containers.
 - **Exit criteria:** no synthetic data path exists; unit and integration tests cover each collector.
 
-### Phase 10 — API and extensibility · **L**
+### Phase 10 — API and extensibility · **L** — ✅ implemented (`/api/v1` for every operation incl. dashboard; scoped tokens; generated+tested OpenAPI/API.md; five plugin kinds with loader isolation and conformance kit; legacy `/api/*` deprecated, to be removed next release)
 - **Work:** `/api/v1` with versioned, schema-validated requests and consistent envelope `{data, error, meta}`; token scopes (read / operate / admin) and audit; OpenAPI document generated from schemas; existing `/api/*` routes remain as compatibility aliases for one release. **Plugin interfaces** (not a marketplace): `ServiceProvider`, `MonitoringProvider`, `BackupProvider`, `AuthProvider`, `DataSource` as Python entry points with a small, versioned contract and a conformance test kit.
 - **Exit criteria:** UI uses only the API; API docs are generated and tested.
 

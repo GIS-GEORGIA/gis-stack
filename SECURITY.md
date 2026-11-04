@@ -74,6 +74,12 @@ removed from the server's home directory after an SSH deployment, successful or 
 stack mounts them). `gisstack preflight` (also run before `deploy`; `--skip-preflight` overrides) checks OS, architecture, memory,
 disk, clock, reachability of the download hosts and DNS before anything is changed.
 
+**API tokens and plugins (Phase 10).** Automation uses `gisstack token create --scope read|operate|admin` (`gsk_<id>_<secret>`); only a SHA-256
+of the secret is stored (file mode 0600), tokens can carry an expiry (`--ttl-days`; default: none) and can be revoked, and they are accepted on `/api/v1` only. Every request is
+checked against the route's required scope (`403 forbidden` otherwise) and the audit log records principal, scope and denials, never the token. Failed
+authentication is rate limited. Plugins execute third-party code in-process, so they are loaded only with `GISSTACK_FEATURES=plugins`; every call into them
+is exception-guarded, and plugin tokens are accepted on `/api/v1` only. Install only plugins you trust.
+
 **Web GUI (S-06, S-10).** The access token is exchanged once for a random server-side session cookie (HttpOnly, SameSite=Strict) that
 expires after 2 h idle / 12 h total and can be revoked (`POST /api/logout`); `gisstack web --rotate-token` replaces the token. After
 10 failed attempts a client address gets `429` for a minute. Only `localhost`/`127.0.0.1`/`[::1]` plus names given with `--allow-host`

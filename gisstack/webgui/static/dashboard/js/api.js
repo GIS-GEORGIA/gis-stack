@@ -27,6 +27,7 @@ export async function request(method, url, body) {
 }
 export const get = (url, params) => request("GET", params ? url + "?" + new URLSearchParams(params) : url);
 export const post = (url, body) => request("POST", url, body || {});
+export const put = (url, body) => request("PUT", url, body || {});
 
 // Start a background job (deploy, backup, logs ...) and follow its log. onLines(newLines) is called as they arrive.
 export async function runJob(url, body, { onLines, signal, interval = 900 } = {}) {
@@ -34,8 +35,8 @@ export async function runJob(url, body, { onLines, signal, interval = 900 } = {}
   let next = 0;
   const lines = [];
   for (;;) {
-    if (signal && signal.aborted) { try { await post(`/api/jobs/${job}/cancel`); } catch (e) { /* already gone */ } return { ok: false, lines, cancelled: true, job }; }
-    const j = await get(`/api/jobs/${job}`, { since: next });
+    if (signal && signal.aborted) { try { await post(`/api/v1/jobs/${job}/cancel`); } catch (e) { /* already gone */ } return { ok: false, lines, cancelled: true, job }; }
+    const j = await get(`/api/v1/jobs/${job}`, { since: next });
     if (j.lines.length) { lines.push(...j.lines); if (onLines) onLines(j.lines); }
     next = j.next;
     if (j.done) return { ok: j.ok, lines, job };

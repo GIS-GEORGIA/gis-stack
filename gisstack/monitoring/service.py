@@ -35,7 +35,7 @@ class Monitor:
         self.host = transport.host_label(mode, ssh)
         self.store = store or Store(paths.monitor_db(cfg["project"], self.host))
         self.rules = rules if rules is not None else alerts.load_rules(rules_path())
-        self.providers = providers if providers is not None else notify.load_providers(notify_path())
+        self.providers = providers if providers is not None else notify.load_providers(notify_path()) + notify.plugin_notifiers()
         self.clock = clock
         self._last_prune = 0.0
 

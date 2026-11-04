@@ -36,7 +36,7 @@ export default {
       ctl = new AbortController();
       go.disabled = true; stop.disabled = false;
       try {
-        await runJob("/api/ops/logs", state.ctx({ component: sel.value, lines: Number(lines.value), follow: follow.checked }), { signal: ctl.signal, interval: 700, onLines: (l) => { all.push(...l); if (all.length > 5000) all = all.slice(-5000); paint(); } });
+        await runJob("/api/v1/ops/logs", state.ctx({ component: sel.value, lines: Number(lines.value), follow: follow.checked }), { signal: ctl.signal, interval: 700, onLines: (l) => { all.push(...l); if (all.length > 5000) all = all.slice(-5000); paint(); } });
       } catch (e) { toast(e.message, "bad"); }
       go.disabled = false; stop.disabled = true;
     }

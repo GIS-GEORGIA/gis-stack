@@ -9,8 +9,8 @@ import { t } from "../i18n.js";
 const ACTIONS = [["start", "გაშვება"], ["stop", "გაჩერება"], ["restart", "გადატვირთვა"]];
 
 export async function control(action, ids, log) {
-  const body = state.ctx({ action, components: ids });
-  const res = await runJob("/api/ops/control", body, { onLines: (l) => { if (log) { log.textContent += l.join("\n") + "\n"; log.scrollTop = log.scrollHeight; } } });
+  const body = state.ctx({ action, components: ids.length ? ids : null });      // null = the whole stack
+  const res = await runJob("/api/v1/ops/control", body, { onLines: (l) => { if (log) { log.textContent += l.join("\n") + "\n"; log.scrollTop = log.scrollHeight; } } });
   return res.ok;
 }
 
@@ -54,7 +54,7 @@ export default {
           h("td", {}, h("div", { class: "row" }, ...ACTIONS.map(([a, label]) => h("button", { type: "button", class: "btn small", "data-act": a, onclick: () => act(a, [r.id], `${label} — ${r.name}`) }, label))))))))));
     }
     async function load() {
-      try { render(await post("/api/ops/status", state.ctx())); }
+      try { render(await post("/api/v1/ops/status", state.ctx())); }
       catch (e) { errorBox(tableBox, e, load); }
     }
     loading(tableBox, 4);

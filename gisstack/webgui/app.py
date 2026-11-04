@@ -30,9 +30,9 @@ from . import security
 from ..core import paths
 from ..api import mount as api_mount
 from ..api.auth import Principal, TokenStore
-from ..api.registry import ApiError, registry as api_registry
+from ..api.registry import SCOPES, ApiError, registry as api_registry
 from ..core import features
-from .. import __version__, backup as backup_mod, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, services, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
+from .. import __version__, plugins, backup as backup_mod, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, fsutil, generate, ops as ops_mod, preflight as preflight_mod, projects as projects_mod, services, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
 MAX_PREVIEW_BYTES = 120_000
@@ -90,7 +90,14 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
             if token_ok(cand):
                 return Principal("static", "web access token", "admin", "static")
             if cand.startswith("gsk_") and request.path.startswith("/api/v1/"):
-                return app.config["TOKENS"].verify(cand)
+                mine = app.config["TOKENS"].verify(cand)
+                if mine:
+                    return mine
+            if request.path.startswith("/api/v1/") and len(cand) <= 4096:
+                for plug in plugins.get("auth_provider"):                    # SSO / gateway tokens; a faulty provider simply does not recognise it
+                    who = plugins.safe_call(plug, "authenticate", cand)
+                    if isinstance(who, dict) and isinstance(who.get("name"), str) and who.get("scope") in SCOPES:
+                        return Principal(f"plugin:{plug.name}", who["name"], who["scope"], "plugin")
             return None
         if sessions.valid(request.cookies.get(COOKIE, "")):
             return Principal("session", "browser session", "admin", "session")

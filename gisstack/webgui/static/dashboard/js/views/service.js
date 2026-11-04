@@ -43,7 +43,7 @@ export default {
 
     async function load() {
       let status;
-      try { status = await post("/api/ops/status", state.ctx({ components: [id] })); }
+      try { status = await post("/api/v1/ops/status", state.ctx({ components: [id] })); }
       catch (e) { errorBox(body, e, load); return; }
       const row = status.rows.find((r) => r.id === id);
       clear(head); clear(body);

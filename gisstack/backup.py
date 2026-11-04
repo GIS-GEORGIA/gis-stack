@@ -15,7 +15,7 @@ import tarfile
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-from . import __version__, journal, runner, transport
+from . import __version__, journal, plugins, runner, transport
 from .core import paths
 from .core.errors import DeployError
 
@@ -206,6 +206,33 @@ def download(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], bid:
         out.unlink(missing_ok=True)
         raise
     return out
+
+
+def offsite(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], bid: str) -> Iterator[str]:
+    """Copy one backup, verified, to every BackupProvider plugin.  Yields log lines; a provider that fails is reported and the others still run."""
+    import shutil
+    import tempfile
+    _check_id(bid)
+    targets = plugins.get("backup_provider")
+    if not targets:
+        raise DeployError("BackupProvider პლაგინი არ არის ჩართული (GISSTACK_FEATURES=plugins და დაყენებული პლაგინი)")
+    tmp = Path(tempfile.mkdtemp(prefix="gisstack-offsite-"))          # mkdtemp is 0700
+    failed = 0
+    try:
+        yield f"ჩამოტვირთვა: {bid}"
+        archive = download(cfg, mode, ssh, bid, str(tmp))
+        yield f"შემოწმებულია: {archive.name}"
+        for plug in targets:
+            try:
+                where = plug.store(archive, bid)  # type: ignore[attr-defined]
+                yield f"{plug.name}: {where}"
+            except Exception as e:  # noqa: BLE001 - third-party code
+                failed += 1
+                yield f"{plug.name}: ვერ მოხერხდა ({type(e).__name__})"
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    if failed:
+        raise DeployError(f"{failed} პლაგინმა ვერ შეინახა ასლი")
 
 
 def verify_archive(path: str | Path) -> int:

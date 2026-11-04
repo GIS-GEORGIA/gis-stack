@@ -16,7 +16,7 @@ from typing import Any, Callable, Optional
 
 from ..core import log
 from ..core.errors import GisStackError
-from .. import secretsrc
+from .. import plugins, secretsrc
 
 _log = log.get("notify")
 LOOPBACK = ("localhost", "127.0.0.1", "::1", "[::1]")
@@ -133,6 +133,14 @@ def load_providers(path: Optional[Path]) -> list[Any]:
             raise NotifyError(f"{path}: the SMTP password does not belong in a config file - use GISSTACK_SMTP_PASSWORD or GISSTACK_SMTP_PASSWORD_FILE")
         out.append(EmailProvider(mail["host"], int(mail.get("port", 587)), mail["from"], [mail["to"]] if isinstance(mail["to"], str) else list(mail["to"]), mail.get("user", ""),
                                  mail.get("starttls")))
+    return out
+
+
+def plugin_notifiers() -> list[Any]:
+    """Notification channels contributed by MonitoringProvider plugins (none unless the `plugins` feature is on)."""
+    out: list[Any] = []
+    for plug in plugins.get("monitoring_provider"):
+        out += plugins.safe_call(plug, "notifiers", default=[]) or []
     return out
 
 

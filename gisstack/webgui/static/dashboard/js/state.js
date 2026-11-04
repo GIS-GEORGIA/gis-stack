@@ -23,8 +23,8 @@ export async function setConn(next) {
 }
 export async function loadConfig() {
   if (config) return config;
-  if (conn.project) config = (await get("/api/projects/" + encodeURIComponent(conn.project))).config;
-  else config = (await get("/api/catalog")).defaults;
+  if (conn.project) config = (await get("/api/v1/projects/" + encodeURIComponent(conn.project))).config;
+  else config = (await get("/api/v1/catalog")).defaults;
   if (conn.target) config.deploy_target = conn.target;
   return config;
 }

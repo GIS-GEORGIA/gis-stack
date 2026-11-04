@@ -118,6 +118,11 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - სუფთა ლოგიკა (`format`, `chart`, `i18n.createTranslator`, `groupSeries`, `configSummary`, `summarize`) — `tests/js/pure.test.mjs` (`node --test`). რეალური ბრაუზერით შეამოწმე (preview) ვიზუალი/ენის გადართვა; ენის გადართვისას `setText` ქეში უნდა განულდეს.
 - კავშირი (პროექტი/რეჟიმი/SSH) ინახება მხოლოდ `sessionStorage`-ში.
 
+## API და პლაგინები (Phase 10)
+- ახალი ოპერაცია = ახალი მარშრუტი `api/routes*.py`-ში (`@R(method, path, summary, scope, body=…, response=…)`); სქემა ამოწმებს მოთხოვნას, ცხრილი აგენერირებს OpenAPI-ს. შემდეგ: `python -m gisstack api openapi -o docs/openapi.json && python -m gisstack api docs -o docs/API.md` (ტესტი ამოწმებს drift-ს). დაფის JS იძახებს მხოლოდ `/api/v1/*`.
+- ტოკენის სკოუპი: წაკითხვა `read`, ოპერაცია `operate`, დესტრუქციული/კონფიგურაცია `admin`. ტესტი `test_scope_matrix_over_every_route` ყველა მარშრუტს ამოწმებს.
+- პლაგინები: `gisstack/plugins/` (`contract` არაფერს არ ანაწილებს gisstack-იდან, `loader` იზოლირებს ჩავარდნებს, `kit` ავტორებისთვის). ყველა გამოძახება `plugins.safe_call`-ით.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

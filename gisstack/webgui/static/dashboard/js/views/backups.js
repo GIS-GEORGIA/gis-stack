@@ -40,7 +40,7 @@ export default {
         if (!res) return;
         const comps = boxes.map((b) => b.querySelector("input")).filter((i) => i.checked).map((i) => i.value);
         if (!comps.length) return toast(t("აირჩიე მინიმუმ ერთი"), "bad");
-        const r = await logged("/api/backup/create", state.ctx({ components: comps.filter((c) => c !== "cache"), with_cache: comps.includes("cache"), note: note.value }));
+        const r = await logged("/api/v1/backups/create", state.ctx({ components: comps.filter((c) => c !== "cache"), with_cache: comps.includes("cache"), note: note.value }));
         toast(r.ok ? t("ბექაფი შექმნილია და გადამოწმებულია") : t("ბექაფი ვერ შეიქმნა"), r.ok ? "ok" : "bad");
       });
     }
@@ -53,24 +53,24 @@ export default {
           actions: [{ label: "გაუქმება", value: false }, { label: "ნახვა (არაფერი იშლება)", value: true, kind: "primary" }] });
         if (!res) return;
         const body = state.ctx({ keep: Number(keep.value), days: days.value === "" ? null : Number(days.value) });
-        const plan = await logged("/api/backup/prune", { ...body, dry_run: true });
+        const plan = await logged("/api/v1/backups/prune", { ...body, dry_run: true });
         const victims = plan.lines.filter((l) => l.startsWith("WOULD_DELETE=")).map((l) => l.slice(13));
         if (!plan.ok || !victims.length) return toast(plan.ok ? t("წასაშლელი არაფერია") : t("ვერ შესრულდა"), plan.ok ? "info" : "bad");
         if (await typedConfirm(`წაიშლება ${victims.length} ბექაფი: ${victims.join(", ")}`, "DELETE", { ok: "წაშლა" })) {
-          const r = await logged("/api/backup/prune", { ...body, dry_run: false });
+          const r = await logged("/api/v1/backups/prune", { ...body, dry_run: false });
           toast(r.ok ? t("გასუფთავდა") : t("ვერ შესრულდა"), r.ok ? "ok" : "bad");
         }
       });
     }
 
     function verifyFlow(id) {
-      return guarded(async () => { const r = await logged("/api/backup/verify", state.ctx({ id })); toast(r.ok ? t("ბექაფი დაზიანებული არ არის ✔") : t("ბექაფი დაზიანებულია!"), r.ok ? "ok" : "bad"); });
+      return guarded(async () => { const r = await logged("/api/v1/backups/verify", state.ctx({ id })); toast(r.ok ? t("ბექაფი დაზიანებული არ არის ✔") : t("ბექაფი დაზიანებულია!"), r.ok ? "ok" : "bad"); });
     }
 
     function restoreFlow(b, staging) {
       return guarded(async () => {
         const only = b.components;
-        const plan = await logged("/api/backup/restore", state.ctx({ id: b.id, only, dry_run: true }));
+        const plan = await logged("/api/v1/backups/restore", state.ctx({ id: b.id, only, dry_run: true }));
         if (!plan.ok) return toast(t("გეგმა ვერ დაიგეგმა — ბექაფი დაზიანებულია ან მოთხოვნები არ სრულდება"), "bad");
         const text = plan.lines.filter((l) => l.startsWith("RESTORE_PLAN") || /^\s{2}\w/.test(l)).join("\n");
         const intro = staging
@@ -79,14 +79,14 @@ export default {
         const proceed = staging ? await modal({ title: "გაშლა (staging)", body: h("div", {}, intro, h("pre", { class: "log" }, text)), actions: [{ label: "გაუქმება", value: false }, { label: "გაშლა", value: true, kind: "primary" }] })
           : await typedConfirm(h("div", {}, intro, h("pre", { class: "log" }, text)), "RESTORE", { ok: "აღდგენა", title: "აღდგენა" });
         if (!proceed) return;
-        const r = await logged("/api/backup/restore", state.ctx({ id: b.id, only, dry_run: false, staging, confirm: true }));
+        const r = await logged("/api/v1/backups/restore", state.ctx({ id: b.id, only, dry_run: false, staging, confirm: true }));
         toast(r.ok ? t(staging ? "გაიშალა" : "აღდგენა დასრულდა და გადამოწმდა ✔") : t("აღდგენა ვერ მოხერხდა — იხილე ლოგი (ავტომატური უკან დაბრუნება შესრულდა)"), r.ok ? "ok" : "bad", 9000);
       });
     }
 
     async function load() {
       try {
-        const rows = (await post("/api/backup/list", state.ctx())).backups;
+        const rows = (await post("/api/v1/backups/list", state.ctx())).backups;
         done(listBox); clear(listBox);
         if (!rows.length) return empty(listBox, "ბექაფი ჯერ არ არსებობს", h("button", { type: "button", class: "btn primary", onclick: createFlow }, "ახალი ბექაფი"));
         append(listBox, h("div", { class: "table-wrap" }, h("table", {}, h("caption", { class: "sr-only" }, "ბექაფები"),

@@ -1,5 +1,5 @@
 // Dashboard bootstrap: settings (language / theme), navigation, the connection dialog and the global refresh control.
-import { get, post, ApiError } from "./api.js";
+import { get, put, ApiError } from "./api.js";
 import { setTable, setLang, observe, t } from "./i18n.js";
 import { h, $, $$, clear, modal, toast } from "./ui.js";
 import { app, featureOn } from "./shared.js";
@@ -44,7 +44,7 @@ export function applySettings() {
 export async function saveSettings(patch) {
   app.settings = Object.assign({}, app.settings, patch);
   applySettings();
-  try { await post("/api/settings", patch); } catch (e) { /* applies for this session anyway */ }
+  try { await put("/api/v1/settings", patch); } catch (e) { /* applies for this session anyway */ }
 }
 
 function buildNav() {
@@ -134,7 +134,7 @@ export async function manualRefresh() {
 
 async function boot() {
   try {
-    const [cfg, tbl] = await Promise.all([get("/api/v1/dashboard/config"), get("/api/i18n")]);
+    const [cfg, tbl] = await Promise.all([get("/api/v1/dashboard/config"), get("/api/v1/i18n")]);
     app.features = cfg.features; app.version = cfg.version; app.settings = cfg.settings; app.projects = cfg.projects;
     setTable(tbl.en);
   } catch (e) {

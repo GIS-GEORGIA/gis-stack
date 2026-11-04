@@ -165,6 +165,54 @@ def _update(a: argparse.Namespace) -> int:
         return 1
 
 
+def _token(a: argparse.Namespace) -> int:
+    from .api.auth import TokenError, TokenStore
+    store = TokenStore()
+    try:
+        if a.tcmd == "create":
+            token, entry = store.create(a.name, a.scope, a.ttl_days)
+            print(token)
+            print(f"\ntoken id {entry['id']}, scope {entry['scope']}" + (f", expires in {a.ttl_days:g} days" if a.ttl_days else ", no expiry"), file=sys.stderr)
+            print("This is the only time the token is shown; store it safely. Use it as:  Authorization: Bearer <token>", file=sys.stderr)
+            return 0
+        if a.tcmd == "list":
+            rows = store.list()
+            if a.json:
+                print(json.dumps(rows, indent=2))
+            else:
+                for r in rows:
+                    exp = time.strftime("%Y-%m-%d", time.localtime(r["expires"])) if r.get("expires") else "never"
+                    used = time.strftime("%Y-%m-%d %H:%M", time.localtime(r["last_used"])) if r.get("last_used") else "never"
+                    print(f"{r['id']}  {r['scope']:<8} {r['name']:<24} expires {exp}  last used {used}")
+                if not rows:
+                    print("(no tokens)")
+            return 0
+        if store.revoke(a.id):
+            print(f"revoked {a.id}")
+            return 0
+        print(f"ERROR: no such token: {a.id}", file=sys.stderr)
+        return 1
+    except TokenError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
+
+
+def _api(a: argparse.Namespace) -> int:
+    try:
+        from .api import docs, routes, routes_monitor  # noqa: F401 - importing registers the routes
+        from .api.registry import registry
+    except ImportError as e:
+        print(f"ERROR: the API needs Flask ({e}): pip install flask", file=sys.stderr)
+        return 1
+    spec = registry.openapi(__version__)
+    text = json.dumps(spec, indent=2, ensure_ascii=False, sort_keys=False) + "\n" if a.acmd == "openapi" else docs.markdown(spec)
+    if a.out:
+        Path(a.out).write_text(text, encoding="utf-8")
+    else:
+        print(text, end="")
+    return 0
+
+
 def _duration(text: str) -> float:
     unit = {"s": 1, "m": 60, "h": 3600, "d": 86400}
     if not text or text[-1] not in unit or not text[:-1].isdigit():
@@ -579,6 +627,23 @@ def main(argv: list[str] | None = None) -> int:
     m3.add_argument("--label", action="append", default=[], metavar="K=V")
     m3.add_argument("--json", action="store_true")
 
+    tk = sub.add_parser("token", help="API tokens with scopes (read < operate < admin) for /api/v1")
+    tsub = tk.add_subparsers(dest="tcmd", required=True)
+    t1 = tsub.add_parser("create", help="create a token (shown once)")
+    t1.add_argument("--name", required=True)
+    t1.add_argument("--scope", choices=["read", "operate", "admin"], required=True)
+    t1.add_argument("--ttl-days", type=float, help="expire after this many days (default: never)")
+    t2 = tsub.add_parser("list", help="tokens (secrets are never stored or shown)")
+    t2.add_argument("--json", action="store_true")
+    t3 = tsub.add_parser("revoke", help="revoke a token at once")
+    t3.add_argument("id")
+
+    ap2 = sub.add_parser("api", help="the HTTP API description (generated from the route table)")
+    asub = ap2.add_subparsers(dest="acmd", required=True)
+    for name, hlp in (("openapi", "OpenAPI 3.1 document (JSON)"), ("docs", "Markdown reference")):
+        sp = asub.add_parser(name, help=hlp)
+        sp.add_argument("-o", "--out", help="write to a file instead of stdout")
+
     pf = sub.add_parser("preflight", help="can this machine take the selected stack? (disk, memory, OS, network, clock)")
     conn(pf)
     pf.add_argument("--json", action="store_true")
@@ -626,6 +691,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "update":
         return _update(a)
+
+    if a.cmd == "token":
+        return _token(a)
+    if a.cmd == "api":
+        return _api(a)
 
     if a.cmd == "settings":
         cur = settings.save(a.lang, a.theme) if (a.lang or a.theme) else settings.load()

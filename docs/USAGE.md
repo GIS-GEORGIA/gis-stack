@@ -406,3 +406,14 @@ gisstack deploy -c stack.json --mode ssh ... \
 | „განახლების შემოწმება“: ვერ დავუკავშირდი / ჯერ release არ არსებობს | არ არის ინტერნეტი, GitHub-ის ლიმიტი (სცადე მოგვიანებით), ან მეინტეინერმა ჯერ არ გამოუშვა ვერსია |
 
 შეცდომის შეტყობინება არ ეხმარება? გახსენი [issue](https://github.com/GIS-GEORGIA/gis-stack/issues), დაურთე ლოგი (პაროლების გარეშე).
+
+## API და ავტომატიზაცია (Phase 10)
+
+```bash
+gisstack token create --name ci --scope read --ttl-days 30     # ტოკენი ერთხელ ჩანს (stdout)
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8765/api/v1/meta
+gisstack token list ; gisstack token revoke <id>
+gisstack api docs -o docs/API.md ; gisstack api openapi -o docs/openapi.json
+```
+
+სრული მითითება: `docs/API.md` (გენერირებულია). პლაგინები: `docs/PLUGINS.md`.
