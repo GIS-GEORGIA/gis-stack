@@ -262,6 +262,22 @@ class RestoreTests(Base):
         calls = self.box.calls.read_text().splitlines()
         self.assertEqual([c for c in calls if c.startswith(("stop", "start"))][:2], ["stop gisstack-tomcat.service", "start gisstack-tomcat.service"])
 
+    def test_config_below_a_symlinked_directory_restores(self):
+        """/opt/tomcat is a symlink to /opt/apache-tomcat-X on real servers; tar must write through it."""
+        real = self.td / "opt/apache-tomcat-1/conf"
+        real.mkdir(parents=True)
+        (real / "server.xml").write_text("<server>original</server>\n")
+        (self.td / "opt/tomcat").symlink_to(self.td / "opt/apache-tomcat-1")      # absolute, like /opt/tomcat on a real server
+        linked = self.td / "opt/tomcat/conf/server.xml"
+        self.box.env["GS_CONFIG_PATHS"] = f"{self.box.etc} {linked}"
+        self.box.env["GS_RESTORE_ALLOW"] = "^(" + re.escape(str(self.box.etc).lstrip("/")) + "|" + re.escape(str((self.td / "opt/apache-tomcat-1").resolve()).lstrip("/")) + ")/"
+        bid = self.box.create("config")
+        linked.write_text("<server>edited</server>\n")
+        r = self.box.run("restore", bid, "--only", "config", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(linked.read_text(), "<server>original</server>\n")
+        self.assertTrue((self.td / "opt/tomcat").is_symlink())                      # the symlink itself was not replaced
+
     def test_the_pre_restore_backup_can_undo_the_restore(self):
         bid = self.box.create()
         self.mutate()

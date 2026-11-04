@@ -12,6 +12,12 @@
 - **გასწორდა:** Python 3.9-ზე იმპორტი ეცემოდა (`str | None` გაშვების დროს); Tk-ის შეცდომის დიალოგები ვარდებოდა (`except` ცვლადი closure-ში);
   `_stream` არ ხურავდა pipe-ს; SSH port `0` ჩუმად ხდებოდა 22; `gisstack save/apply --save` იშვიათი კონფიგით არაფერს ინახავდა.
 
+### ბექაფი და აღდგენა (Phase 7)
+- **`gisstack-backup`** სერვერზე: დალუქული ბექაფი (`MANIFEST.json`, `SHA256SUMS`, ხელახალი წაკითხვა), PostgreSQL (`pg_dump -Fc` + roles), GeoServer data dir, QGIS პროექტები, კონფიგურაცია, MapProxy ქეში (არჩევით).
+- **აღდგენა**: გეგმა/`--dry-run`, ავტომატური დადასტურებული pre-restore ბექაფი, ჩანაცვლება გადარქმევით (ძველი რჩება), recovery-ვალიდაცია, ავტომატური rollback; `--staging`; საშიში არქივების უარყოფა.
+- retention (`prune`), systemd timer (`schedule`), `download`/`upload` (ავარიული აღდგენა ახალ სერვერზე), CLI `gisstack backup ...`, ვებ API `/api/backup/*`.
+- გადამოწმებულია Ubuntu 24.04 VM-ზე (PostgreSQL 18); ტესტები: რეალური PostGIS კონტეინერი, დაზიანებული არქივები, rollback, symlink-ზე კონფიგის აღდგენა. დოკუმენტაცია: `docs/RECOVERY.md`.
+
 ### არქიტექტურა (Phase 2)
 - **`core`**: ერთიანი შეცდომების იერარქია (`GisStackError` + სტაბილური `code`), `paths` (ყველა მისამართი ერთ ადგილას), `events`, მასკირებული `log` (`--log-level`).
 - **`transport`** (SSH/ლოკალური გაშვება) ცალკე მოდულია; **`providers/{native,compose,kubernetes}`** ერთი `Provider` ინტერფეისით — `ops.py` 625 → 140 ხაზი, `deploy` იგივე სახელებით მუშაობს.

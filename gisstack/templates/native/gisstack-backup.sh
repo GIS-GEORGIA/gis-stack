@@ -30,7 +30,7 @@ WEBMAP_DIR="${GS_WEBMAP_DIR:-/var/www/gisstack/webmap}"
 # files that make up "the configuration" (existing ones are archived)
 CONFIG_PATHS="${GS_CONFIG_PATHS:-/etc/gisstack /etc/caddy/Caddyfile /etc/caddy/caddy.d /opt/tomcat/conf/server.xml /opt/tomcat/bin/setenv.sh /etc/systemd/system/gisstack-tomcat.service /etc/systemd/system/gisstack-mapproxy.service /etc/systemd/system/gisstack-qgis.service /etc/systemd/system/gisstack-qgis.socket /etc/systemd/system/caddy.service}"
 # a restore may only write below these prefixes (regex on archive member names, no leading slash)
-RESTORE_ALLOW="${GS_RESTORE_ALLOW:-^(etc|opt/tomcat|var/www/gisstack|var/lib/gisstack|srv|var/lib/qgis|home)/}"
+RESTORE_ALLOW="${GS_RESTORE_ALLOW:-^(etc|opt/tomcat|opt/apache-tomcat[0-9.]*-?[0-9.]*|var/www/gisstack|var/lib/gisstack|srv|var/lib/qgis|home)/}"
 HEALTH_WAIT="${GS_HEALTH_WAIT:-180}"
 
 die() { echo "ERROR: $*" >&2; exit "${2:-1}"; }
@@ -80,10 +80,12 @@ pack() {    # pack NAME.tar.gz PARENT BASENAME...: tar a tree; one retry when fi
   return "$rc"
 }
 
-config_members() {   # existing config paths relative to /
-  local p
-  for p in $CONFIG_PATHS; do [ -e "$p" ] && echo "${p#/}"; done
-  [ -d "$WEBMAP_DIR" ] && echo "${WEBMAP_DIR#/}"
+config_members() {   # existing config paths relative to /, symlinks resolved (/opt/tomcat -> /opt/apache-tomcat-X): tar must not
+  local p r             # extract through a symlink, and the archive then names the real files
+  for p in $CONFIG_PATHS "$WEBMAP_DIR"; do
+    [ -e "$p" ] || continue
+    r="$(readlink -f "$p")"; echo "${r#/}"
+  done
   true
 }
 
@@ -324,8 +326,10 @@ cmd_restore() {
       geoserver) need_tomcat_stopped; swap_dir "$B/geoserver-data.tar.gz" "$GSDIR" "$stamp" tomcat || { failed=1; break; } ;;
       qgis) swap_dir "$B/qgis-projects.tar.gz" "$QGISDIR" "$stamp" qgis || { failed=1; break; } ;;
       cache) swap_dir "$B/mapproxy-cache.tar.gz" "$CACHE_DIR" "$stamp" mapproxy || { failed=1; break; } ;;
-      config) tar xzf "$B/config.tar.gz" -C / || { failed=1; break; }; reload_systemd=1
-              [ -n "${PRE:-}" ] && UNDO+=("tar xzf '$ROOT/$PRE/config.tar.gz' -C /") ;;
+      config) reload_systemd=1
+              # undo first: a half-extracted archive must be reversible too. --keep-directory-symlink: /opt/tomcat is a symlink
+              [ -n "${PRE:-}" ] && UNDO+=("tar xzf '$ROOT/$PRE/config.tar.gz' -C / --keep-directory-symlink")
+              tar xzf "$B/config.tar.gz" -C / --keep-directory-symlink || { failed=1; break; } ;;
     esac
   done
   [ "$reload_systemd" = 1 ] && $SYSTEMCTL daemon-reload || true

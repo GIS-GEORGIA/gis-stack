@@ -271,6 +271,17 @@ gisstack rotate-credentials geoserver --password-file ~/new.pw       # საკ
 
 ვებ GUI: `gisstack web --allow-host gis.example.ge` (სხვა Host სახელი), `--rotate-token` (ახალი წვდომის ტოკენი), `--server waitress` (production სერვერი).
 
+### ბექაფი და აღდგენა (native)
+
+```bash
+gisstack backup create --mode ssh --ssh root@server --download ~/backups     # დადასტურებული ბექაფი + ასლი ამ კომპიუტერზე
+gisstack backup list   --mode ssh --ssh root@server
+gisstack backup restore ID --mode ssh --ssh root@server                      # ჯერ გეგმას აჩვენებს, ეკითხება, ავტომატურად ბექაფობს, საჭიროების შემთხვევაში უკან აბრუნებს
+gisstack backup schedule enable --calendar daily --keep 14 --days 30        # ავტომატური ბექაფი (systemd timer)
+```
+
+სრული აღწერა, retention, ავარიული აღდგენა ახალ სერვერზე: [RECOVERY.md](RECOVERY.md). ბექაფი პაროლებს შეიცავს — დაიცავი.
+
 ## 10. განახლება
 
 როცა ახალი ვერსია გამოდის GitHub-ზე, პროგრამა არ გაწუხებს თავისით; განახლებას **შენ** ამოწმებ:

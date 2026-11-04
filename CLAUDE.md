@@ -99,6 +99,13 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - ახალი გამონაკლისი = `core/errors.py` (უნიკალური `code`); ძველი სახელები (`deploy.DeployError` ...) იგივე კლასებია.
 - Tk-ის თარგმნა: `desktop.install_translation()` (App.__init__ იძახებს); იმპორტზე არაფერი იცვლება.
 
+## ბექაფი / აღდგენა (Phase 7)
+- ლოგიკა სერვერზეა: `templates/native/gisstack-backup.sh` (სტატიკური bash, shellcheck-ში ამოწმდება); Python (`backup.py`) მხოლოდ აყენებს (`install_tool`, sha256-ით) და ატარებს `transport`-ით. ახალი ბრძანება = ახალი ტესტი `tests/test_backup_tool.py`-ში (რეალური bash/tar, `Box` ფიქსტურა; `GS_*` გადაფარვები root-ის გარეშე გასაშვებად).
+- `tests/test_backup_tool.py::PostgresRoundTripTests` ითხოვს docker + `postgis/postgis:17-3.5` (CI-ში `GISSTACK_TEST_DOCKER=1`).
+- ყოველთვის: `.partial` → გადამოწმება → გადარქმევა; აღდგენა = pre-restore ბექაფი → გადარქმევით ჩანაცვლება → ვალიდაცია → rollback. არასდროს წაშალო ძველი მონაცემი ავტომატურად.
+- tar 1.35 არ წერს აბსოლუტურ symlink-ზე (`/opt/tomcat`) — არქივში რეალური ბილიკებია (`readlink -f`).
+- `docs/RECOVERY.md` — runbook; ქცევის ცვლილებისას განაახლე.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

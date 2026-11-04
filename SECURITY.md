@@ -95,6 +95,11 @@ password on an installed *native* server: the new password goes over stdin, is v
 anything is written, is rolled back on failure, then updates `/etc/gisstack/stack.env`, `credentials.txt` and the local secret
 store. Containers and Kubernetes are not supported by rotation yet.
 
+**Backups and restores (R-03).** `gisstack-backup` (see `docs/RECOVERY.md`) writes sealed, checksummed backups (0700/0600), refuses
+to restore a damaged backup, takes a verified pre-restore backup first, replaces data by renaming, validates recovery and rolls back
+on failure. Restore refuses archives with `..`, absolute paths, escaping links or members outside the allowed directories. Backups
+contain secrets (`credentials.txt`, role password hashes): they are not encrypted yet - keep the directory and downloaded copies private.
+
 **Not covered yet (see `docs/ROADMAP.md`):** release artefacts are not signed (S-09, needs a decision on the signing tool), the CSP
 still allows inline scripts (S-07), SSH host keys are trust-on-first-use (S-08, Phase 9), rollback after a failed upgrade and a
 `restore` command (R-03, Phase 7), and the Tk desktop GUI is not part of the automated coverage figure.

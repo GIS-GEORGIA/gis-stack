@@ -57,7 +57,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - **Evaluate first, move second:** modules that already have sound boundaries (`catalog`, `discover` parsers, `projects`, `i18n`) stay where they are; the proposed tree in the brief is a target, not a mandate.
 - **Exit criteria:** no cross-module imports of private functions; behaviour unchanged (golden tests on generated bundles and parser fixtures); mypy ratchet advanced.
 
-### Phase 7 — Backup and restore · **XL**
+### Phase 7 — Backup and restore · **XL** — ✅ implemented for the native target (Compose/Kubernetes, encryption, base backups, GUI wizard: later)
 - **Scope:** PostgreSQL (logical dumps, optional base backups), GeoServer data dir, MapProxy cache (opt-in, may be large), QGIS projects, GIS-STACK configuration, deployment metadata.
 - **Work:** `backup/manager` (consistent snapshots: `pg_dump` with snapshot, GeoServer data-dir quiesce or copy with checksums), `scheduler` (systemd timer or cron generated per server), history + **retention policies**, manifest with checksums, **integrity checks**, `restore` (wizard: select → **preview/dry-run** → validate prerequisites → restore to staging or in place with automatic pre-restore backup → **recovery validation** with health probes), no silent overwrite, progress events, documented recovery runbook.
 - **Tests:** round-trip in containers (PostgreSQL/PostGIS + GeoServer data dir), corrupted-archive detection, interrupted restore, retention pruning, permission checks.
