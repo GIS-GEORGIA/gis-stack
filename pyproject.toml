@@ -68,3 +68,12 @@ branch = false
 [tool.coverage.report]
 skip_empty = true
 exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:"]
+
+# ratchet (Phase 2): modules written or reshaped since the audit must be fully typed; extend this list as others are cleaned
+[[tool.mypy.overrides]]
+module = ["gisstack.core.*", "gisstack.runner", "gisstack.transport", "gisstack.journal", "gisstack.preflight", "gisstack.rotation",
+          "gisstack.services", "gisstack.providers.*", "gisstack.secretsrc", "gisstack.pins", "gisstack.webgui.security", "gisstack.fsutil"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_return_any = true
+no_implicit_optional = true

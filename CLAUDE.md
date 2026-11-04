@@ -92,6 +92,13 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - `rotation.py`: პაროლი stdin-ით, **ჯერ გადამოწმება, მერე ფაილებში ჩაწერა**, ჩავარდნისას უკან; GeoServer ცვლილებას წამიერად აგვიანებს (verify ციკლი), ძველი პაროლი ქეშის გამო რამდენიმე წუთი კიდევ მუშაობს.
 - ტესტებში watcher-ის შაბლონი უნდა ვერ ემთხვეოდეს საკუთარ cmdline-ს (`Mark[e]r`), თორემ ყველაფერი „გაჟონვაა“.
 
+## არქიტექტურა (Phase 2)
+- ფენები: `core/*` (errors, paths, events, log) < `runner` < `transport` < `providers/*` < `ops`/`deploy`/`preflight`/`rotation`/`existing` < `services` < `cli`/`webgui`/`desktop`. `tests/test_architecture.py` იცავს (ციკლი, ფენა, სხვის private-ზე წვდომა).
+- ახალი სამიზნე = ახალი `providers/<name>.py` (ENTRY, CLEAN_ENTRY, ROOT, fetch_status, control_script, logs_script, clean_args, apply_args) + რეგისტრაცია `providers/__init__.py`. `ops`/`deploy` არ იცვლება.
+- ქცევის შეცვლა განზრახ? `UPDATE_GOLDEN=1 python -m unittest tests.test_golden` და გადახედე `tests/golden/*.json` diff-ს.
+- ახალი გამონაკლისი = `core/errors.py` (უნიკალური `code`); ძველი სახელები (`deploy.DeployError` ...) იგივე კლასებია.
+- Tk-ის თარგმნა: `desktop.install_translation()` (App.__init__ იძახებს); იმპორტზე არაფერი იცვლება.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

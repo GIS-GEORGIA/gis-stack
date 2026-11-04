@@ -16,7 +16,8 @@ def status_script(cfg: dict[str, Any]) -> str:
 
 def parse(out: str) -> list[dict[str, Any]]:
     try:
-        return json.loads(out).get("items", [])
+        items: list[dict[str, Any]] = json.loads(out).get("items", [])
+        return items
     except (ValueError, AttributeError):
         raise DeployError("kubectl: " + out.strip().splitlines()[-1] if out.strip() else "kubectl: empty answer") from None
 

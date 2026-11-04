@@ -52,7 +52,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - **Tests:** timeouts/cancel with a hung fake `ssh`; lock contention; audit-log content (no secrets); session expiry; rotation round-trip in containers.
 - **Exit criteria:** no secret appears in any `ps`/`/proc` argument in the installer; every download is verified; operations are cancellable and bounded.
 
-### Phase 2 — Architecture (incremental) · **L**
+### Phase 2 — Architecture (incremental) · **L** — ✅ implemented (core, transport, providers, services, Tk patching). Left for later: per-service modules, typed config model, shell logic out of Jinja
 - **Order of extraction** (each step keeps old import paths working through thin re-exports): `core/paths`, `core/exceptions` + `core/logging` + `core/events` → `core/transport` (from `ops`/`deploy`) → `providers/{native,compose,kubernetes}` behind `Provider` (`deploy/status/control/logs/clean/apply/backup`) → service modules (`services/postgis|geoserver|qgis_server|mapproxy|caddy`) holding per-service knowledge (ports, health probes, backup paths, import rules) → **service layer** used by web, Tk and CLI → remove import-time monkeypatching in `desktop.py` → typed config model generated from the schema.
 - **Evaluate first, move second:** modules that already have sound boundaries (`catalog`, `discover` parsers, `projects`, `i18n`) stay where they are; the proposed tree in the brief is a target, not a mandate.
 - **Exit criteria:** no cross-module imports of private functions; behaviour unchanged (golden tests on generated bundles and parser fixtures); mypy ratchet advanced.
