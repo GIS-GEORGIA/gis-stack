@@ -104,7 +104,8 @@ fi
 
 _CACHE = r"""
 echo "@@cache"
-for d in /var/lib/gisstack/mapproxy/cache_data; do [ -d "$d" ] && echo "cache $(timeout 15 du -sb "$d" 2>/dev/null | cut -f1)"; done
+d=/var/lib/gisstack/mapproxy/cache_data
+[ -d "$d" ] && echo "cache $(timeout 15 du -sb "$d" 2>/dev/null | cut -f1)"
 """
 
 _BACKUP = r"""

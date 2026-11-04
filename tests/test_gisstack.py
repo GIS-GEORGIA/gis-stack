@@ -969,6 +969,8 @@ class TkI18nTests(unittest.TestCase):
                         self.assertIn("GitHub", top)
                     finally:
                         app.destroy()
+                        del app
+                        __import__("gc").collect()          # finalise Tk variables here, on the main thread (not in a worker thread later)
         finally:
             if old is None:
                 os.environ.pop("GISSTACK_HOME", None)

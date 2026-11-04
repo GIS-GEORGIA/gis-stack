@@ -141,7 +141,7 @@ class TkUsesServices(unittest.TestCase):
         settings.save(lang="en", theme="light")
         desktop.LANG = settings.resolve_lang()
         self.app = desktop.App()
-        self.addCleanup(self.app.destroy)
+        self.addCleanup(self._dispose)
         self.app.after = lambda ms, fn=None, *a: fn() if fn else None          # run scheduled UI callbacks at once
         self.jobs = []
         self.app._run_job = lambda cfg, tag, steps: self.jobs.append(steps)
@@ -149,6 +149,12 @@ class TkUsesServices(unittest.TestCase):
         self.app._exist_show = mock.Mock()
         self.app.nb = mock.Mock()
         self.app.vars["_mode"].set("local")
+
+    def _dispose(self):
+        self.app.destroy()
+        self.app = None
+        self.jobs = []
+        __import__("gc").collect()                     # Tk variables must be finalised on the main thread, not by a GC run in some worker
 
     def start(self):
         with mock.patch("gisstack.desktop.messagebox.askyesno", return_value=True):
