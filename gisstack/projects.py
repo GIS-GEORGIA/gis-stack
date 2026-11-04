@@ -59,7 +59,7 @@ def load(name: str) -> dict[str, Any]:
 
 def load_full(name: str) -> dict[str, Any]:
     """Saved settings laid over the defaults - what a GUI form shows."""
-    return config._merge(config.default_config(), load(name))
+    return config.merge(config.default_config(), load(name))
 
 
 def _write(name: str, data: dict[str, Any]) -> Path:

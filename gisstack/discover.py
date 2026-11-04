@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from . import catalog, ops
+from . import catalog, ops, transport
 
 _NAMES = {c["id"]: c["ka"] for c in catalog.COMPONENTS}
 COMPONENTS = ["postgis", "tomcat", "geoserver", "qgis_server", "mapproxy", "caddy"]
@@ -108,7 +108,7 @@ def parse(out: str) -> dict[str, Any]:
         f = l.split()
         if len(f) < 4:
             continue
-        addr = ops._normalize_addr(f[3])
+        addr = ops.normalize_addr(f[3])
         m = re.search(r'users:\(\("([^"]+)",pid=(\d+)', l)
         try:
             port = int(addr.rsplit(":", 1)[1])
@@ -313,7 +313,7 @@ def conflicts(report: dict[str, Any], cfg: dict[str, Any], target: str = "native
 def scan(cfg: dict[str, Any], mode: str, ssh: dict[str, Any] | None = None, target: str | None = None) -> dict[str, Any]:
     """Inspect the host and return {components, web_servers, conflicts, ...}.  Needs root for process names."""
     t = target or cfg["deploy_target"]
-    raw = parse(ops._run(mode, ssh, SCAN_SCRIPT, root=True, timeout=60))
+    raw = parse(transport.run(mode, ssh, SCAN_SCRIPT, root=True, timeout=60))
     rep = analyse(raw, cfg)
     rep["target"] = t
     rep["conflicts"] = conflicts(rep, cfg, t)

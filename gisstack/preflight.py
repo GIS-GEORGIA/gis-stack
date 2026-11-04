@@ -9,7 +9,7 @@ import re
 import shlex
 from typing import Any, Optional
 
-from . import generate, ops
+from . import generate, transport
 
 OK, WARN, FAIL = "ok", "warn", "fail"
 SUPPORTED_ARCH = ("x86_64", "aarch64", "arm64", "amd64")
@@ -170,7 +170,7 @@ def blocking(checks: list[dict[str, str]]) -> list[dict[str, str]]:
 def run(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], target: Optional[str] = None) -> dict[str, Any]:
     """Collect facts here / on the server and judge them.  Raises DeployError when the machine cannot be reached."""
     t = target or cfg["deploy_target"]
-    facts = parse(ops._run(mode, ssh, script(cfg, t), timeout=90))
+    facts = parse(transport.run(mode, ssh, script(cfg, t), timeout=90))
     checks = evaluate(cfg, t, facts) if facts else [_c("preflight", WARN, "წინასწარმა შემოწმებამ პასუხი არ დააბრუნა")]
     return {"target": t, "checks": checks, "ok": not blocking(checks), "facts": facts}
 

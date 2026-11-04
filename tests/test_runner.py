@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from gisstack import deploy, ops, runner
+from gisstack import deploy, runner, transport
 
 
 def alive(pid: int) -> bool:
@@ -123,7 +123,7 @@ class HungSshTests(unittest.TestCase):
     def test_status_style_call_times_out(self):
         t0 = time.time()
         with mock.patch.object(runner, "GRACE_SECONDS", 1.0), self.assertRaises(deploy.DeployError):
-            ops._run("ssh", self.ssh, "true", timeout=1)
+            transport.run("ssh", self.ssh, "true", timeout=1)
         self.assertLess(time.time() - t0, 10)
 
     def test_deploy_stream_honours_the_deadline_variable(self):
@@ -139,7 +139,7 @@ class HungSshTests(unittest.TestCase):
         threading.Timer(0.8, stop.set).start()
         t0 = time.time()
         with mock.patch.object(runner, "GRACE_SECONDS", 1.0):
-            list(ops._stream("ssh", self.ssh, "tail -f /dev/null", stop=stop))
+            list(transport.stream("ssh", self.ssh, "tail -f /dev/null", stop=stop))
         self.assertLess(time.time() - t0, 10)
 
 

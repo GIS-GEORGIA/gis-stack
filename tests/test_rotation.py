@@ -11,7 +11,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from gisstack import cli, config, deploy, ops, rotation, runner
+from gisstack import cli, config, deploy, rotation, runner, transport
 
 PW = "Ne3w-Passw0rd_x"
 
@@ -82,7 +82,7 @@ class RotateTests(Base):
         def fake(mode, ssh, script, *, root=False, timeout=40, input_text=None):
             seen.update(script=script, input=input_text, root=root)
             return "ROTATED=postgres\n"
-        with mock.patch.object(ops, "_run", fake):
+        with mock.patch.object(transport, "run", fake):
             res = rotation.rotate(cfg(), "postgres", "local", None, PW)
         self.assertEqual(seen["input"], PW + "\n")
         self.assertTrue(seen["root"])
@@ -98,17 +98,17 @@ class RotateTests(Base):
 
     def test_failure_markers_become_clear_errors_and_leave_the_store_alone(self):
         for marker, text in (("verify-failed", "ძველი აღდგენილია"), ("change-failed", "არაფერი შეცვლილა"), ("not-installed", "არ არის დაყენებული")):
-            with mock.patch.object(ops, "_run", return_value=f"ROTATE_ERROR={marker}\n"), self.assertRaises(deploy.DeployError) as cm:
+            with mock.patch.object(transport, "run", return_value=f"ROTATE_ERROR={marker}\n"), self.assertRaises(deploy.DeployError) as cm:
                 rotation.rotate(cfg(), "geoserver", "local", None, PW)
             self.assertIn(text, str(cm.exception))
         self.assertFalse((Path(self.td.name) / "secrets/rot.json").exists())
 
     def test_unconfirmed_run_is_not_success(self):
-        with mock.patch.object(ops, "_run", return_value="all fine?\n"), self.assertRaises(deploy.DeployError):
+        with mock.patch.object(transport, "run", return_value="all fine?\n"), self.assertRaises(deploy.DeployError):
             rotation.rotate(cfg(), "postgres", "local", None, PW)
 
     def test_bad_passwords_and_non_native_targets_are_refused_before_anything_runs(self):
-        with mock.patch.object(ops, "_run") as run:
+        with mock.patch.object(transport, "run") as run:
             for bad in ("short", "has space 12345", "semi;colon_1234", "x" * 70):
                 with self.assertRaises(deploy.DeployError):
                     rotation.rotate(cfg(), "postgres", "local", None, bad)
@@ -120,7 +120,7 @@ class RotateTests(Base):
 
     def test_error_text_never_contains_the_password_and_the_journal_records_the_attempt(self):
         from gisstack import journal
-        with mock.patch.object(ops, "_run", side_effect=deploy.DeployError(f"ssh said {PW}")), self.assertRaises(deploy.DeployError) as cm:
+        with mock.patch.object(transport, "run", side_effect=deploy.DeployError(f"ssh said {PW}")), self.assertRaises(deploy.DeployError) as cm:
             rotation.rotate(cfg(), "postgres", "local", None, PW)
         self.assertNotIn(PW, str(cm.exception))
         self.assertNotIn(PW, json.dumps(journal.tail()))
@@ -147,7 +147,7 @@ class CliTests(Base):
             return "ROTATED=geoserver\n"
         f = Path(self.td.name) / "c.json"
         f.write_text(json.dumps({"project": "rot", "deploy_target": "native", "targets": ["native"]}))
-        with mock.patch.object(ops, "_run", fake):
+        with mock.patch.object(transport, "run", fake):
             rc, out, err = self.run_cli("rotate-credentials", "geoserver", "-c", str(f))
         self.assertEqual(rc, 0, err)
         self.assertNotIn(captured["pw"], out + err)
@@ -167,7 +167,7 @@ class CliTests(Base):
         def fake(mode, ssh, script, *, root=False, timeout=40, input_text=None):
             got["pw"] = input_text
             return "ROTATED=postgres\n"
-        with mock.patch.object(ops, "_run", fake):
+        with mock.patch.object(transport, "run", fake):
             rc, _, _ = self.run_cli("rotate-credentials", "postgres", "-c", str(f), "--password-file", str(pwf))
         self.assertEqual((rc, got["pw"]), (0, PW + "\n"))
 

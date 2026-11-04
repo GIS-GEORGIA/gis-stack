@@ -10,7 +10,7 @@ import re
 import secrets
 from typing import Any, Optional
 
-from . import config, deploy, journal, ops, runner
+from . import config, deploy, journal, runner, transport
 
 WHAT = ("postgres", "geoserver")
 _PW = re.compile(r"^[A-Za-z0-9_.\-]{8,64}$")
@@ -114,7 +114,7 @@ def rotate(cfg: dict[str, Any], what: str, mode: str, ssh: Optional[dict[str, An
     host = "localhost" if mode == "local" else str((ssh or {}).get("host", ""))
     with journal.Operation(f"rotate:{what}", redact=mask, target=target, mode=mode, host=host, project=cfg.get("project", "")):
         try:
-            out = ops._run(mode, ssh, sc, root=True, timeout=180, input_text=pw + "\n")
+            out = transport.run(mode, ssh, sc, root=True, timeout=180, input_text=pw + "\n")
         except deploy.DeployError as e:
             raise deploy.DeployError(mask(str(e))) from e
     err = re.search(r"ROTATE_ERROR=([a-z-]+)", out)

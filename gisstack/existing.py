@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from . import deploy, discover, fsutil, journal, ops
+from . import deploy, discover, fsutil, journal, transport
 from .core import paths
 from .core.errors import PlanError
 
@@ -68,7 +68,7 @@ def parse_plan_spec(spec: str) -> dict[str, dict[str, Any]]:
     return plan
 
 
-def _norm(plan: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+def normalize_plan(plan: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for comp, v in (plan or {}).items():
         v = {"action": v} if isinstance(v, str) else dict(v)
@@ -79,6 +79,9 @@ def _norm(plan: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
             raise PlanError(f"unknown program: {comp}")
         out[comp] = {"action": v["action"], "purge": bool(v.get("purge"))}
     return out
+
+
+_norm = normalize_plan          # compatibility alias
 
 
 def validate(plan: dict[str, dict[str, Any]], rep: dict[str, Any], cfg: dict[str, Any]) -> list[str]:
@@ -366,7 +369,7 @@ def fetch_backup(mode: str, ssh: dict[str, Any] | None, ts: str, dest_dir: str |
     except FileExistsError as e:
         raise deploy.DeployError(f"ბექაფის ფაილი უკვე არსებობს და არ გადაიწერება: {out}") from e
     with os.fdopen(fd, "wb") as fh:
-        p = subprocess.run(ops._argv(mode, ssh, script, root=True), stdin=subprocess.DEVNULL, stdout=fh,
+        p = subprocess.run(transport.argv(mode, ssh, script, root=True), stdin=subprocess.DEVNULL, stdout=fh,
                            stderr=subprocess.PIPE, timeout=900)
     if p.returncode != 0 or out.stat().st_size == 0:
         out.unlink(missing_ok=True)
@@ -390,7 +393,7 @@ def backup(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | No
         raise PlanError("კომპონენტი არ არის არჩეული")
     ts = new_backup_id()
     yield f"== ბექაფი: {', '.join(comps)}  ({REMOTE_BACKUPS}/{ts})"
-    out = ops._run(mode, ssh, backup_script(rep, comps, ts, with_data), root=True, timeout=900)
+    out = transport.run(mode, ssh, backup_script(rep, comps, ts, with_data), root=True, timeout=900)
     yield from _tail(out)
     if "BACKUP_VERIFIED=" not in out:
         raise deploy.DeployError("ბექაფი ვერ შეიქმნა ან ვერ გადამოწმდა")
@@ -422,7 +425,7 @@ def _run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None
     only with install=False)."""
     if target != "native":
         raise PlanError("არსებული პროგრამების მართვა ახლა მხოლოდ native სამიზნეზეა")
-    plan = _norm(plan)
+    plan = normalize_plan(plan)
     wipes = [c for c, p in plan.items() if p["purge"] and p["action"] in ("remove", "reuse")]
     if wipes and not confirm_data_loss:
         raise PlanError("მონაცემების წაშლა ('+purge') მოითხოვს ექსპლიციტურ დადასტურებას: " + ", ".join(wipes))
@@ -440,7 +443,7 @@ def _run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None
         # PostgreSQL databases are only dumped when they will be re-used (or when asked for)
         yield f"== ბექაფი: {', '.join(todo_backup)}  ({REMOTE_BACKUPS}/{ts})"
         dump_pg = with_data or plan.get("postgis", {}).get("action") == "reuse"
-        out = ops._run(mode, ssh, backup_script(rep, todo_backup, ts, with_data or dump_pg), root=True, timeout=900)
+        out = transport.run(mode, ssh, backup_script(rep, todo_backup, ts, with_data or dump_pg), root=True, timeout=900)
         yield from _tail(out)
         if "BACKUP_VERIFIED=" not in out:       # fail closed: no verified backup, nothing is removed
             raise deploy.DeployError("ბექაფი ვერ შეიქმნა ან ვერ გადამოწმდა — არაფერი წაშლილა")
@@ -449,11 +452,11 @@ def _run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None
         yield f"ბექაფის ასლი ამ მანქანაზე: {local} (SHA-256 ✔ {n} ფაილი)"
     for comp, p in plan.items():
         if comp in discover.WEB_SERVERS and p["action"] == "disable":
-            yield from _tail(ops._run(mode, ssh, disable_script(comp + ".service"), root=True))
+            yield from _tail(transport.run(mode, ssh, disable_script(comp + ".service"), root=True))
     for comp in discover.COMPONENTS:
         step = plan.get(comp)
         if step and step["action"] in ("remove", "reuse"):
-            yield from _tail(ops._run(mode, ssh, remove_script(rep, comp, step["purge"]), root=True, timeout=600))
+            yield from _tail(transport.run(mode, ssh, remove_script(rep, comp, step["purge"]), root=True, timeout=600))
     pg = plan.get("postgis")
     if pg and pg["action"] == "adopt":
         c = rep["components"]["postgis"]
@@ -468,5 +471,5 @@ def _run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None
     reuse = [c for c, p in plan.items() if c in discover.COMPONENTS and p["action"] == "reuse"]
     if reuse and install:
         yield f"== იმპორტი ბექაფიდან: {', '.join(reuse)}"
-        yield from _tail(ops._run(mode, ssh, import_script(rep, reuse, ts), root=True, timeout=900))
+        yield from _tail(transport.run(mode, ssh, import_script(rep, reuse, ts), root=True, timeout=900))
     yield "== დასრულდა"

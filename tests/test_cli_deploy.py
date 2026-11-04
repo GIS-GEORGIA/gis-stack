@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gisstack import cli, config, deploy, deps, discover, existing, ops, projects, settings, updater  # noqa: E402
+from gisstack import cli, config, deploy, deps, discover, existing, ops, projects, settings, transport, updater  # noqa: E402
 
 
 def make_cfg(**over):
@@ -260,13 +260,13 @@ class CliOperationsTests(CliBase):
         cf = self.config_file(deploy_target="native", targets=["native"])
         rep = {"components": {"postgis": {"databases": []}}, "family": "deb", "pkgs_all": []}
         with mock.patch.object(discover, "scan", return_value=rep), \
-                mock.patch.object(ops, "_run", return_value="BACKUP_VERIFIED=/x\n"), \
+                mock.patch.object(transport, "run", return_value="BACKUP_VERIFIED=/x\n"), \
                 mock.patch.object(existing, "fetch_backup", return_value=Path("/tmp/x.tar.gz")), \
                 mock.patch.object(existing, "verify_backup_archive", return_value=3):
             rc, out, _ = self.run_cli("existing", "backup", "postgis", "-c", cf)
         self.assertEqual(rc, 0)
         self.assertIn("SHA-256", out)
-        with mock.patch.object(discover, "scan", return_value=rep), mock.patch.object(ops, "_run", return_value="BACKUP_FAILED\n"):
+        with mock.patch.object(discover, "scan", return_value=rep), mock.patch.object(transport, "run", return_value="BACKUP_FAILED\n"):
             rc, _, err = self.run_cli("existing", "backup", "postgis", "-c", cf)
         self.assertEqual(rc, 1)
         with mock.patch.object(existing, "run", return_value=iter(["REMOVED"])) as run:

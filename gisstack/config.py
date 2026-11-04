@@ -129,14 +129,18 @@ def default_config() -> dict[str, Any]:
     }
 
 
-def _merge(base: dict, over: dict) -> dict:
+def merge(base: dict, over: dict) -> dict:
+    """Deep-merge `over` onto a copy of `base`."""
     out = copy.deepcopy(base)
     for k, v in (over or {}).items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
-            out[k] = _merge(out[k], v)
+            out[k] = merge(out[k], v)
         else:
             out[k] = copy.deepcopy(v)
     return out
+
+
+_merge = merge          # compatibility alias
 
 
 def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,
@@ -149,7 +153,7 @@ def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,
     if user_cfg is not None and not isinstance(user_cfg, dict):
         raise ConfigError("config: must be an object")
     user_cfg, migration_notes = migrate(user_cfg or {})
-    cfg = _merge(template, user_cfg)
+    cfg = merge(template, user_cfg)
     shape = validation.check_shape(cfg, template)
     if shape:                                 # a malformed file must produce a clear error, never a traceback
         raise ConfigError("\n".join(shape))

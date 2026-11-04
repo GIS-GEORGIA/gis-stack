@@ -7,48 +7,17 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import re
-import shlex
 import threading
 import time
 from typing import Any, Iterator
 
-from . import catalog, deploy, generate, journal, runner
+from . import catalog, deploy, generate, journal, transport
 
 ACTIONS = ("start", "stop", "restart", "enable", "disable")
 ORDER = ["postgis", "tomcat", "geoserver", "qgis_server", "mapproxy", "caddy", "webmap"]   # start order
 QGIS_PORT, MAPPROXY_PORT = 9993, 8081
 _NAMES = {c["id"]: c["ka"] for c in catalog.COMPONENTS}
-
-
-# --------------------------------------------------------------------------- transport
-def _argv(mode: str, ssh: dict[str, Any] | None, script: str, *, root: bool) -> list[str]:
-    """Command that runs a bash script here or on the server (script is an argument, so stdin stays free)."""
-    if mode == "local":
-        pre = ["sudo", "-n"] if root and hasattr(os, "geteuid") and os.geteuid() != 0 else []
-        return pre + ["bash", "-c", script]
-    if mode != "ssh":
-        raise deploy.DeployError("უცნობი რეჟიმი")
-    ssh = ssh or {}
-    sudo = "sudo -n " if root and ssh.get("user", "root") != "root" else ""
-    return deploy._ssh_base(ssh) + [f"{sudo}bash -c {shlex.quote(script)}"]
-
-
-def _run(mode: str, ssh: dict[str, Any] | None, script: str, *, root: bool = False, timeout: int = 40,
-         input_text: str | None = None) -> str:
-    """Run a script here / on the server and return stdout.  `input_text` goes to its stdin (use it for secrets, never argv)."""
-    p = runner.run(_argv(mode, ssh, script, root=root), timeout=timeout, error=deploy.DeployError, input_text=input_text)
-    if p.returncode != 0 and not p.stdout.strip():
-        raise deploy.DeployError((p.stderr or "command failed").strip().splitlines()[-1])
-    return p.stdout
-
-
-def _stream(mode: str, ssh: dict[str, Any] | None, script: str, *, root: bool = False,
-            stop: threading.Event | None = None, deadline: float | None = None) -> Iterator[str]:
-    """Stream a script's output.  `stop` ends it (not an error); `deadline` bounds it (None: log following has no limit)."""
-    yield from runner.stream(_argv(mode, ssh, script, root=root), stop=stop, error=deploy.DeployError, echo=False,
-                             deadline=deadline, idle=None)
 
 
 # --------------------------------------------------------------------------- helpers
@@ -188,7 +157,7 @@ def _native_status_script(cfg: dict[str, Any], checks: list[dict[str, Any]]) -> 
             + _probe_script(checks))
 
 
-def _normalize_addr(a: str) -> str:
+def normalize_addr(a: str) -> str:
     if a.startswith("*:"):
         return "0.0.0.0:" + a[2:]
     m = re.match(r"^\[::ffff:(\d+\.\d+\.\d+\.\d+)\]:(\d+)$", a)      # Java's dual-stack sockets
@@ -225,7 +194,7 @@ def parse_native(out: str) -> dict[str, Any]:
         elif mode == "ss" and line.strip():
             f = line.split()
             if len(f) >= 4:
-                ss.append(_normalize_addr(f[3]))
+                ss.append(normalize_addr(f[3]))
     return {"units": units, "ss": ss, "http": http, "files": files}
 
 
@@ -445,16 +414,16 @@ def status(cfg: dict[str, Any], mode: str, ssh: dict[str, Any] | None = None, ta
     t0 = time.time()
     if t == "native":
         checks = _checks(cfg, t, ids)
-        out = _run(mode, ssh, _native_status_script(cfg, checks))
+        out = transport.run(mode, ssh, _native_status_script(cfg, checks))
         rows = _native_rows(cfg, ids, parse_native(out), checks)
     elif t == "compose":
         checks = _checks(cfg, t, ids)
-        out = _run(mode, ssh, _compose_status_script(cfg, checks))
+        out = transport.run(mode, ssh, _compose_status_script(cfg, checks))
         if out.lstrip().startswith(("Error", "error", "Cannot", "permission")) and "@@inspect" not in out:
             raise deploy.DeployError(out.strip().splitlines()[0])
         rows = _compose_rows(cfg, ids, parse_compose(out), checks)
     else:
-        out = _run(mode, ssh, _k8s_status_script(cfg))
+        out = transport.run(mode, ssh, _k8s_status_script(cfg))
         rows = _k8s_rows(cfg, ids, parse_k8s(out))
     return {"target": t, "project": cfg["project"], "domain": cfg["domain"], "time": time.strftime("%H:%M:%S"),
             "took": round(time.time() - t0, 2), "rows": rows}
@@ -532,7 +501,7 @@ def control(cfg: dict[str, Any], mode: str, ssh: dict[str, Any] | None, action: 
     yield f"== {action}: {', '.join(ids)}"
     host = "localhost" if mode == "local" else str((ssh or {}).get("host", ""))
     with journal.Operation(f"control:{action}", target=t, mode=mode, host=host, project=cfg.get("project", ""), components=ids):
-        yield from _stream(mode, ssh, script, root=(t == "native"), deadline=900)
+        yield from transport.stream(mode, ssh, script, root=(t == "native"), deadline=900)
     yield "== დასრულდა"
 
 
@@ -564,7 +533,7 @@ def logs(cfg: dict[str, Any], mode: str, ssh: dict[str, Any] | None, component: 
     t = _target(cfg, target)
     comp = "qgis_server" if component == "qgis" else component
     script = logs_script(cfg, t, comp, lines, follow)
-    yield from _stream(mode, ssh, script, root=(t == "native"), stop=stop)
+    yield from transport.stream(mode, ssh, script, root=(t == "native"), stop=stop)
 
 
 # --------------------------------------------------------------------------- console formatting

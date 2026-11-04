@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gisstack import config, deploy, deps, discover, existing, fsutil, generate, i18n, ops, projects, settings, updater, validation  # noqa: E402
+from gisstack import config, deploy, deps, discover, existing, fsutil, generate, i18n, ops, projects, settings, transport, updater, validation  # noqa: E402
 
 
 def make(user=None):
@@ -447,12 +447,12 @@ class OpsTests(unittest.TestCase):
             checks = ops._checks(cfg, "native", ops._components(cfg, "native", None))
             return NATIVE_OUT + "".join(f"@@{'tcp' if c['kind'] == 'tcp' else 'http'} {i} {'open' if c['kind'] == 'tcp' else '200'}\n"
                                         for i, c in enumerate(checks))
-        real = ops._run
-        ops._run = fake
+        real = transport.run
+        transport.run = fake
         try:
             res = ops.status(cfg, "local", None, "native")
         finally:
-            ops._run = real
+            transport.run = real
         self.assertEqual({r["id"] for r in res["rows"]}, {"postgis", "tomcat", "geoserver", "qgis_server", "mapproxy", "caddy", "webmap"})
         txt = ops.format_table(res)
         self.assertIn("127.0.0.1:5432", txt)
@@ -481,10 +481,10 @@ class OpsTests(unittest.TestCase):
 
     def test_local_transport_runs_and_cancels(self):
         import threading
-        self.assertEqual(ops._run("local", None, "echo hello").strip(), "hello")
+        self.assertEqual(transport.run("local", None, "echo hello").strip(), "hello")
         stop = threading.Event()
         got = []
-        for line in ops._stream("local", None, "while true; do echo tick; sleep 0.1; done", stop=stop):
+        for line in transport.stream("local", None, "while true; do echo tick; sleep 0.1; done", stop=stop):
             got.append(line)
             if len(got) == 3:
                 stop.set()
@@ -1402,7 +1402,7 @@ class BackupSafetyTests(unittest.TestCase):
         rep["conflicts"] = discover.conflicts(rep, config.resolve({}, generate_secrets=False))
         ran = []
         env = self.env(**env_extra)
-        real = (discover.scan, ops._run, existing.fetch_backup, deploy.deploy)
+        real = (discover.scan, transport.run, existing.fetch_backup, deploy.deploy)
 
         def fake_run(mode, ssh, script, **kw):
             if "BACKUP_ROOT" in script:
@@ -1417,7 +1417,7 @@ class BackupSafetyTests(unittest.TestCase):
                 tf.add(self.root / ts, arcname=ts)
             return out
         discover.scan = lambda *a, **k: rep
-        ops._run = fake_run
+        transport.run = fake_run
         existing.fetch_backup = fake_fetch
         deploy.deploy = lambda *a, **k: iter(["DEPLOYED"])
         try:
@@ -1432,7 +1432,7 @@ class BackupSafetyTests(unittest.TestCase):
                 err = e
             return lines, ran, err
         finally:
-            discover.scan, ops._run, existing.fetch_backup, deploy.deploy = real
+            discover.scan, transport.run, existing.fetch_backup, deploy.deploy = real
 
     def test_no_removal_after_a_failed_backup(self):
         lines, ran, err = self.orchestrate(GS_FAIL_DB="gis")

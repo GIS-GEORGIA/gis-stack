@@ -26,7 +26,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, settings, updater
+from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, settings, transport, updater
 from .core import log, paths
 
 
@@ -226,7 +226,7 @@ def _existing(a: argparse.Namespace, cfg: dict) -> int:
         if a.action == "backup":
             rep = discover.scan(cfg, a.mode, ssh, target)
             ts = existing.new_backup_id()
-            out = ops._run(a.mode, ssh, existing.backup_script(rep, comps, ts, a.with_data), root=True, timeout=900)
+            out = transport.run(a.mode, ssh, existing.backup_script(rep, comps, ts, a.with_data), root=True, timeout=900)
             print(out, end="")
             if "BACKUP_VERIFIED=" not in out:
                 print("ERROR: ბექაფი ვერ შეიქმნა ან ვერ გადამოწმდა", file=sys.stderr)
@@ -251,7 +251,7 @@ def _apply(a: argparse.Namespace, cfg: dict) -> int:
     try:
         if a.save:
             print("saved:", projects.save_component(
-                dict(config._merge(config.default_config(), _load(a.config)), project=cfg["project"]), a.component))
+                dict(config.merge(config.default_config(), _load(a.config)), project=cfg["project"]), a.component))
         out = paths.bundles_dir() / f"{cfg['project']}-apply"
         generate.generate_bundle(cfg, out)
         for line in deploy.apply_component(cfg, out, target, a.mode, ssh, a.component):
@@ -447,7 +447,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "save":
         try:
-            raw = dict(config._merge(config.default_config(), _load(a.config)), project=cfg["project"])
+            raw = dict(config.merge(config.default_config(), _load(a.config)), project=cfg["project"])
             path = projects.save_component(raw, a.component) if a.component else projects.save(raw)
         except projects.ProjectError as e:
             print(f"ERROR: {e}", file=sys.stderr)

@@ -368,7 +368,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
 
     def _plan_arg(body: dict[str, Any]) -> dict[str, Any]:
         try:
-            return existing_mod._norm(body.get("plan"))
+            return existing_mod.normalize_plan(body.get("plan"))
         except existing_mod.PlanError as e:
             abort(make_response(jsonify({"error": str(e)}), 400))
 

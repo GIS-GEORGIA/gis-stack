@@ -5,7 +5,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
-from gisstack import cli, config, deploy, ops, preflight
+from gisstack import cli, config, deploy, preflight, transport
 
 
 GOOD = {"os_id": "ubuntu", "os_version": "24.04", "arch": "x86_64", "mem_mb": "8000", "cpus": "4", "disk_/": "50000", "disk_/var": "50000",
@@ -82,7 +82,7 @@ class ScriptTests(unittest.TestCase):
             self.assertNotIn(bad, s)
 
     def test_script_really_runs_here_and_parses(self):
-        out = ops._run("local", None, preflight.script(cfg(components={"postgis": False, "tomcat": False, "geoserver": False, "mapproxy": False,
+        out = transport.run("local", None, preflight.script(cfg(components={"postgis": False, "tomcat": False, "geoserver": False, "mapproxy": False,
                                                                        "caddy": False, "qgis_server": False}), "native").replace("curl", "true"), timeout=60)
         facts = preflight.parse(out)
         self.assertIn(facts["arch"], preflight.SUPPORTED_ARCH + ("armv7l", "i686", "ppc64le", "s390x", "riscv64"))
@@ -94,7 +94,7 @@ class ScriptTests(unittest.TestCase):
 
 class IntegrationTests(unittest.TestCase):
     def test_run_with_empty_answer_degrades_to_a_warning(self):
-        with mock.patch.object(ops, "_run", return_value=""):
+        with mock.patch.object(transport, "run", return_value=""):
             res = preflight.run(cfg(), "local", None, "native")
         self.assertTrue(res["ok"])
         self.assertEqual(res["checks"][0]["status"], "warn")
@@ -102,24 +102,24 @@ class IntegrationTests(unittest.TestCase):
     def test_cli_preflight_exit_codes(self):
         for facts, code in ((GOOD, 0), ({**GOOD, "arch": "sparc"}, 4)):
             out = "\n".join(f"{k}={v}" for k, v in facts.items())
-            with mock.patch.object(ops, "_run", return_value=out), redirect_stdout(io.StringIO()) as so:
+            with mock.patch.object(transport, "run", return_value=out), redirect_stdout(io.StringIO()) as so:
                 self.assertEqual(cli.main(["preflight"]), code)
             self.assertIn("✔", so.getvalue())
 
     def test_cli_preflight_json(self):
         out = "\n".join(f"{k}={v}" for k, v in GOOD.items())
-        with mock.patch.object(ops, "_run", return_value=out), redirect_stdout(io.StringIO()) as so:
+        with mock.patch.object(transport, "run", return_value=out), redirect_stdout(io.StringIO()) as so:
             cli.main(["preflight", "--json"])
         self.assertTrue(json.loads(so.getvalue())["ok"])
 
     def test_deploy_stops_on_a_failing_preflight_unless_skipped(self):
         bad = "\n".join(f"{k}={v}" for k, v in {**GOOD, "arch": "sparc"}.items())
-        with mock.patch.object(ops, "_run", return_value=bad), mock.patch.object(deploy, "deploy", return_value=iter(["ran"])) as dep, \
+        with mock.patch.object(transport, "run", return_value=bad), mock.patch.object(deploy, "deploy", return_value=iter(["ran"])) as dep, \
                 redirect_stderr(io.StringIO()) as se, redirect_stdout(io.StringIO()):
             self.assertEqual(cli.main(["deploy", "--target", "compose"]), 4)
             dep.assert_not_called()
             self.assertIn("skip-preflight", se.getvalue())
-        with mock.patch.object(ops, "_run", return_value=bad), mock.patch.object(deploy, "deploy", return_value=iter(["ran"])) as dep, \
+        with mock.patch.object(transport, "run", return_value=bad), mock.patch.object(deploy, "deploy", return_value=iter(["ran"])) as dep, \
                 redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
             self.assertEqual(cli.main(["deploy", "--target", "compose", "--skip-preflight"]), 0)
             dep.assert_called_once()
@@ -135,7 +135,7 @@ class WebTests(unittest.TestCase):
     def test_endpoint_and_deploy_gate(self):
         bad = "\n".join(f"{k}={v}" for k, v in {**GOOD, "arch": "sparc"}.items())
         body = {"config": {"targets": ["compose"], "deploy_target": "compose"}, "mode": "local"}
-        with mock.patch.object(ops, "_run", return_value=bad), mock.patch.object(deploy, "preflight", return_value=[]):
+        with mock.patch.object(transport, "run", return_value=bad), mock.patch.object(deploy, "preflight", return_value=[]):
             r = self.c.post("/api/preflight", json=body, headers=self.h)
             self.assertEqual(r.status_code, 200)
             self.assertFalse(r.get_json()["ok"])
