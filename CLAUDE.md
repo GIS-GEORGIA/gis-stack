@@ -47,6 +47,16 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
   `/api/projects[/<name>]`. პროექტის ფაილი ჩვეულებრივი კონფიგია (`-c` იღებს).
 - გადამოწმებულია Ubuntu VM-ზე: MapProxy-ის workers 4→2, Tomcat/Caddy არ გადაიტვირთა.
 
+## დიაგნოსტიკა (`gisstack/ops.py`)
+- `ops.status()` ერთი ბრძანებით (`bash -c`, ლოკალურად ან SSH) კითხულობს: native — `systemctl show` + `ss -Hltn` + curl/tcp
+  შემოწმებები; compose — `compose -p <პროექტი> ps --format json` + `inspect`; k8s — `kubectl get pods,svc,deploy,sts -o json`.
+  პარსერები (`parse_native/parse_compose/parse_k8s`) წმინდაა და ტესტირდება მზა ტექსტებზე.
+- `control()` — start/stop/restart/enable/disable (native: systemd, stop-ის დროს უკუ-რიგით; compose: `compose -p`, enable/disable =
+  `update --restart`; k8s: scale / rollout restart); `logs()` — journalctl / compose logs / kubectl logs, `-f` გაჩერდება `stop` Event-ით.
+- ინტერფეისები: CLI `status|start|stop|restart|enable|disable|logs`; Web `/api/ops/status|control|logs`, `/api/jobs/<id>/cancel`;
+  Tk ჩანართი „დიაგნოსტიკა“. გადამოწმებულია Ubuntu და Rocky VM-ზე (ssh, არა-root მომხმარებელი + `sudo -n`).
+- Flask ინახავს შაბლონებს ქეშში — HTML-ის შეცვლის შემდეგ ვებ სერვერი თავიდან გაუშვი.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

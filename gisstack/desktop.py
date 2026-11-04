@@ -14,7 +14,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Any
 
-from . import __version__, catalog, config, deploy, generate, projects
+from . import __version__, catalog, config, deploy, generate, ops, projects
 
 LAYER_HELP = ("ერთი ფენა ხაზზე:  სახელი | სათაური EN | სათაური KA | წყარო | WMS ფენა | URL\n"
               "წყარო: geoserver | qgis | wms | tiles")
@@ -72,6 +72,7 @@ class App(tk.Tk):
         self._tab_map(nb)
         self._tab_deploy(nb)
         self._tab_clean(nb)
+        self._tab_ops(nb)
 
         bar = ttk.Frame(self)
         bar.pack(fill="x", padx=8)
@@ -261,6 +262,198 @@ class App(tk.Tk):
         self.clean_btns.append(b)
         ttk.Label(f, text="Kubernetes-ზე მთელი სტეკის გასუფთავება შლის namespace-ს, ანუ ყველა volume-საც.").grid(
             row=n + 3, column=0, columnspan=3, sticky="w", padx=6)
+
+    def _tab_ops(self, nb):
+        f = self._tab(nb, "დიაგნოსტიკა")
+        ttk.Label(f, text="იყენებს „სამიზნე / Deploy“ ჩანართში არჩეულ სამიზნეს და „სად“-ს. "
+                          "მიუთითებს სტატუსს, IP:პორტს და რეალურ პასუხს.").pack(anchor="w", padx=4, pady=2)
+        top = ttk.Frame(f)
+        top.pack(fill="x", pady=4)
+        ttk.Button(top, text="განახლება", command=self.ops_refresh).pack(side="left", padx=2)
+        self.ops_live = tk.BooleanVar(value=False)
+        ttk.Checkbutton(top, text="ცოცხლად (ყოველ 5 წმ)", variable=self.ops_live, command=self._ops_tick).pack(side="left", padx=8)
+        self.ops_info = tk.StringVar(value="")
+        ttk.Label(top, textvariable=self.ops_info).pack(side="left", padx=8)
+
+        cols = ("state", "auto", "pid", "listen", "checks")
+        self.ops_tree = ttk.Treeview(f, columns=cols, height=9)
+        self.ops_tree.heading("#0", text="პროგრამა")
+        self.ops_tree.column("#0", width=170)
+        for c, t, w in (("state", "სტატუსი", 80), ("auto", "auto", 50), ("pid", "PID", 60),
+                        ("listen", "IP:პორტი", 330), ("checks", "შემოწმება", 260)):
+            self.ops_tree.heading(c, text=t)
+            self.ops_tree.column(c, width=w, anchor="w")
+        for st, col in (("running", "#1b7f3b"), ("failed", "#b00020"), ("stopped", "#c98a00"),
+                        ("starting", "#0b79b5"), ("missing", "#7a8794")):
+            self.ops_tree.tag_configure(st, foreground=col)
+        self.ops_tree.pack(fill="x", pady=4)
+        self.ops_tree.bind("<<TreeviewSelect>>", self._ops_select)
+        self.ops_detail = tk.Text(f, height=6, state="disabled", font=("monospace", 9))
+        self.ops_detail.pack(fill="x", pady=2)
+
+        bar = ttk.Frame(f)
+        bar.pack(fill="x", pady=4)
+        for text, act in (("გაშვება", "start"), ("გაჩერება", "stop"), ("რესტარტი", "restart"),
+                          ("ავტოგაშვება: ჩართვა", "enable"), ("ავტოგაშვება: გამორთვა", "disable")):
+            b = ttk.Button(bar, text=text, command=lambda a=act: self.ops_do(a, self._ops_selected()))
+            b.pack(side="left", padx=2)
+            self.clean_btns.append(b)
+        ttk.Button(bar, text="ლოგი", command=lambda: self.ops_logs(False)).pack(side="left", padx=(12, 2))
+        ttk.Button(bar, text="ლოგი ცოცხლად", command=lambda: self.ops_logs(True)).pack(side="left", padx=2)
+        bar2 = ttk.Frame(f)
+        bar2.pack(fill="x")
+        for text, act in (("ყველას გაშვება", "start"), ("ყველას რესტარტი", "restart"), ("ყველას გაჩერება", "stop")):
+            b = ttk.Button(bar2, text=text, command=lambda a=act: self.ops_do(a, None))
+            b.pack(side="left", padx=2)
+            self.clean_btns.append(b)
+        self.ops_rows: dict[str, dict[str, Any]] = {}
+        self.ops_loading = False
+
+    # ------------------------------------------------------------ diagnostics
+    def _ops_cfg(self):
+        cfg = self._collect_checked()
+        if not cfg:
+            return None
+        mode, ssh, where = self._ssh_mode()
+        return config.resolve(cfg, generate_secrets=False), mode, ssh
+
+    def _ops_selected(self):
+        sel = self.ops_tree.selection()
+        if not sel:
+            messagebox.showinfo("დიაგნოსტიკა", "აირჩიე პროგრამა სიიდან")
+            return None
+        return list(sel)
+
+    def _ops_select(self, _e=None) -> None:
+        sel = self.ops_tree.selection()
+        r = self.ops_rows.get(sel[0]) if sel else None
+        lines = []
+        if r:
+            lines = [f"{r['name']}  [{r['unit']}]  {r['detail']}", f"since: {r['since'] or '-'}  restarts: {r['restarts']}"]
+            lines += [f"listen: {x}" for x in r["listen"]] or ["listen: -"]
+            lines += [f"check:  {'OK ' if c['ok'] else 'BAD'} {c['label']} -> {c['code']}" for c in r["checks"]]
+            lines += [f"url:    {u}" for u in r["urls"]]
+        self.ops_detail.configure(state="normal")
+        self.ops_detail.delete("1.0", "end")
+        self.ops_detail.insert("1.0", "\n".join(lines))
+        self.ops_detail.configure(state="disabled")
+
+    def ops_refresh(self) -> None:
+        if self.ops_loading:
+            return
+        got = self._ops_cfg()
+        if not got:
+            return
+        cfg, mode, ssh = got
+        self.ops_loading = True
+        self.ops_info.set("…")
+
+        def run() -> None:
+            try:
+                res = ops.status(cfg, mode, ssh)
+                self.after(0, lambda: self._ops_show(res, None))
+            except (deploy.DeployError, ValueError) as e:
+                self.after(0, lambda: self._ops_show(None, str(e)))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _ops_show(self, res, err) -> None:
+        self.ops_loading = False
+        if err:
+            self.ops_info.set("შეცდომა: " + err)
+            return
+        self.ops_info.set(f"{res['target']} · {res['domain']} · {res['time']} ({res['took']} წმ)")
+        keep = self.ops_tree.selection()
+        self.ops_tree.delete(*self.ops_tree.get_children())
+        self.ops_rows = {r["id"]: r for r in res["rows"]}
+        for r in res["rows"]:
+            auto = {True: "yes", False: "no", None: "-"}[r["enabled"]]
+            checks = "  ".join(f"{'✔' if c['ok'] else '✘'}{c['label']} {c['code']}" for c in r["checks"]) or "-"
+            self.ops_tree.insert("", "end", iid=r["id"], text=r["name"], tags=(r["state"],),
+                                 values=(r["state"], auto, r["pid"] or "-", ", ".join(r["listen"]) or "-", checks))
+        for k in keep:
+            if self.ops_tree.exists(k):
+                self.ops_tree.selection_add(k)
+        self._ops_select()
+
+    def _ops_tick(self) -> None:
+        if self.ops_live.get():
+            self.ops_refresh()
+            self.after(5000, self._ops_tick)
+
+    def ops_do(self, action: str, comps) -> None:
+        if self.busy or (comps is None and action not in ("start", "stop", "restart")):
+            return
+        if comps is not None and not comps:
+            return
+        got = self._ops_cfg()
+        if not got:
+            return
+        cfg, mode, ssh = got
+        what = ", ".join(comps) if comps else "მთელი სტეკი"
+        if action in ("stop", "restart") and not messagebox.askyesno(action, f"{action}: {what}\nგავაგრძელო?"):
+            return
+        self.busy = True
+        self.deploy_btn.state(["disabled"])
+        for b in self.clean_btns:
+            b.state(["disabled"])
+
+        def run() -> None:
+            try:
+                for line in ops.control(cfg, mode, ssh, action, comps):
+                    self._log(line)
+                self._log("✔ დასრულდა")
+            except deploy.DeployError as e:
+                self._log(f"ERROR: {e}")
+            finally:
+                self.log_q.put(None)
+                self.after(0, self.ops_refresh)
+        threading.Thread(target=run, daemon=True).start()
+
+    def ops_logs(self, follow: bool) -> None:
+        sel = self._ops_selected()
+        if not sel:
+            return
+        got = self._ops_cfg()
+        if not got:
+            return
+        cfg, mode, ssh = got
+        comp = sel[0]
+        win = tk.Toplevel(self)
+        win.title(f"ლოგი: {comp}{' (ცოცხლად)' if follow else ''}")
+        win.geometry("900x500")
+        txt = scrolledtext.ScrolledText(win, font=("monospace", 9))
+        txt.pack(fill="both", expand=True)
+        stop = threading.Event()
+        q: queue.Queue[str | None] = queue.Queue()
+
+        def close() -> None:
+            stop.set()
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", close)
+
+        def run() -> None:
+            try:
+                for line in ops.logs(cfg, mode, ssh, comp, 50 if follow else 200, follow, stop):
+                    q.put(line)
+            except deploy.DeployError as e:
+                q.put(f"ERROR: {e}")
+            q.put(None)
+        threading.Thread(target=run, daemon=True).start()
+
+        def pump() -> None:
+            if not win.winfo_exists():
+                return
+            try:
+                while True:
+                    line = q.get_nowait()
+                    if line is None:
+                        return
+                    txt.insert("end", line + "\n")
+                    txt.see("end")
+            except queue.Empty:
+                pass
+            win.after(200, pump)
+        pump()
 
     # ------------------------------------------------------------ collect
     def _get(self, path: str) -> Any:

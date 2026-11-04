@@ -23,7 +23,7 @@ from typing import Any
 
 from flask import Flask, Response, abort, jsonify, make_response, redirect, render_template, request, send_file
 
-from .. import __version__, catalog, config, deploy as deploy_mod, generate, projects as projects_mod
+from .. import __version__, catalog, config, deploy as deploy_mod, generate, ops as ops_mod, projects as projects_mod
 
 MASK = "••••••••"
 MAX_PREVIEW_BYTES = 120_000
@@ -50,6 +50,7 @@ class Job:
         self.ok = False
         self.started = time.time()
         self.lock = threading.Lock()
+        self.stop = threading.Event()      # set by /cancel (log following)
 
     def add(self, line: str) -> None:
         with self.lock:
@@ -213,6 +214,85 @@ def create_app(token: str | None = None) -> Flask:
         if problems:
             return make_response(jsonify({"error": "; ".join(problems)}), 400)
         return _start_job(cfg, lambda b: deploy_mod.clean(cfg, b, target, mode, ssh, comps, purge, rm_pg))
+
+    def _ops_args(body: dict[str, Any]) -> tuple[dict[str, Any], str, dict[str, Any], str]:
+        cfg = _resolve_or_400(body.get("config"))
+        mode = body.get("mode")
+        if mode not in ("local", "ssh"):
+            abort(make_response(jsonify({"error": "mode must be local or ssh"}), 400))
+        return cfg, mode, body.get("ssh") or {}, cfg["deploy_target"]
+
+    def _plain_job(steps: Any, locked: bool) -> Response:
+        """Run steps(job) -> Iterator[str] in the background; `locked` serialises it with deploy/clean."""
+        lock: threading.Lock = app.config["DEPLOY_LOCK"]
+        if locked and not lock.acquire(blocking=False):
+            return make_response(jsonify({"error": "სხვა ოპერაცია უკვე მიმდინარეობს"}), 409)
+        job = Job()
+        app.config["JOBS"][job.id] = job
+
+        def run() -> None:
+            try:
+                for line in steps(job):
+                    job.add(line)
+                job.ok = True
+            except deploy_mod.DeployError as e:
+                job.add(f"ERROR: {e}")
+            except Exception as e:  # noqa: BLE001
+                job.add(f"ERROR: {type(e).__name__}: {e}")
+            finally:
+                job.done = True
+                if locked:
+                    lock.release()
+
+        threading.Thread(target=run, daemon=True).start()
+        return jsonify({"job": job.id})
+
+    @app.post("/api/ops/status")
+    def api_ops_status() -> Response:
+        """Body: {config, mode, ssh}. Live state of every program (blocking call, a few seconds at most)."""
+        cfg, mode, ssh, target = _ops_args(request.get_json(silent=True) or {})
+        try:
+            return jsonify(ops_mod.status(cfg, mode, ssh, target))
+        except deploy_mod.DeployError as e:
+            return make_response(jsonify({"error": str(e)}), 502)
+
+    @app.post("/api/ops/control")
+    def api_ops_control() -> Response:
+        """Body: {config, mode, ssh, action, components?}. components omitted/null = the whole stack."""
+        body = request.get_json(silent=True) or {}
+        cfg, mode, ssh, target = _ops_args(body)
+        action, comps = body.get("action"), body.get("components")
+        if action not in ops_mod.ACTIONS:
+            return make_response(jsonify({"error": "unknown action"}), 400)
+        if comps is not None and (not isinstance(comps, list) or not comps or any(c not in ops_mod.ORDER for c in comps)):
+            return make_response(jsonify({"error": "components must be a non-empty list of known component ids"}), 400)
+        if mode == "local" and target == "native" and hasattr(os, "geteuid") and os.geteuid() != 0:
+            problems = deploy_mod.preflight("native", "local")
+            return make_response(jsonify({"error": "; ".join(problems)}), 400)
+        return _plain_job(lambda job: ops_mod.control(cfg, mode, ssh, action, comps, target), locked=True)
+
+    @app.post("/api/ops/logs")
+    def api_ops_logs() -> Response:
+        """Body: {config, mode, ssh, component, lines?, follow?}. Stream with /api/jobs/<id>; stop with /cancel."""
+        body = request.get_json(silent=True) or {}
+        cfg, mode, ssh, target = _ops_args(body)
+        comp = body.get("component")
+        if comp not in ops_mod.ORDER:
+            return make_response(jsonify({"error": "unknown component"}), 400)
+        try:
+            lines = int(body.get("lines") or 100)
+        except (TypeError, ValueError):
+            return make_response(jsonify({"error": "lines must be a number"}), 400)
+        follow = bool(body.get("follow"))
+        return _plain_job(lambda job: ops_mod.logs(cfg, mode, ssh, comp, lines, follow, job.stop, target), locked=False)
+
+    @app.post("/api/jobs/<jid>/cancel")
+    def api_job_cancel(jid: str) -> Response:
+        job: Job | None = app.config["JOBS"].get(jid)
+        if not job:
+            abort(404)
+        job.stop.set()
+        return jsonify({"ok": True})
 
     @app.get("/api/projects")
     def api_projects() -> Response:

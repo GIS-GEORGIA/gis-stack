@@ -29,6 +29,7 @@ Anyone is welcome to contribute: code, tests, docs, translations, or reports fro
 | `gisstack/config.py`, `catalog.py` | პარამეტრები, ვალიდაცია, კომპონენტების კატალოგი |
 | `gisstack/generate.py`, `templates/` | Jinja2 შაბლონები და ფაილების გეგმა (native / compose / k8s / webmap / mobile) |
 | `gisstack/deploy.py`, `projects.py` | გაშვება ლოკალურად ან SSH-ით, გასუფთავება, პროექტების შენახვა |
+| `gisstack/ops.py` | დიაგნოსტიკა: სტატუსი, start/stop/restart, ლოგები (native / compose / k8s) |
 | `gisstack/webgui/`, `desktop.py`, `cli.py` | ვებ (Flask), Tkinter და ბრძანების ხაზის ინტერფეისები |
 | `tests/` | `unittest` ტესტები |
 

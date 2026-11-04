@@ -56,6 +56,11 @@ Token: `/var/lib/gisstack-installer/web.token`.
 პროექტები ინახება `~/.gisstack/projects/<პროექტი>.json`-ში (მხოლოდ მფლობელისთვის წაკითხვადი); GUI-ს
 ზედა ზოლიდან ჩაიტვირთება. გენერირებული პაროლები ცალკე ინახება და ხელახალ გაშვებაზე იგივე რჩება.
 
+5. **დიაგნოსტიკა** — ცოცხალი ცხრილი (სურვილისამებრ ყოველ 5 წამში): თითოეული პროგრამის სტატუსი, ავტოგაშვება, PID,
+   **რომელ IP-ზე და პორტზე უსმენს**, რეალური შემოწმება (HTTP / TCP / ბმული Caddy-ს გავლით) და ღილაკები:
+   გაშვება, გაჩერება, რესტარტი, ავტოგაშვების ჩართვა/გამორთვა, ლოგი (ბოლო სტრიქონები ან ცოცხლად).
+   Native-ზე ეს systemd ერთეულებია, Compose-ზე — კონტეინერები, Kubernetes-ზე — workload-ები.
+
 ### უგრაფიკოდ (CLI)
 
 ```bash
@@ -67,7 +72,15 @@ gisstack apply    -c stack.json mapproxy --save        # მხოლოდ MapP
 gisstack clean    -c stack.json --only tomcat,caddy    # ცალკეული პროგრამების გასუფთავება
 gisstack clean    -c stack.json --purge -y             # მთელი სტეკი + მონაცემები
 gisstack projects                                      # შენახული პროექტები
+
+gisstack status  -c stack.json [--watch] [--json]      # სტატუსი, IP:პორტი, შემოწმებები (--watch: ცოცხლად)
+gisstack restart -c stack.json geoserver               # start | stop | restart | enable | disable [პროგრამა…]
+gisstack stop    -c stack.json                         # პროგრამების გარეშე = მთელი სტეკი
+gisstack logs    -c stack.json caddy -n 200 -f         # ლოგი (-f: ცოცხლად)
 ```
+
+`status` ამთავრებს მუშაობას კოდით 0, თუ ყველაფერი ჯანსაღია, და 1-ით — თუ რომელიმე პროგრამა არ მუშაობს ან
+შემოწმება ვერ გაიარა (მოსახერხებელია მონიტორინგისთვის).
 
 `clean` ნაგულისხმევად მონაცემებს ინახავს. `--purge` შლის ბაზას, GeoServer-ის მონაცემებს, ქეშებს, volume-ებს;
 PostgreSQL-ის სერვერსაც მხოლოდ `--purge --remove-postgres` შლის (და უარს ამბობს, თუ იქ სხვა ბაზებიც არის).

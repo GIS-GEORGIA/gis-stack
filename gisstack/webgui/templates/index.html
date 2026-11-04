@@ -29,6 +29,13 @@
   .compbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; padding:8px 10px; background:#eef3f7; border:1px solid var(--line); border-radius:6px; }
   .compbar b { flex:1; min-width:140px; color:var(--pri); }
   #msg { background:#e3f4e8; color:var(--ok); border:1px solid #b6dfc2; padding:8px 12px; border-radius:6px; display:none; white-space:pre-wrap; margin-bottom:10px; }
+  table.ops { font-size:.8rem; } table.ops td { vertical-align:top; padding:4px 5px; border-bottom:1px solid var(--line); }
+  table.ops td.addr { font-family:ui-monospace,Consolas,monospace; font-size:.78rem; white-space:nowrap; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:10px; color:#fff; font-size:.75rem; white-space:nowrap; }
+  .st-running { background:var(--ok); } .st-stopped { background:#c98a00; } .st-failed { background:var(--bad); }
+  .st-starting, .st-stopping { background:#0b79b5; } .st-missing, .st-unknown { background:#7a8794; }
+  .chk-ok { color:var(--ok); } .chk-bad { color:var(--bad); }
+  .opbtn { padding:2px 8px; font-size:.75rem; margin:1px; }
   button.danger { background:var(--bad); }
   .clrow { display:flex; align-items:center; gap:10px; padding:3px 0; border-bottom:1px solid var(--line); } .clrow span { flex:1; }
   button.sec { background:#e6ecf1; color:var(--ink); } button.go { background:var(--ok); } button.x { background:#fff; color:var(--bad); border:1px solid var(--line); padding:3px 8px; }
@@ -173,6 +180,23 @@
     </div>
     <div class="row"><button type="button" class="danger" id="btn-clean-all">მთელი სტეკის გასუფთავება</button></div>
     <p class="note">Kubernetes-ზე მთელი სტეკის გასუფთავება შლის namespace-ს, ანუ ყველა volume-საც.</p>
+  </fieldset>
+
+  <fieldset><legend>9. დიაგნოსტიკა / Diagnostics</legend>
+    <p class="note">იყენებს ზემოთ არჩეულ სამიზნეს და „სად“-ს. აჩვენებს სტატუსს, რომელ IP-ზე და პორტზე მუშაობს თითოეული პროგრამა, და ამოწმებს რეალურ პასუხს.</p>
+    <div class="row">
+      <button type="button" class="sec" id="btn-st-refresh">განახლება</button>
+      <label><input type="checkbox" id="st-live"> ცოცხლად (ყოველ 5 წმ)</label>
+      <span class="note" id="st-time"></span>
+    </div>
+    <div style="overflow-x:auto"><table class="ops"><thead><tr><th>პროგრამა</th><th>სტატუსი</th><th title="ავტოგაშვება">auto</th><th>PID</th><th>IP:პორტი</th><th>შემოწმება</th><th>ბმული</th><th>ქმედება</th></tr></thead>
+    <tbody id="st-body"></tbody></table></div>
+    <div class="row">
+      <button type="button" class="sec" data-all="start">ყველას გაშვება</button>
+      <button type="button" class="sec" data-all="restart">ყველას რესტარტი</button>
+      <button type="button" class="danger" data-all="stop">ყველას გაჩერება</button>
+      <button type="button" class="sec" id="btn-log-stop" style="display:none">⏹ ლოგის შეჩერება</button>
+    </div>
   </fieldset>
 
   <div class="bar">
@@ -468,12 +492,124 @@ async function saveProject() {
   } catch (e) { showErr(e.message); }
 }
 
+let OPS_TIMER = null, OPS_BUSY = false, LOG_JOB = null;
+function opsOk() {
+  if ($("#mode").value === "download") { showErr("დიაგნოსტიკისთვის აირჩიე „ამ მანქანაზე“ ან SSH (სექცია 7, „სად“)."); return false; }
+  return true;
+}
+function opsBody(extra) { return Object.assign({config: collect(), mode: $("#mode").value, ssh: sshInfo()}, extra || {}); }
+
+async function refreshStatus(quiet) {
+  if (OPS_BUSY) return;
+  if (!opsOk()) { $("#st-live").checked = false; setLive(); return; }
+  OPS_BUSY = true;
+  try {
+    const r = await fetch("/api/ops/status", {method: "POST", headers: H, body: JSON.stringify(opsBody())});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    renderStatus(j); showErr("");
+  } catch (e) {
+    $("#st-time").textContent = "შეცდომა: " + e.message;
+    if (!quiet) showErr(e.message);
+  }
+  OPS_BUSY = false;
+}
+
+function renderStatus(j) {
+  $("#st-time").textContent = `${j.target} · ${j.domain} · განახლდა ${j.time} (${j.took} წმ)`;
+  $("#st-body").innerHTML = j.rows.map((r) => {
+    const addr = r.listen.length ? r.listen.map(esc).join("<br>") : "—";
+    const chk = r.checks.length ? r.checks.map((c) => `<span class="${c.ok ? "chk-ok" : "chk-bad"}">${c.ok ? "✔" : "✘"} ${esc(c.label)} ${esc(c.code)}</span>`).join("<br>") : "—";
+    const links = r.urls.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`).join("<br>") || "—";
+    const auto = r.enabled === null ? "—" : `<input type="checkbox" class="op-auto" data-c="${esc(r.id)}" ${r.enabled ? "checked" : ""}>`;
+    const rs = r.restarts ? ` · restarts ${r.restarts}` : "";
+    return `<tr><td><b>${esc(r.name)}</b><div class="note">${esc(r.unit)}</div></td>
+      <td><span class="badge st-${esc(r.state)}" title="${esc(r.since)}">${esc(r.state)}</span><div class="note" title="${esc(r.since)}">${esc(r.detail)}${rs}</div></td>
+      <td>${auto}</td><td>${r.pid || "—"}</td><td class="addr">${addr}</td><td>${chk}</td><td>${links}</td>
+      <td style="white-space:nowrap"><button type="button" class="sec opbtn" title="გაშვება" data-op="start" data-c="${esc(r.id)}">▶</button><button type="button" class="sec opbtn" title="გაჩერება" data-op="stop" data-c="${esc(r.id)}">■</button><button type="button" class="sec opbtn" title="რესტარტი" data-op="restart" data-c="${esc(r.id)}">↻</button><br><button type="button" class="sec opbtn" title="ბოლო ლოგი" data-op="logs" data-c="${esc(r.id)}">ლოგი</button><button type="button" class="sec opbtn" title="ლოგი ცოცხლად" data-op="follow" data-c="${esc(r.id)}">ცოცხლად</button></td></tr>`;
+  }).join("");
+}
+
+function setLive() {
+  clearInterval(OPS_TIMER); OPS_TIMER = null;
+  if ($("#st-live").checked) { refreshStatus(true); OPS_TIMER = setInterval(() => refreshStatus(true), 5000); }
+}
+
+async function streamJob(url, body, onDone) {
+  const log = $("#log"); log.textContent = "";
+  const {job} = await (await api(url, body)).json();
+  let next = 0, done = false;
+  while (!done) {
+    const j = await (await fetch(`/api/jobs/${job}?since=${next}`)).json();
+    if (j.lines.length) { log.textContent += j.lines.join("\n") + "\n"; log.scrollTop = log.scrollHeight; }
+    next = j.next; done = j.done;
+    if (done) log.textContent += j.ok ? "\n✔ დასრულდა\n" : "\n✘ დასრულდა შეცდომით/შეჩერდა\n";
+    if (!done) await new Promise((r) => setTimeout(r, 600));
+  }
+  if (onDone) onDone();
+}
+
+async function opControl(action, comps) {
+  showErr("");
+  if (!opsOk()) return;
+  const what = comps ? comps.join(", ") : "მთელი სტეკი";
+  if ((action === "stop" || action === "restart") && !confirm(`${action}: ${what}\nგავაგრძელო?`)) return;
+  try {
+    await streamJob("/api/ops/control", opsBody({action, components: comps}));
+    await refreshStatus(true);
+  } catch (e) { showErr(e.message); }
+}
+
+async function opLogs(comp, follow) {
+  showErr("");
+  if (!opsOk()) return;
+  await stopLogs();
+  try {
+    const log = $("#log"); log.textContent = "";
+    const {job} = await (await api("/api/ops/logs", opsBody({component: comp, lines: follow ? 50 : 200, follow}))).json();
+    LOG_JOB = job;
+    $("#btn-log-stop").style.display = follow ? "" : "none";
+    let next = 0, done = false;
+    while (!done && LOG_JOB === job) {
+      const j = await (await fetch(`/api/jobs/${job}?since=${next}`)).json();
+      if (j.lines.length) { log.textContent += j.lines.join("\n") + "\n"; log.scrollTop = log.scrollHeight; }
+      next = j.next; done = j.done;
+      if (!done) await new Promise((r) => setTimeout(r, 800));
+    }
+    if (LOG_JOB === job) { LOG_JOB = null; $("#btn-log-stop").style.display = "none"; }
+  } catch (e) { showErr(e.message); }
+}
+async function stopLogs() {
+  const job = LOG_JOB; LOG_JOB = null;
+  $("#btn-log-stop").style.display = "none";
+  if (job) { try { await api(`/api/jobs/${job}/cancel`, {}); } catch (e) {} }
+}
+
+function initOps() {
+  $("#btn-st-refresh").onclick = () => refreshStatus(false);
+  $("#st-live").onchange = setLive;
+  $("#btn-log-stop").onclick = stopLogs;
+  document.querySelectorAll("button[data-all]").forEach((b) => b.onclick = () => opControl(b.dataset.all, null));
+  $("#st-body").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button[data-op]"); if (!b) return;
+    const c = b.dataset.c, op = b.dataset.op;
+    if (op === "logs") return opLogs(c, false);
+    if (op === "follow") return opLogs(c, true);
+    return opControl(op, [c]);
+  });
+  $("#st-body").addEventListener("change", (ev) => {
+    const cb = ev.target.closest("input.op-auto"); if (!cb) return;
+    opControl(cb.checked ? "enable" : "disable", [cb.dataset.c]);
+  });
+}
+
 (async function init() {
   const j = await (await fetch("/api/catalog")).json();
   CAT = j.catalog; DEF = j.defaults;
   fill(DEF);
   cleanRows();
   buildBars();
+  initOps();
   await loadProjects();
   $("#btn-proj-load").onclick = loadProject; $("#btn-proj-save").onclick = saveProject;
   $("#rootnote").textContent = j.is_root ? "" : "გაფრთხილება: ეს პროცესი root-ით არ მუშაობს — „ამ მანქანაზე“ native ინსტალაცია არ იმუშავებს.";

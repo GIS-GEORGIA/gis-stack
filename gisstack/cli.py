@@ -7,6 +7,9 @@
   gisstack deploy   -c stack.json --mode local|ssh [--ssh user@host[:port]] [--key FILE]
   gisstack save     -c stack.json [--component postgis]   store as a project / store one program's settings
   gisstack apply    -c stack.json postgis [--save]        (re)install only that program
+  gisstack status   -c stack.json [--watch] [--json]      live state, IP:port, health of every program
+  gisstack start|stop|restart|enable|disable -c stack.json [program...]
+  gisstack logs     -c stack.json geoserver [-n 200] [-f]
   gisstack clean    -c stack.json [--only tomcat,caddy] [--purge] [--remove-postgres] [-y]
 """
 from __future__ import annotations
@@ -14,9 +17,10 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
-from . import __version__, config, deploy, generate, projects
+from . import __version__, config, deploy, generate, ops, projects
 
 
 def _load(path: str | None) -> dict:
@@ -58,6 +62,44 @@ def _clean(a: argparse.Namespace, cfg: dict) -> int:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     return 0
+
+
+def _ops(a: argparse.Namespace, cfg: dict) -> int:
+    ssh = _parse_ssh(a)
+    if ssh is None:
+        return 2
+    target = a.target or cfg["deploy_target"]
+    comps = getattr(a, "components", None) or None
+    try:
+        if a.cmd == "status":
+            tty = sys.stdout.isatty()
+            while True:
+                res = ops.status(cfg, a.mode, ssh, target, comps)
+                if a.json:
+                    print(json.dumps(res, ensure_ascii=False, indent=2))
+                else:
+                    if a.watch and tty:
+                        print("\033[H\033[2J", end="")
+                    print(ops.format_table(res, color=tty))
+                if not a.watch:
+                    return 0 if all(r["ok"] for r in res["rows"]) else 1
+                try:
+                    time.sleep(a.watch)
+                except KeyboardInterrupt:
+                    return 0
+        if a.cmd == "logs":
+            try:
+                for line in ops.logs(cfg, a.mode, ssh, a.component, a.lines, a.follow, target=target):
+                    print(line, flush=True)
+            except KeyboardInterrupt:
+                pass
+            return 0
+        for line in ops.control(cfg, a.mode, ssh, a.cmd, comps, target):
+            print(line, flush=True)
+        return 0
+    except deploy.DeployError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
 
 
 def _apply(a: argparse.Namespace, cfg: dict) -> int:
@@ -131,6 +173,28 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("projects", help="list saved projects")
 
+    def conn(sp: argparse.ArgumentParser) -> None:
+        sp.add_argument("-c", "--config")
+        sp.add_argument("--target", choices=["native", "compose", "k8s"], help="default: deploy_target from config")
+        sp.add_argument("--mode", choices=["local", "ssh"], default="local")
+        sp.add_argument("--ssh", help="user@host[:port]")
+        sp.add_argument("--key", help="SSH private key file")
+
+    st = sub.add_parser("status", help="live state, IP:port and health of every program")
+    conn(st)
+    st.add_argument("components", nargs="*", help="default: all selected components")
+    st.add_argument("--json", action="store_true")
+    st.add_argument("-w", "--watch", nargs="?", const=3, type=float, metavar="SEC", help="refresh every SEC seconds (default 3)")
+    for act in ops.ACTIONS:
+        sa = sub.add_parser(act, help=f"{act} programs (no names = whole stack)")
+        conn(sa)
+        sa.add_argument("components", nargs="*")
+    lg = sub.add_parser("logs", help="show a program's log")
+    conn(lg)
+    lg.add_argument("component", choices=[c for c in ops.ORDER] + ["qgis"])
+    lg.add_argument("-n", "--lines", type=int, default=100)
+    lg.add_argument("-f", "--follow", action="store_true")
+
     a = ap.parse_args(argv)
 
     if a.cmd == "web":
@@ -169,6 +233,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "clean":
         return _clean(a, cfg)
+
+    if a.cmd in ("status", "logs") or a.cmd in ops.ACTIONS:
+        return _ops(a, cfg)
 
     if a.cmd == "save":
         try:
