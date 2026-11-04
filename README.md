@@ -19,6 +19,8 @@ config files. Targets: native packages (apt / dnf), Docker / Podman Compose, Kub
 | ვებ რუკა | ორენოვანი (KA/EN) Leaflet, ოფლაინ-ბიბლიოთეკით, უკვე მიბმული შენს ფენებზე |
 | მობილური | React Native (Expo) და Flutter შაბლონები, მიბმული შენს სერვერზე |
 
+> **ახალი ხარ?** ნაბიჯ-ნაბიჯ ინსტრუქცია — [docs/USAGE.md](docs/USAGE.md): როგორ გაუშვა, როგორ აირჩიო პროგრამები და ვერსიები ვებ GUI-ში, როგორ აკონტროლო.
+
 ## დაყენება
 
 ```bash
