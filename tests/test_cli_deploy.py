@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gisstack import cli, config, deploy, deps, discover, existing, ops, projects, settings, transport, updater  # noqa: E402
+from gisstack import cli, config, deploy, deps, discover, existing, ops, projects, providers, settings, transport, updater  # noqa: E402
 
 
 def make_cfg(**over):
@@ -327,7 +327,7 @@ class RunnerTests(unittest.TestCase):
     def bundle(self, target="compose", script="echo \"ARGS: $*\"; echo \"RUNTIME=${RUNTIME:-}\""):
         b = self.td / "bundle"
         (b / target).mkdir(parents=True, exist_ok=True)
-        entry = deploy._ENTRY[target]
+        entry = providers.get(target).entry
         (b / target / entry).write_text("#!/bin/bash\n" + script + "\n")
         (b / target / "uninstall.sh").write_text("#!/bin/bash\necho \"UNINSTALL: $*\"\n")
         return b
@@ -429,7 +429,8 @@ class RunnerTests(unittest.TestCase):
     def test_argument_builders(self):
         self.assertEqual(deploy.clean_args("native", ["qgis"], purge=True), ["--only", "qgis", "--purge"])
         self.assertEqual(deploy.apply_args("k8s", "webmap"), ["only", "caddy"])
-        self.assertEqual(deploy._entry_cmd("compose"), "up.sh")
+        self.assertEqual(providers.get("compose").clean_entry, "up.sh")
+        self.assertEqual(providers.get("native").clean_entry, "uninstall.sh")
 
 
 if __name__ == "__main__":

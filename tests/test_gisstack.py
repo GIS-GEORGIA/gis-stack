@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from gisstack.providers import common, compose, kubernetes, native  # noqa: E402
 from gisstack import config, deploy, deps, discover, existing, fsutil, generate, i18n, ops, projects, settings, transport, updater, validation  # noqa: E402
 
 
@@ -371,12 +372,12 @@ class OpsTests(unittest.TestCase):
 
     def test_native_status_parsing(self):
         cfg = self.cfg()
-        ids = ops._components(cfg, "native", None)
-        checks = ops._checks(cfg, "native", ids)
+        ids = common.components(cfg, "native", None)
+        checks = common.checks(cfg, "native", ids)
         # answer the probes: everything fine except the public QGIS check
         http = {i: ("open" if c["kind"] == "tcp" else "200") for i, c in enumerate(checks)}
         out = NATIVE_OUT + "".join(f"@@{'tcp' if checks[i]['kind'] == 'tcp' else 'http'} {i} {v}\n" for i, v in http.items())
-        rows = {r["id"]: r for r in ops._native_rows(cfg, ids, ops.parse_native(out), checks)}
+        rows = {r["id"]: r for r in native.rows(cfg, ids, ops.parse_native(out), checks)}
         self.assertEqual(rows["postgis"]["state"], "running")
         self.assertEqual(rows["postgis"]["listen"], ["127.0.0.1:5432"])
         self.assertEqual(rows["postgis"]["pid"], 1201)
@@ -394,12 +395,12 @@ class OpsTests(unittest.TestCase):
         self.assertFalse(rows["caddy"]["ok"])
 
     def test_check_rules(self):
-        self.assertTrue(ops._check_ok("http", "302"))
-        self.assertFalse(ops._check_ok("http", "500"))
-        self.assertTrue(ops._check_ok("alive", "500"))        # QGIS answers 500 without a project
-        self.assertFalse(ops._check_ok("alive", "502"))
-        self.assertFalse(ops._check_ok("http", "000"))
-        self.assertTrue(ops._check_ok("tcp", "open"))
+        self.assertTrue(common.check_ok("http", "302"))
+        self.assertFalse(common.check_ok("http", "500"))
+        self.assertTrue(common.check_ok("alive", "500"))        # QGIS answers 500 without a project
+        self.assertFalse(common.check_ok("alive", "502"))
+        self.assertFalse(common.check_ok("http", "000"))
+        self.assertTrue(common.check_ok("tcp", "open"))
 
     def test_compose_status_parsing(self):
         cfg = self.cfg(deploy_target="compose")
@@ -411,7 +412,7 @@ class OpsTests(unittest.TestCase):
              "Publishers": [{"URL": "0.0.0.0", "TargetPort": 443, "PublishedPort": 443, "Protocol": "tcp"}]},
         ])
         out = ps + "\n@@inspect\nmap[com.docker.compose.service:caddy]|172.18.0.4 \nmap[com.docker.compose.service:geoserver]|\n"
-        rows = {r["id"]: r for r in ops._compose_rows(cfg, ["postgis", "geoserver", "caddy", "mapproxy"], ops.parse_compose(out), [])}
+        rows = {r["id"]: r for r in compose.rows(cfg, ["postgis", "geoserver", "caddy", "mapproxy"], ops.parse_compose(out), [])}
         self.assertEqual(rows["postgis"]["listen"], ["127.0.0.1:5432 -> 5432/tcp"])
         self.assertEqual(rows["geoserver"]["state"], "stopped")
         self.assertEqual(rows["geoserver"]["listen"], [])       # stopped: no IP
@@ -431,7 +432,7 @@ class OpsTests(unittest.TestCase):
                "spec": {"type": "ClusterIP", "clusterIP": "10.96.0.9", "ports": [{"port": 8080, "protocol": "TCP"}]}}
         gs = {"kind": "Deployment", "metadata": {"name": "geoserver"}, "spec": {"replicas": 1}}
         caddy = {"kind": "Deployment", "metadata": {"name": "caddy"}, "spec": {"replicas": 0}}
-        rows = {r["id"]: r for r in ops._k8s_rows(cfg, ["geoserver", "caddy", "postgis"], [pod, svc, gs, caddy])}
+        rows = {r["id"]: r for r in kubernetes.rows(cfg, ["geoserver", "caddy", "postgis"], [pod, svc, gs, caddy])}
         self.assertEqual(rows["geoserver"]["state"], "running")
         self.assertIn("10.244.0.5:8080/tcp (pod)", rows["geoserver"]["listen"])
         self.assertIn("10.96.0.9:8080/tcp (ClusterIP)", rows["geoserver"]["listen"])
@@ -444,7 +445,7 @@ class OpsTests(unittest.TestCase):
 
         def fake(mode, ssh, script, **kw):
             calls.append(script)
-            checks = ops._checks(cfg, "native", ops._components(cfg, "native", None))
+            checks = common.checks(cfg, "native", common.components(cfg, "native", None))
             return NATIVE_OUT + "".join(f"@@{'tcp' if c['kind'] == 'tcp' else 'http'} {i} {'open' if c['kind'] == 'tcp' else '200'}\n"
                                         for i, c in enumerate(checks))
         real = transport.run
@@ -477,7 +478,7 @@ class OpsTests(unittest.TestCase):
             with self.assertRaises(deploy.DeployError):
                 ops.control_script(cfg, *bad)
         with self.assertRaises(deploy.DeployError):
-            ops._components(cfg, "native", ["nope; rm"])
+            common.components(cfg, "native", ["nope; rm"])
 
     def test_local_transport_runs_and_cancels(self):
         import threading

@@ -32,7 +32,7 @@ def _imports(path: Path, mod: str):
 def _graph():
     g = {m: set() for m in MODULES}
     for m, p in MODULES.items():
-        for target, _name, node in _imports(p, m):
+        for target, _name, _node in _imports(p, m):
             if target in MODULES and target != m:
                 g[m].add(target)
     return g
@@ -42,7 +42,7 @@ class ArchitectureTests(unittest.TestCase):
     def test_no_private_names_are_imported_from_other_modules(self):
         bad = []
         for m, p in MODULES.items():
-            for target, name, node in _imports(p, m):
+            for target, name, _node in _imports(p, m):
                 if name and name.startswith("_") and not name.startswith("__") and target in MODULES and target != m:
                     bad.append(f"{m}: from {target} import {name}")
         self.assertEqual(bad, [])

@@ -13,6 +13,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from gisstack.providers import common, compose, kubernetes, native
 from gisstack import __version__, config, deploy, generate, ops
 
 GOLDEN = Path(__file__).parent / "golden"
@@ -48,19 +49,19 @@ def _scripts_manifest() -> dict:
     res = {}
     for target in ("native", "compose", "k8s"):
         cfg = _cfg(deploy_target=target)
-        ids = ops._components(cfg, target, None)
+        ids = common.components(cfg, target, None)
         for action in ops.ACTIONS:
             res[f"control/{target}/{action}"] = hashlib.sha256(ops.control_script(cfg, target, action, ids).encode()).hexdigest()
             res[f"control/{target}/{action}/one"] = hashlib.sha256(ops.control_script(cfg, target, action, ids[:1]).encode()).hexdigest()
         for comp, follow in itertools.product(ops.ORDER, (False, True)):
             res[f"logs/{target}/{comp}/{follow}"] = hashlib.sha256(ops.logs_script(cfg, target, comp, 50, follow).encode()).hexdigest()
-        checks = ops._checks(cfg, target, ids)
+        checks = common.checks(cfg, target, ids)
         if target == "native":
-            res["status/native"] = hashlib.sha256(ops._native_status_script(cfg, checks).encode()).hexdigest()
+            res["status/native"] = hashlib.sha256(native.status_script(cfg, checks).encode()).hexdigest()
         elif target == "compose":
-            res["status/compose"] = hashlib.sha256(ops._compose_status_script(cfg, checks).encode()).hexdigest()
+            res["status/compose"] = hashlib.sha256(compose.status_script(cfg, checks).encode()).hexdigest()
         else:
-            res["status/k8s"] = hashlib.sha256(ops._k8s_status_script(cfg).encode()).hexdigest()
+            res["status/k8s"] = hashlib.sha256(kubernetes.status_script(cfg).encode()).hexdigest()
         res[f"clean_args/{target}/all"] = deploy.clean_args(target, None, purge=True) if target != "native" else deploy.clean_args(target, None, True, True, True)
         res[f"clean_args/{target}/some"] = deploy.clean_args(target, ["caddy", "qgis_server"], purge=False)
         for comp in deploy.CLEAN_COMPONENTS:

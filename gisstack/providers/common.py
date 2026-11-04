@@ -1,0 +1,129 @@
+"""What every provider shares: component order, public URLs, health-probe checks, status rows (audit A-02/A-05)."""
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from .. import catalog, generate
+from ..core.errors import DeployError
+
+ACTIONS = ("start", "stop", "restart", "enable", "disable")
+ORDER = ["postgis", "tomcat", "geoserver", "qgis_server", "mapproxy", "caddy", "webmap"]   # start order
+QGIS_PORT, MAPPROXY_PORT = 9993, 8081
+TARGETS = ("native", "compose", "k8s")
+NAMES = {c["id"]: c["ka"] for c in catalog.COMPONENTS}
+
+
+def resolve_target(cfg: dict[str, Any], target: str | None) -> str:
+    t = target or cfg["deploy_target"]
+    if t not in TARGETS:
+        raise DeployError("უცნობი სამიზნე")
+    return t
+
+
+def components(cfg: dict[str, Any], target: str, wanted: list[str] | None) -> list[str]:
+    on = generate.effective_components(cfg, target)
+    ids = [c for c in ORDER if on.get(c)]
+    if wanted is None:
+        return ids
+    out = []
+    for w in wanted:
+        w = "qgis_server" if w == "qgis" else w
+        if w not in ORDER:
+            raise DeployError(f"უცნობი კომპონენტი: {w}")
+        out.append(w)
+    return [c for c in ORDER if c in out]
+
+
+def public(cfg: dict[str, Any]) -> tuple[str, str, int]:
+    """(base url, domain, port) of the Caddy entry point as seen from the server itself."""
+    scheme = "http" if cfg["tls"] == "none" else "https"
+    return f"{scheme}://{cfg['domain']}", cfg["domain"].split(":")[0], 80 if scheme == "http" else 443
+
+
+PUBLIC_PATH = {"geoserver": "/geoserver/web/", "mapproxy": "/mapproxy/demo/",
+                "qgis_server": "/qgis/?SERVICE=WMS&REQUEST=GetCapabilities", "caddy": "/", "webmap": "/"}
+
+
+def urls(cfg: dict[str, Any], comp: str) -> list[str]:
+    if comp not in PUBLIC_PATH or not cfg["components"].get("caddy"):
+        return []
+    base = public(cfg)[0]
+    return [base + (PUBLIC_PATH[comp] if comp != "qgis_server" else "/qgis/")]
+
+
+def checks(cfg: dict[str, Any], target: str, ids: list[str]) -> list[dict[str, Any]]:
+    """What to probe from the server itself.  kind: http (needs 2xx/3xx), alive (any real answer), tcp."""
+    out: list[dict[str, Any]] = []
+    base, domain, port = public(cfg)
+    edge = bool(generate.effective_components(cfg, target).get("caddy"))
+    if target == "native":
+        tp = int(cfg["tomcat"]["port"])
+        if "postgis" in ids:
+            out.append({"comp": "postgis", "label": f"tcp {cfg['postgres']['port']}", "kind": "tcp", "port": int(cfg["postgres"]["port"])})
+        if "tomcat" in ids:
+            out.append({"comp": "tomcat", "label": f"http :{tp}", "kind": "alive", "url": f"http://127.0.0.1:{tp}/"})
+        if "geoserver" in ids:
+            out.append({"comp": "geoserver", "label": f"WMS :{tp}", "kind": "http",
+                        "url": f"http://127.0.0.1:{tp}/geoserver/ows?service=wms&request=GetCapabilities"})
+        if "qgis_server" in ids:
+            out.append({"comp": "qgis_server", "label": f"fcgi :{QGIS_PORT}", "kind": "tcp", "port": QGIS_PORT})
+        if "mapproxy" in ids:
+            out.append({"comp": "mapproxy", "label": f"http :{MAPPROXY_PORT}", "kind": "http",
+                        "url": f"http://127.0.0.1:{MAPPROXY_PORT}/demo/"})
+    if edge:
+        for comp in ids:
+            if comp in PUBLIC_PATH:
+                out.append({"comp": comp, "label": "public", "kind": "alive" if comp == "qgis_server" else "http",
+                            "url": base + PUBLIC_PATH[comp], "resolve": f"{domain}:{port}:127.0.0.1"})
+    return out
+
+
+def check_ok(kind: str, code: str) -> bool:
+    if kind == "tcp":
+        return code == "open"
+    try:
+        n = int(code)
+    except ValueError:
+        return False
+    if kind == "alive":
+        return n > 0 and n not in (502, 503, 504)
+    return 200 <= n < 400
+
+
+def probe_script(checks: list[dict[str, Any]]) -> str:
+    lines = [
+        "http() { echo \"@@http $1 $(curl -sk -m 5 -o /dev/null -w '%{http_code}' \"${@:2}\" 2>/dev/null)\"; }",
+        "tcp() { if (exec 3<>/dev/tcp/127.0.0.1/$2) 2>/dev/null; then echo \"@@tcp $1 open\"; else echo \"@@tcp $1 closed\"; fi; }",
+    ]
+    for i, c in enumerate(checks):
+        if c["kind"] == "tcp":
+            lines.append(f"tcp {i} {int(c['port'])}")
+        else:
+            res = f"--resolve {c['resolve']} " if c.get("resolve") else ""
+            lines.append(f"http {i} {res}'{c['url']}'")
+    return "\n".join(lines) + "\n"
+
+
+def row(cfg: dict[str, Any], comp: str) -> dict[str, Any]:
+    return {"id": comp, "name": NAMES.get(comp, comp), "state": "unknown", "detail": "", "enabled": None,
+            "pid": None, "since": "", "restarts": None, "listen": [], "urls": urls(cfg, comp), "checks": [],
+            "ok": False, "unit": ""}
+
+
+def finish(rows: list[dict[str, Any]], checks: list[dict[str, Any]], results: dict[int, str]) -> None:
+    for i, c in enumerate(checks):
+        code = results.get(i, "")
+        for r in rows:
+            if r["id"] == c["comp"]:
+                r["checks"].append({"label": c["label"], "code": code, "ok": check_ok(c["kind"], code),
+                                    "url": c.get("url", "")})
+    for r in rows:
+        r["ok"] = r["state"] == "running" and all(c["ok"] for c in r["checks"])
+
+
+def normalize_addr(a: str) -> str:
+    if a.startswith("*:"):
+        return "0.0.0.0:" + a[2:]
+    m = re.match(r"^\[::ffff:(\d+\.\d+\.\d+\.\d+)\]:(\d+)$", a)      # Java's dual-stack sockets
+    return f"{m.group(1)}:{m.group(2)}" if m else a

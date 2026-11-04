@@ -11,11 +11,10 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from . import journal, runner, transport
+from . import journal, providers, runner, transport
 from .core import paths
 from .core.errors import DeployError
 
-_ENTRY = {"native": "install.sh", "compose": "up.sh", "k8s": "apply.sh"}
 
 
 def home_dir() -> Path:
@@ -51,8 +50,12 @@ _ssh_base = transport.ssh_base          # compatibility alias; new code uses tra
 
 
 # Components the cleanup can target (catalog ids); every native/compose/k8s name derives from these.
-CLEAN_COMPONENTS = ["postgis", "tomcat", "geoserver", "qgis_server", "mapproxy", "caddy", "webmap"]
+CLEAN_COMPONENTS = list(providers.common.ORDER)
 _SHORT = {"qgis_server": "qgis"}   # name used by services / units / k8s objects
+
+
+def _provider(target: str) -> providers.Provider:
+    return providers.get(target)
 
 
 def clean_args(target: str, components: list[str] | None, purge: bool = False,
@@ -60,29 +63,13 @@ def clean_args(target: str, components: list[str] | None, purge: bool = False,
     """Arguments for the bundle's cleanup entry point (uninstall.sh / up.sh clean / apply.sh clean).
 
     components=None means the whole stack."""
-    if target not in _ENTRY:
-        raise DeployError("უცნობი სამიზნე")
+    prov = _provider(target)
     comps = ["qgis_server" if c == "qgis" else c for c in (components or [])]   # accept the short name too
     for c in comps:
         if c not in CLEAN_COMPONENTS:
             raise DeployError(f"უცნობი კომპონენტი: {c}")
     short = [_SHORT.get(c, c) for c in comps]
-    if target == "native":
-        args = []
-        if short:
-            args += ["--only", ",".join(short)]
-        if purge:
-            args.append("--purge")
-        if remove_postgres:
-            args += ["--remove-postgres"] + (["--force-postgres"] if force_postgres else [])
-        return args
-    if remove_postgres:
-        raise DeployError("PostgreSQL პაკეტების წაშლა მხოლოდ native სამიზნეზეა")
-    return ["clean"] + (["--purge"] if purge else []) + short
-
-
-def _entry_cmd(target: str) -> str:
-    return {"native": "uninstall.sh", "compose": "up.sh", "k8s": "apply.sh"}[target]
+    return prov.clean_args(short, purge, remove_postgres, force_postgres)
 
 
 REMOTE_LOCK = "flock -n -E 75 /tmp/gisstack-op.lock"      # exit 75 = somebody else is running an operation on that server
@@ -160,8 +147,7 @@ def _run_entry(cfg: dict[str, Any], bundle: Path, target: str, mode: str, ssh: d
 
 
 def _check_bundle(bundle: Path, target: str, mode: str) -> None:
-    if target not in _ENTRY:
-        raise DeployError("უცნობი სამიზნე")
+    _provider(target)
     if not (bundle / target).is_dir():
         raise DeployError(f"bundle-ში არ არის {target}/")
     problems = preflight(target, mode)
@@ -174,7 +160,7 @@ def deploy(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,
     """Yield log lines. Raises DeployError on failure.  extra_args go to the entry script (native: install.sh)."""
     bundle = Path(bundle_dir)
     _check_bundle(bundle, target, mode)
-    yield from _run_entry(cfg, bundle, target, mode, ssh, _ENTRY[target], list(extra_args or []), op="deploy")
+    yield from _run_entry(cfg, bundle, target, mode, ssh, _provider(target).entry, list(extra_args or []), op="deploy")
 
 
 def clean(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,
@@ -190,19 +176,15 @@ def clean(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,
     _check_bundle(bundle, target, mode)
     what = ", ".join(components) if components else "მთელი სტეკი"
     yield f"== გასუფთავება: {what}{' + მონაცემები' if purge else ''}"
-    yield from _run_entry(cfg, bundle, target, mode, ssh, _entry_cmd(target) if target == "native" else _ENTRY[target], args, op="clean")
+    yield from _run_entry(cfg, bundle, target, mode, ssh, _provider(target).clean_entry, args, op="clean")
 
 
 def apply_args(target: str, component: str) -> list[str]:
     """Arguments that (re)install / restart just one component through the bundle's entry point."""
-    if target not in _ENTRY:
-        raise DeployError("უცნობი სამიზნე")
+    prov = _provider(target)
     if component not in CLEAN_COMPONENTS:
         raise DeployError(f"უცნობი კომპონენტი: {component}")
-    if target == "native":
-        return ["--only", _SHORT.get(component, component)]
-    name = {"qgis_server": "qgis", "webmap": "caddy"}.get(component, component)   # the web map is served by Caddy
-    return ["only", name]
+    return prov.apply_args(component)
 
 
 def apply_component(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,
@@ -212,5 +194,4 @@ def apply_component(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mo
     args = apply_args(target, component)
     _check_bundle(bundle, target, mode)
     yield f"== გამოყენება: {component}"
-    entry = "install.sh" if target == "native" else _ENTRY[target]
-    yield from _run_entry(cfg, bundle, target, mode, ssh, entry, args, op=f"apply:{component}")
+    yield from _run_entry(cfg, bundle, target, mode, ssh, _provider(target).entry, args, op=f"apply:{component}")
