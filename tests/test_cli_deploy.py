@@ -401,12 +401,13 @@ class RunnerTests(unittest.TestCase):
         out = list(deploy.deploy(cfg, b, "compose", "ssh", ssh))
         text = self.log.read_text()
         self.assertIn("umask 077 && mkdir -p gisstack-remoteproj && tar xzf - -C gisstack-remoteproj", text)
-        self.assertIn("cd gisstack-remoteproj/compose && chmod +x up.sh && RUNTIME=docker ./up.sh", text)   # compose: no sudo wrapper
+        self.assertRegex(text, r"cd gisstack-remoteproj/compose && chmod \+x up\.sh && RUNTIME=docker \$\(command -v flock[^\n]*gisstack-op\.lock'\) \./up\.sh")
+        self.assertNotIn("sudo", text.split("RUNTIME=docker")[1].split("./up.sh")[0])                 # compose: no sudo wrapper, but locked
         self.assertIn("REMOTE-OUTPUT", "\n".join(out))
         self.assertTrue((self.td / "remote/compose/up.sh").is_file())
         self.log.write_text("")
         list(deploy.clean(cfg, self.bundle("native", "echo hi"), "native", "ssh", ssh, ["caddy"], purge=True))
-        self.assertIn("sudo -n ./uninstall.sh --only caddy --purge", self.log.read_text())             # non-root user -> sudo -n
+        self.assertRegex(self.log.read_text(), r"sudo -n \$\(command -v flock[^\n]*\) \./uninstall\.sh --only caddy --purge")             # non-root user -> sudo -n
 
     def test_ssh_upload_failure_is_reported(self):
         self.stub("ssh", 'cat >/dev/null; echo "Permission denied" >&2; exit 255')

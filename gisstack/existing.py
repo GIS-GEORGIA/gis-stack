@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from . import deploy, discover, fsutil, ops
+from . import deploy, discover, fsutil, journal, ops
 
 ACTIONS = ("ignore", "adopt", "remove", "reuse", "disable")
 REMOTE_BACKUPS = "/var/backups/gisstack"
@@ -409,8 +409,15 @@ def _tail(text: str) -> Iterator[str]:
 
 
 def run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None, plan: dict[str, Any] | None,
-        make_bundle: Callable[[dict[str, Any]], Path] | None, *, with_data: bool = False, backup_dir: str | None = None,
-        install: bool = True, confirm_data_loss: bool = False) -> Iterator[str]:
+        make_bundle: Callable[[dict[str, Any]], Path] | None, **kw: Any) -> Iterator[str]:
+    """Journalled entry point of `_run` (same arguments)."""
+    with journal.Operation("existing", target=target, mode=mode, host=host_label(mode, ssh), project=cfg.get("project", "")):
+        yield from _run(cfg, target, mode, ssh, plan, make_bundle, **kw)
+
+
+def _run(cfg: dict[str, Any], target: str, mode: str, ssh: dict[str, Any] | None, plan: dict[str, Any] | None,
+         make_bundle: Callable[[dict[str, Any]], Path] | None, *, with_data: bool = False, backup_dir: str | None = None,
+         install: bool = True, confirm_data_loss: bool = False) -> Iterator[str]:
     """scan -> check plan -> backup -> remove -> install (build on top where asked) -> import.  Yields log lines.
 
     make_bundle(cfg) must render the bundle for the (possibly adjusted) cfg and return its folder (None is allowed

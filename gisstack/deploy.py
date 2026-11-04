@@ -1,17 +1,18 @@
 """Run a generated bundle: on this machine, or on a remote server over SSH."""
 from __future__ import annotations
 
+import contextlib
 import os
 import re
 import shlex
 import shutil
-import subprocess
 import tarfile
 import tempfile
+import threading
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
 
-from . import fsutil
+from . import fsutil, journal, runner
 
 _HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$|^\[[0-9a-fA-F:]+\]$")
 _USER_RE = re.compile(r"^[a-z_][a-z0-9_\-]{0,31}$")
@@ -27,24 +28,12 @@ def home_dir() -> Path:
     return fsutil.private_dir(p)        # holds secrets, tokens, backups: owner-only (0700)
 
 
-def _stream(cmd: list[str], cwd: str | None = None, env: dict | None = None) -> Iterator[str]:
-    yield "$ " + " ".join(shlex.quote(c) for c in cmd)
-    try:
-        proc = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, bufsize=1, errors="replace")
-    except FileNotFoundError as e:
-        raise DeployError(f"command not found: {cmd[0]}") from e
-    assert proc.stdout is not None
-    try:
-        for line in proc.stdout:
-            yield line.rstrip("\n")
-    finally:                                   # also when the consumer stops early: no leaked pipe, no zombie
-        proc.stdout.close()
-        if proc.poll() is None:
-            proc.terminate()
-        rc = proc.wait()
-    if rc != 0:
-        raise DeployError(f"command failed (exit {rc}): {cmd[0]}")
+def _stream(cmd: list[str], cwd: str | None = None, env: dict | None = None, *, stop: threading.Event | None = None,
+            redact: Callable[[str], str] | None = None, deadline: float | None | str = "default") -> Iterator[str]:
+    """Run a command through the central runner: bounded, cancellable, whole process group killed, secrets masked."""
+    yield from runner.stream(cmd, cwd=cwd, env=env, stop=stop, redact=redact, error=DeployError,
+                             deadline=runner.default_deadline() if deadline == "default" else deadline,  # type: ignore[arg-type]
+                             idle=runner.default_idle())
 
 
 def preflight(target: str, mode: str) -> list[str]:
@@ -121,49 +110,78 @@ def _entry_cmd(target: str) -> str:
     return {"native": "uninstall.sh", "compose": "up.sh", "k8s": "apply.sh"}[target]
 
 
+REMOTE_LOCK = "flock -n -E 75 /tmp/gisstack-op.lock"      # exit 75 = somebody else is running an operation on that server
+LOCK_EXIT = 75
+
+
+def _remote_lock_prefix() -> str:
+    """Shell fragment that serialises operations on one server; empty where flock is missing (the run is then unlocked)."""
+    return f"$(command -v flock >/dev/null 2>&1 && echo '{REMOTE_LOCK}') "
+
+
 def _run_entry(cfg: dict[str, Any], bundle: Path, target: str, mode: str, ssh: dict[str, Any] | None,
-               entry: str, args: list[str]) -> Iterator[str]:
-    """Run <bundle>/<target>/<entry> <args> here (mode=local) or on a server (mode=ssh)."""
-    if mode == "local":
-        yield f"== ლოკალური გაშვება: {target} ({entry})"
-        env = dict(os.environ)
-        if cfg.get("runtime"):
-            env["RUNTIME"] = cfg["runtime"]
-        yield from _stream(["bash", entry, *args], cwd=str(bundle / target), env=env)
+               entry: str, args: list[str], op: str = "run") -> Iterator[str]:
+    """Run <bundle>/<target>/<entry> <args> here (mode=local) or on a server (mode=ssh).
+
+    The operation is journalled, serialised (local flock / remote flock), bounded and its output is scrubbed of secrets."""
+    mask = runner.redactor(runner.secrets_of(cfg))
+    host = "localhost" if mode == "local" else str((ssh or {}).get("host", ""))
+    with journal.Operation(op, redact=mask, target=target, mode=mode, host=host, project=cfg.get("project", ""), entry=entry):
+        if mode == "local":
+            yield f"== ლოკალური გაშვება: {target} ({entry})"
+            env = dict(os.environ)
+            if cfg.get("runtime"):
+                env["RUNTIME"] = cfg["runtime"]
+            try:
+                with journal.exclusive():
+                    yield from _stream(["bash", entry, *args], cwd=str(bundle / target), env=env, redact=mask)
+            except journal.Busy as e:
+                raise DeployError(str(e)) from e
+            yield "== დასრულდა"
+            return
+
+        if mode != "ssh":
+            raise DeployError("უცნობი რეჟიმი")
+        ssh = ssh or {}
+        base = _ssh_base(ssh)
+        project = cfg["project"]
+        remote_dir = f"gisstack-{project}"
+        yield f"== SSH: {ssh['user']}@{ssh['host']} -> ~/{remote_dir}/{target}"
+
+        # 1. upload (tar over ssh: no scp/rsync dependency)
+        with tempfile.NamedTemporaryFile(suffix=".tgz", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            with tarfile.open(tmp_path, "w:gz") as tf:
+                tf.add(bundle / target, arcname=target)   # webmap etc. are already inside <target>/
+            yield "ბანდლის ატვირთვა…"
+            with open(tmp_path, "rb") as fh:
+                up = f"umask 077 && mkdir -p {remote_dir} && tar xzf - -C {remote_dir}"
+                p = runner.run(base + [up], timeout=runner.default_deadline() or 3600, stdin=fh, error=DeployError)
+            if p.returncode != 0:
+                raise DeployError("ატვირთვა ვერ მოხერხდა: " + mask((p.stderr or p.stdout).strip()))
+        finally:
+            os.unlink(tmp_path)
+
+        # 2. run (under the server-side lock)
+        sudo = "" if ssh.get("user", "root") == "root" else "sudo -n "
+        argv = " ".join(shlex.quote(a) for a in args)
+        lock = _remote_lock_prefix()
+        if target in ("compose", "k8s") and sudo:
+            sudo = ""
+        run = f"cd {remote_dir}/{target} && chmod +x {entry} && RUNTIME={cfg['runtime']} {sudo}{lock}./{entry} {argv}".rstrip()
+        try:
+            yield from _stream(base + [run], redact=mask)
+        except DeployError as e:
+            if f"exit {LOCK_EXIT}" in str(e):
+                raise DeployError("სხვა gis-stack ოპერაცია უკვე მიმდინარეობს ამ სერვერზე") from e
+            raise
+        finally:
+            if target == "native":
+                # the native installer has copied everything it needs; do not leave stack.env / passwords in the home directory
+                with contextlib.suppress(Exception):
+                    runner.run(base + [f"rm -rf -- {remote_dir}/{target}"], timeout=60, error=DeployError)
         yield "== დასრულდა"
-        return
-
-    if mode != "ssh":
-        raise DeployError("უცნობი რეჟიმი")
-    ssh = ssh or {}
-    base = _ssh_base(ssh)
-    project = cfg["project"]
-    remote_dir = f"gisstack-{project}"
-    yield f"== SSH: {ssh['user']}@{ssh['host']} -> ~/{remote_dir}/{target}"
-
-    # 1. upload (tar over ssh: no scp/rsync dependency)
-    with tempfile.NamedTemporaryFile(suffix=".tgz", delete=False) as tmp:
-        tmp_path = tmp.name
-    try:
-        with tarfile.open(tmp_path, "w:gz") as tf:
-            tf.add(bundle / target, arcname=target)   # webmap etc. are already inside <target>/
-        yield "ბანდლის ატვირთვა…"
-        with open(tmp_path, "rb") as fh:
-            p = subprocess.run(base + [f"umask 077 && mkdir -p {remote_dir} && tar xzf - -C {remote_dir}"],
-                               stdin=fh, capture_output=True, text=True)
-        if p.returncode != 0:
-            raise DeployError("ატვირთვა ვერ მოხერხდა: " + (p.stderr or p.stdout).strip())
-    finally:
-        os.unlink(tmp_path)
-
-    # 2. run
-    sudo = "" if ssh.get("user", "root") == "root" else "sudo -n "
-    argv = " ".join(shlex.quote(a) for a in args)
-    run = f"cd {remote_dir}/{target} && chmod +x {entry} && RUNTIME={cfg['runtime']} {sudo}./{entry} {argv}".rstrip()
-    if target in ("compose", "k8s") and sudo:
-        run = f"cd {remote_dir}/{target} && chmod +x {entry} && RUNTIME={cfg['runtime']} ./{entry} {argv}".rstrip()
-    yield from _stream(base + [run])
-    yield "== დასრულდა"
 
 
 def _check_bundle(bundle: Path, target: str, mode: str) -> None:
@@ -181,7 +199,7 @@ def deploy(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,
     """Yield log lines. Raises DeployError on failure.  extra_args go to the entry script (native: install.sh)."""
     bundle = Path(bundle_dir)
     _check_bundle(bundle, target, mode)
-    yield from _run_entry(cfg, bundle, target, mode, ssh, _ENTRY[target], list(extra_args or []))
+    yield from _run_entry(cfg, bundle, target, mode, ssh, _ENTRY[target], list(extra_args or []), op="deploy")
 
 
 def clean(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,
@@ -197,7 +215,7 @@ def clean(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,
     _check_bundle(bundle, target, mode)
     what = ", ".join(components) if components else "მთელი სტეკი"
     yield f"== გასუფთავება: {what}{' + მონაცემები' if purge else ''}"
-    yield from _run_entry(cfg, bundle, target, mode, ssh, _entry_cmd(target) if target == "native" else _ENTRY[target], args)
+    yield from _run_entry(cfg, bundle, target, mode, ssh, _entry_cmd(target) if target == "native" else _ENTRY[target], args, op="clean")
 
 
 def apply_args(target: str, component: str) -> list[str]:
@@ -220,4 +238,4 @@ def apply_component(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mo
     _check_bundle(bundle, target, mode)
     yield f"== გამოყენება: {component}"
     entry = "install.sh" if target == "native" else _ENTRY[target]
-    yield from _run_entry(cfg, bundle, target, mode, ssh, entry, args)
+    yield from _run_entry(cfg, bundle, target, mode, ssh, entry, args, op=f"apply:{component}")

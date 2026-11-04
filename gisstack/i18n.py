@@ -298,6 +298,8 @@ EN: dict[str, str] = {
     'სხვა web სერვერი': 'other web server',
     'სხვა ბაზები:': 'Other databases:',
     'სხვა ოპერაცია უკვე მიმდინარეობს': 'Another operation is already running',
+    'სხვა gis-stack ოპერაცია უკვე მიმდინარეობს ამ სერვერზე': 'Another gis-stack operation is already running on this server',
+    'სხვა gis-stack ოპერაცია უკვე მიმდინარეობს ამ კომპიუტერზე': 'Another gis-stack operation is already running on this computer',
     'უკვე დაკავებულია —': 'is already in use -',
     'უკვე უახლესი ვერსიაა (': 'Already the latest version (',
     'უკვე უახლესი ვერსიაა.': 'Already the latest version.',

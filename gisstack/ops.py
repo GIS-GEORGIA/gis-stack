@@ -10,12 +10,11 @@ import json
 import os
 import re
 import shlex
-import subprocess
 import threading
 import time
 from typing import Any, Iterator
 
-from . import catalog, deploy, generate
+from . import catalog, deploy, generate, journal, runner
 
 ACTIONS = ("start", "stop", "restart", "enable", "disable")
 ORDER = ["postgis", "tomcat", "geoserver", "qgis_server", "mapproxy", "caddy", "webmap"]   # start order
@@ -37,43 +36,17 @@ def _argv(mode: str, ssh: dict[str, Any] | None, script: str, *, root: bool) -> 
 
 
 def _run(mode: str, ssh: dict[str, Any] | None, script: str, *, root: bool = False, timeout: int = 40) -> str:
-    try:
-        p = subprocess.run(_argv(mode, ssh, script, root=root), stdin=subprocess.DEVNULL, capture_output=True,
-                           text=True, timeout=timeout, errors="replace")
-    except FileNotFoundError as e:
-        raise deploy.DeployError(f"command not found: {e.filename}") from e
-    except subprocess.TimeoutExpired as e:
-        raise deploy.DeployError("დრო ამოიწურა (სერვერი არ პასუხობს)") from e
+    p = runner.run(_argv(mode, ssh, script, root=root), timeout=timeout, error=deploy.DeployError)
     if p.returncode != 0 and not p.stdout.strip():
         raise deploy.DeployError((p.stderr or "command failed").strip().splitlines()[-1])
     return p.stdout
 
 
 def _stream(mode: str, ssh: dict[str, Any] | None, script: str, *, root: bool = False,
-            stop: threading.Event | None = None) -> Iterator[str]:
-    try:
-        proc = subprocess.Popen(_argv(mode, ssh, script, root=root), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True, bufsize=1, errors="replace")
-    except FileNotFoundError as e:
-        raise deploy.DeployError(f"command not found: {e.filename}") from e
-    assert proc.stdout is not None
-
-    def watch() -> None:
-        while proc.poll() is None:
-            if stop is not None and stop.wait(0.4):
-                proc.terminate()
-                return
-    if stop is not None:
-        threading.Thread(target=watch, daemon=True).start()
-    try:
-        for line in proc.stdout:
-            yield line.rstrip("\n")
-    finally:
-        if proc.poll() is None:
-            proc.terminate()
-        rc = proc.wait()
-    if rc not in (0, -15) and not (stop is not None and stop.is_set()):
-        raise deploy.DeployError(f"command failed (exit {rc})")
+            stop: threading.Event | None = None, deadline: float | None = None) -> Iterator[str]:
+    """Stream a script's output.  `stop` ends it (not an error); `deadline` bounds it (None: log following has no limit)."""
+    yield from runner.stream(_argv(mode, ssh, script, root=root), stop=stop, error=deploy.DeployError, echo=False,
+                             deadline=deadline, idle=None)
 
 
 # --------------------------------------------------------------------------- helpers
@@ -555,7 +528,9 @@ def control(cfg: dict[str, Any], mode: str, ssh: dict[str, Any] | None, action: 
     ids = _components(cfg, t, components)
     script = control_script(cfg, t, action, ids)
     yield f"== {action}: {', '.join(ids)}"
-    yield from _stream(mode, ssh, script, root=(t == "native"))
+    host = "localhost" if mode == "local" else str((ssh or {}).get("host", ""))
+    with journal.Operation(f"control:{action}", target=t, mode=mode, host=host, project=cfg.get("project", ""), components=ids):
+        yield from _stream(mode, ssh, script, root=(t == "native"), deadline=900)
     yield "== დასრულდა"
 
 
