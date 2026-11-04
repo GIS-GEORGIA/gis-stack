@@ -257,6 +257,20 @@ gisstack clean    -c stack.json --purge -y         # მთელი სტე�
 
 რჩევა: ვებ GUI-ში შენახული პროექტის ფაილი (`~/.gisstack/projects/<სახელი>.json`) ჩვეულებრივი კონფიგურაციაა და `-c`-ით პირდაპირ გამოდგება.
 
+### წინასწარი შემოწმება, პაროლების შეცვლა, ჟურნალი
+
+```bash
+gisstack preflight --mode ssh --ssh user@server          # OS, მეხსიერება, დისკი, საათი, ქსელი (deploy-ზეც ავტომატურად; --skip-preflight)
+gisstack rotate-credentials postgres --mode ssh --ssh user@server    # ახალი პაროლი (გენერირდება), გადამოწმდება, მერე ჩაიწერება
+gisstack rotate-credentials geoserver --password-file ~/new.pw       # საკუთარი პაროლი ფაილიდან (chmod 600)
+```
+
+პაროლები კონფიგურაციის ფაილის გარეშეც შეიძლება: `GISSTACK_POSTGRES_PASSWORD`, `GISSTACK_GEOSERVER_ADMIN_PASSWORD` ან იგივე `_FILE` სუფიქსით.
+ოპერაციების ჟურნალი: `~/.gisstack/journal.jsonl`; ვებ GUI-ის აუდიტი: `~/.gisstack/audit.log`. გრძელი ოპერაციის ვადა: `GISSTACK_DEADLINE` (წამი, ნაგულისხმევი 3600),
+უმოქმედობის ლიმიტი: `GISSTACK_IDLE_TIMEOUT` (900); `0` — ლიმიტის გარეშე.
+
+ვებ GUI: `gisstack web --allow-host gis.example.ge` (სხვა Host სახელი), `--rotate-token` (ახალი წვდომის ტოკენი), `--server waitress` (production სერვერი).
+
 ## 10. განახლება
 
 როცა ახალი ვერსია გამოდის GitHub-ზე, პროგრამა არ გაწუხებს თავისით; განახლებას **შენ** ამოწმებ:

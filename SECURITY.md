@@ -64,6 +64,37 @@ they protect against later tampering and mirror corruption, not against a file t
 SSH connections now use keep-alive (`ServerAliveInterval=15`, `ServerAliveCountMax=4`), so a dead link ends an operation in about
 a minute instead of hanging.
 
-**Not covered yet (see `docs/ROADMAP.md`, Phase 1b-ii):** the web GUI uses a single static token (no session expiry, rate limit,
-`Host` allow-list or audit log), commands have no global deadline or cancellation guarantees, the uploaded bundle stays in the
-server user's home after deployment, and release artefacts are not signed.
+**Operations are bounded, serialised and recorded (R-01, R-02, R-04, R-05).** Every external command runs through `gisstack/runner.py`:
+an overall deadline (default 1 h, `GISSTACK_DEADLINE`) and an idle timeout (15 min without output, `GISSTACK_IDLE_TIMEOUT`; `0` = no
+limit), cancellation, and termination of the whole process group (SIGTERM, then SIGKILL) so a hung `ssh` or installer child never
+survives; secret values (every `*password*`/`*token*`/`*secret*` in the config) are masked in all output. Operations take a lock
+(`flock` on this machine, `flock -n` on the server; a second one is refused with a clear message) and are journalled to
+`~/.gisstack/journal.jsonl` (start/end, outcome, duration; no commands, no secrets). The native bundle (it contains `stack.env`) is
+removed from the server's home directory after an SSH deployment, successful or not (compose/k8s bundles stay because the running
+stack mounts them). `gisstack preflight` (also run before `deploy`; `--skip-preflight` overrides) checks OS, architecture, memory,
+disk, clock, reachability of the download hosts and DNS before anything is changed.
+
+**Web GUI (S-06, S-10).** The access token is exchanged once for a random server-side session cookie (HttpOnly, SameSite=Strict) that
+expires after 2 h idle / 12 h total and can be revoked (`POST /api/logout`); `gisstack web --rotate-token` replaces the token. After
+10 failed attempts a client address gets `429` for a minute. Only `localhost`/`127.0.0.1`/`[::1]` plus names given with `--allow-host`
+(or `GISSTACK_ALLOWED_HOSTS`) are accepted as `Host` (DNS-rebinding protection); request bodies are limited to 2 MB; every
+state-changing request, login and denial is appended to `~/.gisstack/audit.log` (0600; method, path, status, client address, session
+prefix and a few non-secret facts such as project, mode, SSH host; never passwords, keys, plans or file contents). The job registry
+keeps at most 50 jobs, 50 000 lines each, and forgets finished jobs after an hour. `gisstack web --server waitress` serves with a
+production WSGI server (`pip install gisstack[prod]`); the default is Flask's development server.
+*Privilege model:* the web GUI runs as the user who starts it and executes installer scripts as that user (with `sudo -n` on remote
+servers). The packaged service runs as root on purpose, listens on `127.0.0.1` only and is reached through an SSH tunnel; do not
+expose it to a network. Splitting the UI from a privileged helper is planned (Phase 10).
+
+**Configuration and secrets.** Config files carry `schema_version` (older files are migrated, files from a newer gisstack are
+refused). Passwords may be supplied through `GISSTACK_POSTGRES_PASSWORD`, `GISSTACK_GEOSERVER_ADMIN_PASSWORD`,
+`GISSTACK_TOMCAT_MANAGER_PASSWORD` or the same names with `_FILE` (a file readable only by you), or by a custom provider registered
+in `gisstack/secretsrc.py` (Vault/SOPS adapters can plug in there); such values are validated like any other and never written to
+the secret store. `gisstack rotate-credentials postgres|geoserver` changes the PostgreSQL role password or the GeoServer admin
+password on an installed *native* server: the new password goes over stdin, is verified against the running service before
+anything is written, is rolled back on failure, then updates `/etc/gisstack/stack.env`, `credentials.txt` and the local secret
+store. Containers and Kubernetes are not supported by rotation yet.
+
+**Not covered yet (see `docs/ROADMAP.md`):** release artefacts are not signed (S-09, needs a decision on the signing tool), the CSP
+still allows inline scripts (S-07), SSH host keys are trust-on-first-use (S-08, Phase 9), rollback after a failed upgrade and a
+`restore` command (R-03, Phase 7), and the Tk desktop GUI is not part of the automated coverage figure.

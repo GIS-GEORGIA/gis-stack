@@ -71,9 +71,14 @@ gs() {   # gs USER PASSWORD [JSON-BODY] URL: credentials and body on curl's stdi
 }
 body="$(printf '{"newPassword":"%s"}' "$(cfgq "$NEWPW")")"
 gs admin "$GS_ADMIN_PASSWORD" "$body" "$base/security/self/password" || { echo "ROTATE_ERROR=change-failed"; exit 4; }
-if ! gs admin "$NEWPW" "" "$base/about/version"; then
+verified=0
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do      # GeoServer applies the change a moment after it answers 200
+  if gs admin "$NEWPW" "" "$base/about/version"; then verified=1; break; fi
+  sleep 1
+done
+if [ "$verified" != 1 ]; then
   oldbody="$(printf '{"newPassword":"%s"}' "$(cfgq "$GS_ADMIN_PASSWORD")")"
-  gs admin "$NEWPW" "$oldbody" "$base/security/self/password" || true
+  gs admin "$NEWPW" "$oldbody" "$base/security/self/password" || gs admin admin "$GS_ADMIN_PASSWORD" "" "$base/about/version" || true
   echo "ROTATE_ERROR=verify-failed"; exit 4
 fi
 setkv /etc/gisstack/stack.env GS_ADMIN_PASSWORD

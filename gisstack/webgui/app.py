@@ -573,7 +573,7 @@ def main(host: str = "127.0.0.1", port: int = 8765, server: str = "werkzeug", al
         getattr(sys.stdout, "reconfigure")(line_buffering=True)          # the URL must reach the journal / a pipe at once  # noqa: B009
     token = rotate_token() if rotate else load_or_create_token()
     extra = tuple(allow_hosts) + security.allowed_hosts_from_env()
-    if host not in ("127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0", "::") and host not in extra:  # noqa: S104 - comparison, not a bind
+    if host not in ("127.0.0.1", "localhost", "::1", "[::1]", "0.0.0.0", "::") and host not in extra:  # noqa: S104  # nosec B104 - comparison, not a bind
         extra += (host,)                           # binding to a specific name implies using it in the Host header
     app = create_app(token, extra)
     print(f"gisstack web installer {__version__}")

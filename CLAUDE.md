@@ -83,6 +83,15 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - ბექაფის სკრიპტი ვერასოდეს ბეჭდავს `BACKUP_VERIFIED=`-ს ჩავარდნისას; `existing.run` მხოლოდ ამ მარკერზე გადადის წაშლაზე. `GS_BACKUP_ROOT`/`GS_PGRUN` ტესტებისთვისაა.
 - `ss` პროცესის სახელს 15 სიმბოლომდე ჭრის — შედარება prefix-ით (`discover._is_ours_proc`).
 
+## საიმედოობა და ვებ-უსაფრთხოება (Phase 1b)
+- ყველა გარე ბრძანება `runner.py`-ით: `stream()` (ვადა/უმოქმედობა/გაუქმება/process-group kill/დამალვა), `run(..., input_text=)` — საიდუმლო მხოლოდ stdin-ით. `ops._run/_stream` და `deploy._stream` მასზეა გადაყვანილი.
+- `journal.py`: `Operation` (ჟურნალი `~/.gisstack/journal.jsonl`), `exclusive()` (ლოკალური flock); სერვერზე `flock -n -E 75 /tmp/gisstack-op.lock` (`deploy.REMOTE_LOCK`). native bundle სერვერიდან იშლება.
+- `preflight.py`: `script()` (მხოლოდ წაკითხვა) → `parse()` → `evaluate()` (წმინდა); `deploy` CLI/ვებ-ში გეითია. ახალი შემოწმება = ახალი ფაქტი scripts-ში + წესი evaluate-ში + ტესტი.
+- `webgui/security.py`: Sessions/RateLimiter/AuditLog/host_allowed/summarize. აუდიტში მხოლოდ `SAFE_BODY_KEYS` — ახალი ველი ნაგულისხმევად არ ჩაიწერება.
+- `config.SCHEMA_VERSION` + `MIGRATIONS` (key რენეიმი/გადატანა = ახალი მიგრაცია); `secretsrc.py` (env / `_FILE` / რეგისტრირებადი პროვაიდერი).
+- `rotation.py`: პაროლი stdin-ით, **ჯერ გადამოწმება, მერე ფაილებში ჩაწერა**, ჩავარდნისას უკან; GeoServer ცვლილებას წამიერად აგვიანებს (verify ციკლი), ძველი პაროლი ქეშის გამო რამდენიმე წუთი კიდევ მუშაობს.
+- ტესტებში watcher-ის შაბლონი უნდა ვერ ემთხვეოდეს საკუთარ cmdline-ს (`Mark[e]r`), თორემ ყველაფერი „გაჟონვაა“.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

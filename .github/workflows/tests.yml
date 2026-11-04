@@ -46,6 +46,15 @@ jobs:
           shellcheck --version
           shellcheck -S warning install.sh packaging/*.sh
           shellcheck -S warning /tmp/bundle/native/install.sh /tmp/bundle/native/uninstall.sh /tmp/bundle/compose/up.sh /tmp/bundle/k8s/apply.sh
+      - name: shellcheck (credential-rotation and pre-flight scripts)
+        run: |
+          python3 - <<'PY'
+          from gisstack import config, preflight, rotation
+          for what in rotation.WHAT:
+              open(f"/tmp/rotate-{what}.sh", "w").write(rotation.script(what))
+          open("/tmp/preflight.sh", "w").write(preflight.script(config.resolve({}), "native"))
+          PY
+          shellcheck -s bash -S warning /tmp/rotate-postgres.sh /tmp/rotate-geoserver.sh /tmp/preflight.sh
       - name: yamllint (workflows and rendered manifests)
         run: |
           printf 'extends: relaxed\nrules:\n  line-length: disable\n  truthy: disable\n' > /tmp/yamllint.yml

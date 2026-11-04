@@ -46,7 +46,8 @@ class ScriptTests(unittest.TestCase):
 
     def test_geoserver_script_verifies_before_it_writes_and_can_roll_back(self):
         sc = rotation.script("geoserver")
-        self.assertLess(sc.index('gs admin "$NEWPW" "" "$base/about/version"'), sc.index("setkv /etc/gisstack/stack.env"))
+        self.assertLess(sc.index('verified=1; break'), sc.index("setkv /etc/gisstack/stack.env"))
+        self.assertIn("sleep 1", sc)                                           # the change is applied a moment after GeoServer answers 200
         self.assertIn("oldbody", sc)
 
     def test_helper_functions_edit_files_correctly_in_real_bash(self):

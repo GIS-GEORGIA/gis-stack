@@ -16,8 +16,9 @@
 | T-01, T-04, T-05, T-07 | **Fixed (Phase 11a)** | CI gates (ruff, mypy, shellcheck, YAML/Compose/Kubernetes validation, pip-audit, bandit, CodeQL, Dependabot), Python 3.9–3.13 matrix, `cli.py`/`deploy.py` characterisation tests (coverage 59 % → 74 %), package build/install checks. Found and fixed: a Python 3.9 import regression, undefined-name bugs in Tk callbacks, a leaked pipe in `deploy._stream`. |
 | T-02, T-03, T-06 | Open | Integration, security-regression (partly done in 1a) and end-to-end tests: Phase 11b. |
 | S-03, S-04 | **Fixed (Phase 1b, part 1)** | Secrets via stdin (`psql` hex `\set`, `curl --config -`); pinned SHA-256 for GeoServer, extensions and Caddy; `pip --require-hashes` for the MapProxy venv; Tomcat checksum from Apache's own host. Verified on Ubuntu 24.04. Rocky not re-run. |
-| S-08 | Partly fixed | SSH keep-alive added; per-server host-key pinning (Phase 9) and removal of the uploaded bundle remain. |
-| S-06, S-07, S-09…S-12, R-01…R-07, A-* | Open | Scheduled in ROADMAP phases 1b-ii and 2. |
+| S-08 | Mostly fixed | SSH keep-alive; native bundle removed from the server after deployment. Host-key pinning remains (Phase 9). |
+| S-06, S-10, R-01, R-02, R-04, R-05 | **Fixed (Phase 1b, part 2)** | Runner (deadline/idle/cancel/process-group kill/redaction), journal + locks, pre-flight, web sessions/rate limit/Host list/size limit/audit log/bounded jobs, `schema_version`, secret providers, credential rotation. See SECURITY.md. |
+| S-07, S-09, S-11, S-12, R-03, R-06, R-07, A-* | Open | S-07/S-09 need decisions (UI assets, signing tool); R-03 is Phase 7; the rest Phase 2. |
 
 ## 1. Method
 
