@@ -19,8 +19,8 @@
 
 ```bash
 # 1) პაკეტი
-sudo apt install ./gisstack-installer_0.1.1_all.deb          # Debian / Ubuntu
-sudo dnf install ./gisstack-installer-0.1.1-1.noarch.rpm      # RHEL / Rocky / Alma / Fedora (python3-flask: EPEL)
+sudo apt install ./gisstack-installer_0.1.2_all.deb          # Debian / Ubuntu
+sudo dnf install ./gisstack-installer-0.1.2-1.noarch.rpm      # RHEL / Rocky / Alma / Fedora (python3-flask: EPEL)
 
 # 2) პაკეტის გარეშე, ამ საქაღალდიდან
 sudo ./install.sh            # ან ./install.sh --tk  (Desktop GUI-სთვის)
