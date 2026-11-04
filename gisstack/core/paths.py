@@ -54,3 +54,9 @@ def log_file() -> Path:
 
 def lock_dir() -> Path:
     return _sub("locks")
+
+
+def monitor_db(project: str, host: str) -> Path:
+    """History of one monitored machine: ~/.gisstack/monitor/<project>-<host>.sqlite"""
+    safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in f"{project}-{host}")
+    return fsutil.private_dir(_sub("monitor")) / f"{safe}.sqlite"
