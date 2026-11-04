@@ -176,14 +176,16 @@ def stream(cmd: Sequence[str], *, cwd: Optional[str] = None, env: Optional[dict]
 
 
 def run(cmd: Sequence[str], *, timeout: float, stdin: Any = subprocess.DEVNULL, cwd: Optional[str] = None, env: Optional[dict] = None,
-        error: Type[Exception] = RunnerError, grace: float = GRACE_SECONDS) -> subprocess.CompletedProcess[str]:
-    """subprocess.run replacement: on timeout the whole process group is killed (a hung ssh does not linger)."""
+        error: Type[Exception] = RunnerError, grace: float = GRACE_SECONDS, input_text: Optional[str] = None) -> subprocess.CompletedProcess[str]:
+    """subprocess.run replacement: on timeout the whole process group is killed (a hung ssh does not linger).
+
+    `input_text` is fed to the command's stdin - the way to hand it a secret without putting it in the argument list."""
     try:
-        proc = _popen(cmd, cwd=cwd, env=env, stdin=stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
+        proc = _popen(cmd, cwd=cwd, env=env, stdin=subprocess.PIPE if input_text is not None else stdin, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace")
     except FileNotFoundError as e:
         raise error(f"command not found: {e.filename}") from e
     try:
-        out, err = proc.communicate(timeout=timeout)
+        out, err = proc.communicate(input=input_text, timeout=timeout)
     except subprocess.TimeoutExpired as e:
         kill_tree(proc, grace)
         with contextlib.suppress(Exception):

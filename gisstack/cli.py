@@ -21,11 +21,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
 
-from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, settings, updater
+from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, settings, updater
 
 
 MAX_CONFIG_BYTES = 1_000_000
@@ -160,6 +161,26 @@ def _update(a: argparse.Namespace) -> int:
     except updater.UpdateError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
+
+
+def _rotate(a: argparse.Namespace, cfg: dict) -> int:
+    ssh = _parse_ssh(a)
+    if ssh is None:
+        return 2
+    new = None
+    try:
+        if a.password_file:
+            p = Path(a.password_file)
+            if hasattr(os, "geteuid") and p.stat().st_mode & 0o077:
+                print(f"ERROR: {p} is readable by others (chmod 600 it)", file=sys.stderr)
+                return 2
+            new = p.read_text(encoding="utf-8").strip("\r\n")
+        res = rotation.rotate(dict(cfg, deploy_target=a.target or cfg["deploy_target"]), a.what, a.mode, ssh, new)
+    except (deploy.DeployError, OSError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print(f"✔ {res['what']}: პაროლი შეიცვალა და გადამოწმდა. ახალი პაროლი: სერვერზე /etc/gisstack/credentials.txt და ამ კომპიუტერზე ~/.gisstack/secrets/{cfg['project']}.json")
+    return 0
 
 
 def _preflight(a: argparse.Namespace, cfg: dict) -> int:
@@ -335,6 +356,11 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("-n", "--lines", type=int, default=100)
     lg.add_argument("-f", "--follow", action="store_true")
 
+    rt = sub.add_parser("rotate-credentials", help="change the PostgreSQL role password or the GeoServer admin password on an installed server")
+    conn(rt)
+    rt.add_argument("what", choices=rotation.WHAT)
+    rt.add_argument("--password-file", metavar="FILE", help="read the new password from this file (mode 600) instead of generating one")
+
     pf = sub.add_parser("preflight", help="can this machine take the selected stack? (disk, memory, OS, network, clock)")
     conn(pf)
     pf.add_argument("--json", action="store_true")
@@ -413,6 +439,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "preflight":
         return _preflight(a, cfg)
+    if a.cmd == "rotate-credentials":
+        return _rotate(a, cfg)
 
     if a.cmd == "save":
         try:

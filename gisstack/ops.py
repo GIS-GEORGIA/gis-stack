@@ -35,8 +35,10 @@ def _argv(mode: str, ssh: dict[str, Any] | None, script: str, *, root: bool) -> 
     return deploy._ssh_base(ssh) + [f"{sudo}bash -c {shlex.quote(script)}"]
 
 
-def _run(mode: str, ssh: dict[str, Any] | None, script: str, *, root: bool = False, timeout: int = 40) -> str:
-    p = runner.run(_argv(mode, ssh, script, root=root), timeout=timeout, error=deploy.DeployError)
+def _run(mode: str, ssh: dict[str, Any] | None, script: str, *, root: bool = False, timeout: int = 40,
+         input_text: str | None = None) -> str:
+    """Run a script here / on the server and return stdout.  `input_text` goes to its stdin (use it for secrets, never argv)."""
+    p = runner.run(_argv(mode, ssh, script, root=root), timeout=timeout, error=deploy.DeployError, input_text=input_text)
     if p.returncode != 0 and not p.stdout.strip():
         raise deploy.DeployError((p.stderr or "command failed").strip().splitlines()[-1])
     return p.stdout

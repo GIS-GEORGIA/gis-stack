@@ -48,6 +48,18 @@ def migrate(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     return cur, notes
 
 
+def store_secret(project: str, name: str, value: str) -> None:
+    """Remember a (rotated) secret for `project` so later generations reuse it instead of the old one."""
+    path = _secrets_path(project)
+    try:
+        saved = {k: v for k, v in json.loads(path.read_text()).items() if isinstance(v, str)}
+    except (OSError, ValueError):
+        saved = {}
+    saved[name] = value
+    fsutil.private_dir(path.parent)
+    fsutil.write_private(path, json.dumps(saved))
+
+
 def default_config() -> dict[str, Any]:
     return {
         "schema_version": SCHEMA_VERSION,
