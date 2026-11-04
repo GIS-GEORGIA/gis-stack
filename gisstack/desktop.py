@@ -7,14 +7,125 @@ server over SSH (key-based) or on this machine.  Needs python3-tk
 from __future__ import annotations
 
 import json
+import os
 import queue
+import subprocess
+import sys
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Any
 
-from . import __version__, catalog, config, deploy, discover, existing, generate, ops, projects, updater
+from . import __version__, catalog, config, deploy, discover, existing, generate, i18n, ops, projects, settings, updater
+
+# ---------------------------------------------------------------- language and theme
+LANG = settings.resolve_lang()
+
+
+def tr(text):
+    """Georgian is the source language of every string; English is looked up in gisstack/i18n.py."""
+    return i18n.tr(text, LANG) if isinstance(text, str) else text
+
+
+def _tr_kw(kw: dict) -> dict:
+    if isinstance(kw.get("text"), str):
+        kw["text"] = tr(kw["text"])
+    return kw
+
+
+def _wrap_text_widget(cls):
+    class W(cls):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **_tr_kw(kw))
+
+        def configure(self, cnf=None, **kw):
+            return super().configure(cnf, **_tr_kw(kw)) if cnf is not None else super().configure(**_tr_kw(kw))
+        config = configure
+    W.__name__ = cls.__name__
+    return W
+
+
+# every label / button / tab / heading / dialog goes through tr() without touching each call site
+for _n in ("Label", "Button", "Checkbutton", "LabelFrame", "Radiobutton"):
+    setattr(ttk, _n, _wrap_text_widget(getattr(ttk, _n)))
+_nb_add, _tv_heading = ttk.Notebook.add, ttk.Treeview.heading
+ttk.Notebook.add = lambda self, child, **kw: _nb_add(self, child, **_tr_kw(kw))
+ttk.Treeview.heading = lambda self, column, option=None, **kw: _tv_heading(self, column, option, **_tr_kw(kw))
+_wm_title = tk.Wm.wm_title
+tk.Wm.wm_title = tk.Wm.title = lambda self, string=None: _wm_title(self, tr(string) if string else string)
+for _n in ("showinfo", "showerror", "showwarning", "askyesno", "askokcancel"):
+    setattr(messagebox, _n, (lambda f: lambda title=None, message=None, **kw: f(tr(title), tr(message), **kw))(getattr(messagebox, _n)))
+_askdir = filedialog.askdirectory
+filedialog.askdirectory = lambda **kw: _askdir(**({**kw, "title": tr(kw["title"])} if "title" in kw else kw))
+
+PALETTES = {
+    "light": dict(bg="#f4f6f8", fg="#1c2630", field="#ffffff", btn="#e6ecf1", sel="#bcd3ec", mut="#5b6b7a", line="#c9d3dc", err="#b00020"),
+    "dark": dict(bg="#0e141a", fg="#e4ebf2", field="#0f151b", btn="#26313d", sel="#2f5f93", mut="#93a1b0", line="#2b3745", err="#ff6b81"),
+}
+
+
+def detect_dark() -> bool:
+    """Follow the desktop's colour scheme where it can be read (GNOME/GTK); light otherwise."""
+    if "dark" in os.environ.get("GTK_THEME", "").lower():
+        return True
+    try:
+        out = subprocess.run(["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"],
+                             capture_output=True, text=True, timeout=2).stdout
+        return "dark" in out
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def theme_name(mode: str | None = None) -> str:
+    mode = mode or settings.load()["theme"]
+    return mode if mode in ("light", "dark") else ("dark" if detect_dark() else "light")
+
+
+def apply_theme(root: tk.Misc, name: str) -> None:
+    pal = PALETTES[name]
+    st = ttk.Style(root)
+    st.theme_use("clam")
+    st.configure(".", background=pal["bg"], foreground=pal["fg"], fieldbackground=pal["field"], bordercolor=pal["line"],
+                 lightcolor=pal["bg"], darkcolor=pal["bg"], troughcolor=pal["btn"], insertcolor=pal["fg"],
+                 selectbackground=pal["sel"], selectforeground=pal["fg"])
+    for w in ("TFrame", "TLabel", "TLabelframe", "TCheckbutton", "TRadiobutton", "TNotebook"):
+        st.configure(w, background=pal["bg"], foreground=pal["fg"])
+    st.configure("TLabelframe.Label", background=pal["bg"], foreground=pal["fg"])
+    st.configure("TButton", background=pal["btn"], foreground=pal["fg"], padding=(8, 3), bordercolor=pal["line"])
+    st.map("TButton", background=[("active", pal["sel"]), ("disabled", pal["bg"])], foreground=[("disabled", pal["mut"])])
+    st.configure("TCheckbutton", indicatorcolor=pal["field"], indicatorbackground=pal["field"])
+    st.map("TCheckbutton", background=[("active", pal["bg"])], indicatorcolor=[("selected", pal["sel"])])
+    st.configure("TNotebook.Tab", background=pal["btn"], foreground=pal["fg"], padding=(5, 4))
+    st.map("TNotebook.Tab", background=[("selected", pal["bg"])], foreground=[("selected", pal["fg"])])
+    st.configure("TEntry", fieldbackground=pal["field"], foreground=pal["fg"], insertcolor=pal["fg"])
+    st.configure("TCombobox", fieldbackground=pal["field"], foreground=pal["fg"], background=pal["btn"], arrowcolor=pal["fg"])
+    st.map("TCombobox", fieldbackground=[("readonly", pal["field"])], foreground=[("readonly", pal["fg"])])
+    st.configure("Treeview", background=pal["field"], fieldbackground=pal["field"], foreground=pal["fg"])
+    st.map("Treeview", background=[("selected", pal["sel"])], foreground=[("selected", pal["fg"])])
+    st.configure("Treeview.Heading", background=pal["btn"], foreground=pal["fg"])
+    st.configure("TScrollbar", background=pal["btn"], troughcolor=pal["bg"], arrowcolor=pal["fg"])
+    for opt, val in (("*Text.background", pal["field"]), ("*Text.foreground", pal["fg"]), ("*Text.insertBackground", pal["fg"]),
+                     ("*Listbox.background", pal["field"]), ("*Listbox.foreground", pal["fg"]),
+                     ("*TCombobox*Listbox.background", pal["field"]), ("*TCombobox*Listbox.foreground", pal["fg"]),
+                     ("*TCombobox*Listbox.selectBackground", pal["sel"])):
+        root.option_add(opt, val)
+    recolor(root, name)
+
+
+def recolor(w: tk.Misc, name: str) -> None:
+    """tk (not ttk) widgets ignore styles: colour the ones that already exist."""
+    pal = PALETTES[name]
+    for c in [w] + list(w.winfo_children()):
+        if isinstance(c, (tk.Tk, tk.Toplevel)):
+            c.configure(bg=pal["bg"])
+        elif isinstance(c, (tk.Text, tk.Listbox)):
+            fg = pal["err"] if getattr(c, "_gs_error", False) else pal["fg"]
+            c.configure(bg=pal["field"], fg=fg, insertbackground=pal["fg"], highlightbackground=pal["line"])
+        if c is not w:
+            recolor(c, name)
+
 
 LAYER_HELP = ("ერთი ფენა ხაზზე:  სახელი | სათაური EN | სათაური KA | წყარო | WMS ფენა | URL\n"
               "წყარო: geoserver | qgis | wms | tiles")
@@ -42,8 +153,10 @@ def layers_to_text(layers: list[dict[str, Any]]) -> str:
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
+        self.theme = theme_name()
+        apply_theme(self, self.theme)
         self.title(f"GIS Stack Installer {__version__}")
-        self.geometry("1020x780")
+        self.geometry("1140x780")
         self.d = config.default_config()
         self.vars: dict[str, tk.Variable] = {}
         self.checks: dict[str, dict[str, tk.BooleanVar]] = {}
@@ -59,6 +172,8 @@ class App(tk.Tk):
         self.proj_box.pack(side="left", padx=4)
         ttk.Button(top, text="ჩატვირთვა", command=self.load_project).pack(side="left", padx=2)
         ttk.Button(top, text="მთელი პროექტის შენახვა", command=self.save_project).pack(side="left", padx=2)
+        ttk.Button(top, text="GitHub", command=lambda: webbrowser.open(settings.REPO_URL)).pack(side="right", padx=2)
+        ttk.Button(top, text="⚙ პარამეტრები", command=self.open_settings).pack(side="right", padx=2)
         ttk.Button(top, text="განახლების შემოწმება", command=self.check_update).pack(side="right", padx=2)
         self.refresh_projects()
 
@@ -149,7 +264,7 @@ class App(tk.Tk):
         self._entry(f, "დომენი", "domain", 1)
         self._entry(f, "ელ-ფოსტა (Let's Encrypt)", "email", 2)
         ttk.Label(f, text="HTTPS").grid(row=3, column=0, sticky="w", padx=6, pady=3)
-        self.tls_map = {t["ka"]: t["id"] for t in catalog.TLS_MODES}
+        self.tls_map = {tr(t["ka"]): t["id"] for t in catalog.TLS_MODES}
         self.tls_var = tk.StringVar(value=next(k for k, v in self.tls_map.items() if v == self.d["tls"]))
         ttk.Combobox(f, textvariable=self.tls_var, values=list(self.tls_map), state="readonly", width=60).grid(row=3, column=1, sticky="w", padx=6)
         self._comp_bars(f, 4, ["caddy"])
@@ -298,7 +413,7 @@ class App(tk.Tk):
         if not got:
             return
         cfg, mode, ssh = got
-        self.exist_info.set("მოწმდება…")
+        self.exist_info.set(tr("მოწმდება…"))
 
         def run() -> None:
             try:
@@ -310,25 +425,25 @@ class App(tk.Tk):
 
     def _exist_show(self, rep, err) -> None:
         if err:
-            self.exist_info.set("შეცდომა: " + err)
+            self.exist_info.set(tr("შეცდომა: ") + tr(err))
             return
         self.exist_rep = rep
-        self.exist_info.set(f"{rep['os']} · კონფლიქტები: {len(rep['conflicts'])}")
+        self.exist_info.set(tr(f"{rep['os']} · კონფლიქტები: {len(rep['conflicts'])}"))
         self.exist_tree.delete(*self.exist_tree.get_children())
         for c in rep["components"].values():
             if not c["found"]:
                 continue
-            who = "ჩვენია" if c["ours"] and not c["foreign"] else ("უცხო" if c["foreign"] and not c["ours"] else "ორივე")
+            who = tr("ჩვენია" if c["ours"] and not c["foreign"] else ("უცხო" if c["foreign"] and not c["ours"] else "ორივე"))
             bits = ([c["version"]] if c["version"] else []) + [f"{s['name']}:{s['active']}" for s in c["services"][:3]] \
                 + c["listen"][:2] + c["data"][:3]
             self.exist_tree.insert("", "end", iid=c["id"], text=c["name"], values=(who, "; ".join(bits), self._plan_label(c["id"])))
         for w in rep["web_servers"]:
             self.exist_tree.insert("", "end", iid=w["name"], text=w["name"],
-                                   values=("web სერვერი", "; ".join(f"{s['name']}:{s['active']}" for s in w["services"]) + " " + " ".join(w["listen"]),
+                                   values=(tr("web სერვერი"), "; ".join(f"{s['name']}:{s['active']}" for s in w["services"]) + " " + " ".join(w["listen"]),
                                            self._plan_label(w["name"])))
         self.exist_conf.configure(state="normal")
         self.exist_conf.delete("1.0", "end")
-        self.exist_conf.insert("1.0", "\n".join(f"პორტი {x['port']} ({x['component']}) დაკავებულია: {x['process']} {x['addr']}" for x in rep["conflicts"]))
+        self.exist_conf.insert("1.0", "\n".join(tr(f"პორტი {x['port']} ({x['component']}) დაკავებულია: {x['process']} {x['addr']}") for x in rep["conflicts"]))
         self.exist_conf.configure(state="disabled")
 
     def _plan_label(self, comp: str) -> str:
@@ -514,9 +629,9 @@ class App(tk.Tk):
     def _ops_show(self, res, err) -> None:
         self.ops_loading = False
         if err:
-            self.ops_info.set("შეცდომა: " + err)
+            self.ops_info.set(tr("შეცდომა: ") + tr(err))
             return
-        self.ops_info.set(f"{res['target']} · {res['domain']} · {res['time']} ({res['took']} წმ)")
+        self.ops_info.set(tr(f"{res['target']} · {res['domain']} · {res['time']} ({res['took']} წმ)"))
         keep = self.ops_tree.selection()
         self.ops_tree.delete(*self.ops_tree.get_children())
         self.ops_rows = {r["id"]: r for r in res["rows"]}
@@ -578,6 +693,7 @@ class App(tk.Tk):
         win.geometry("900x500")
         txt = scrolledtext.ScrolledText(win, font=("monospace", 9))
         txt.pack(fill="both", expand=True)
+        recolor(win, self.theme)
         stop = threading.Event()
         q: queue.Queue[str | None] = queue.Queue()
 
@@ -676,7 +792,7 @@ class App(tk.Tk):
                         b.state(["!disabled"])
                     continue
                 self.log.configure(state="normal")
-                self.log.insert("end", line + "\n")
+                self.log.insert("end", tr(line) + "\n")
                 self.log.see("end")
                 self.log.configure(state="disabled")
         except queue.Empty:
@@ -700,6 +816,7 @@ class App(tk.Tk):
             files[k] = t
         win = tk.Toplevel(self)
         win.title("წინასწარი ნახვა")
+        recolor(win, self.theme)
         win.geometry("900x600")
         lb = tk.Listbox(win, width=38)
         lb.pack(side="left", fill="y")
@@ -902,6 +1019,43 @@ class App(tk.Tk):
         if not self.do_save_comp(comp):
             return
         self._run_job(cfg, "desktop-apply", lambda b: deploy.apply_component(cfg, b, target, mode, ssh, comp))
+
+
+    # ------------------------------------------------------------ settings (language, theme, links)
+    def open_settings(self) -> None:
+        cur = settings.load()
+        win = tk.Toplevel(self)
+        win.title("პარამეტრები")
+        win.transient(self)
+        win.resizable(False, False)
+        recolor(win, self.theme)
+        f = ttk.Frame(win, padding=14)
+        f.pack(fill="both", expand=True)
+        lang_names = {"auto": tr("ავტომატური"), "ka": tr("ქართული"), "en": "English"}
+        theme_names = {"auto": tr("ავტომატური (სისტემის მიხედვით)"), "light": tr("ღია"), "dark": tr("მუქი")}
+        ttk.Label(f, text="ენა").grid(row=0, column=0, sticky="w", pady=4)
+        lang_var = tk.StringVar(value=lang_names[cur["lang"]])
+        ttk.Combobox(f, textvariable=lang_var, values=list(lang_names.values()), state="readonly", width=30).grid(row=0, column=1, padx=8)
+        ttk.Label(f, text="თემა").grid(row=1, column=0, sticky="w", pady=4)
+        theme_var = tk.StringVar(value=theme_names[cur["theme"]])
+        ttk.Combobox(f, textvariable=theme_var, values=list(theme_names.values()), state="readonly", width=30).grid(row=1, column=1, padx=8)
+        links = ttk.Frame(f)
+        links.grid(row=2, column=0, columnspan=2, pady=10, sticky="w")
+        for text, url in (("GitHub", ""), ("ინსტრუქცია", "/blob/main/docs/USAGE.md"), ("გამოშვებები", "/releases"),
+                          ("პრობლემის შეტყობინება", "/issues/new/choose"), ("ლიცენზია", "/blob/main/LICENSE")):
+            ttk.Button(links, text=text, command=lambda u=url: webbrowser.open(settings.REPO_URL + u)).pack(side="left", padx=2)
+        ttk.Label(f, text=tr(f"ვერსია v{__version__} · MIT · ") + tr("პარამეტრები ინახება ამ კომპიუტერზე (~/.gisstack/settings.json) და ორივე GUI-ს (ვებ და Desktop) საერთოა."),
+                  wraplength=430, foreground=PALETTES[self.theme]["mut"]).grid(row=3, column=0, columnspan=2, sticky="w")
+
+        def save() -> None:
+            lang = next(k for k, v in lang_names.items() if v == lang_var.get())
+            theme = next(k for k, v in theme_names.items() if v == theme_var.get())
+            settings.save(lang=lang, theme=theme)
+            win.destroy()
+            if lang != cur["lang"] or theme != cur["theme"]:
+                # language and theme are applied while the widgets are built: restart the window
+                os.execv(sys.executable, [sys.executable, "-m", "gisstack", "desktop"])
+        ttk.Button(f, text="შენახვა და გადატვირთვა", command=save).grid(row=4, column=0, columnspan=2, pady=(12, 0), sticky="e")
 
     # ------------------------------------------------------------ updates
     def check_update(self) -> None:

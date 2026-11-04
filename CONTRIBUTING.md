@@ -29,6 +29,7 @@ Anyone is welcome to contribute: code, tests, docs, translations, or reports fro
 | `gisstack/config.py`, `catalog.py` | პარამეტრები, ვალიდაცია, კომპონენტების კატალოგი |
 | `gisstack/generate.py`, `templates/` | Jinja2 შაბლონები და ფაილების გეგმა (native / compose / k8s / webmap / mobile) |
 | `gisstack/deploy.py`, `projects.py` | გაშვება ლოკალურად ან SSH-ით, გასუფთავება, პროექტების შენახვა |
+| `gisstack/i18n.py`, `settings.py` | ინტერფეისის თარგმანები (KA → EN) და პარამეტრები (ენა, თემა) |
 | `gisstack/ops.py` | დიაგნოსტიკა: სტატუსი, start/stop/restart, ლოგები (native / compose / k8s) |
 | `gisstack/webgui/`, `desktop.py`, `cli.py` | ვებ (Flask), Tkinter და ბრძანების ხაზის ინტერფეისები |
 | `tests/` | `unittest` ტესტები |
@@ -38,6 +39,7 @@ Anyone is welcome to contribute: code, tests, docs, translations, or reports fro
 - **ტესტები:** ახალი ქცევა ტესტით დაფარე; PR-მდე `python3 tests/test_gisstack.py` უნდა გადიოდეს.
 - **შაბლონები:** shell-ის შაბლონი უნდა გადიოდეს `bash -n`-ს და იყოს იდემპოტენტური (ორჯერ გაშვება არაფერს არღვევს).
   Jinja-ში `{#` და `{%` ბაშის ტექსტში ერიდეთ (მაგ. `${#arr[@]}`).
+- **ინტერფეისის ტექსტი:** ახალი ქართული ტექსტი ჩაამატე ინგლისური თარგმანით ფაილში `gisstack/i18n.py` (ქართული → English); ტესტი `I18nTests` ჩავარდება, თუ რომელიმე ტექსტი უთარგმნელია.
 - **უსაფრთხოება:** არასოდეს ჩაწერო პაროლი, ტოკენი ან გასაღები კოდში, ტესტებში ან მაგალითებში.
 - **სტილი:** მიჰყევი არსებულ კოდს (სახელები, კომენტარების სიმჭიდროვე). მომხმარებლის ტექსტი ქართულია,
   კოდი და კომენტარები — ინგლისური ან ქართული, როგორც გვერდით ფაილშია.

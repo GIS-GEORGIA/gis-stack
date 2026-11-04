@@ -4,13 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GIS Stack Installer</title>
+<script>
+(function () {   // apply the last used theme before the first paint (the server setting is applied right after load)
+  try {
+    var t = localStorage.getItem("gs_theme") || "auto";
+    if (t === "auto") t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", t);
+  } catch (e) {}
+})();
+</script>
 <style>
-  :root { --bg:#f4f6f8; --card:#fff; --ink:#1c2630; --mut:#5b6b7a; --pri:#14385c; --acc:#f2b134; --bad:#b00020; --ok:#1b7f3b; --line:#d8e0e7; }
+  :root { color-scheme:light; --bg:#f4f6f8; --card:#fff; --ink:#1c2630; --mut:#5b6b7a; --pri:#14385c; --head:#14385c; --acc:#f2b134; --bad:#b00020; --ok:#1b7f3b; --line:#d8e0e7;
+          --soft:#e6ecf1; --soft2:#eef3f7; --okbg:#e3f4e8; --okline:#b6dfc2; --badbg:#fde8ec; --badline:#f3b8c2; --warnbg:#fff6dd; --warnline:#f0d48a;
+          --input:#fff; --code:#0f1b26; --codeink:#d7e3ee; --warn:#c98a00; --info:#0b79b5; --gray:#7a8794; --onpri:#fff; }
+  html[data-theme="dark"] { color-scheme:dark; --bg:#0e141a; --card:#161d25; --ink:#e4ebf2; --mut:#93a1b0; --pri:#3a78b8; --head:#16222f; --bad:#ff6b81; --ok:#3fb868; --line:#2b3745;
+          --soft:#26313d; --soft2:#1d2630; --okbg:#10301b; --okline:#1f5a34; --badbg:#3a1620; --badline:#6b2a38; --warnbg:#3a3015; --warnline:#6b5a22;
+          --input:#0f151b; --code:#05090d; --codeink:#cfdbe6; --warn:#e0a526; --info:#4aa3df; --gray:#5d6b79; }
+  html:not(.ready) body { visibility:hidden; }
+  input, select, textarea { background:var(--input); color:var(--ink); }
+  a { color:var(--info); }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,-apple-system,"Segoe UI","Noto Sans Georgian",sans-serif; }
-  header { background:var(--pri); color:#fff; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; }
+  header { background:var(--head); color:#fff; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; }
   header h1 { margin:0; font-size:1.15rem; }
   header small { opacity:.75; }
+  .hdr { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .hbtn { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.1); color:#fff; font:inherit; font-size:.82rem; cursor:pointer; text-decoration:none; }
+  .hbtn:hover { background:rgba(255,255,255,.22); }
+  .seg { display:inline-flex; border:1px solid rgba(255,255,255,.35); border-radius:6px; overflow:hidden; }
+  .seg button { background:transparent; color:#fff; border:0; padding:4px 10px; font-size:.82rem; border-radius:0; }
+  .seg button.on { background:rgba(255,255,255,.3); font-weight:700; }
+  dialog { border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--ink); padding:0; width:min(520px,92vw); }
+  dialog::backdrop { background:rgba(0,0,0,.5); }
+  dialog .dh { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); font-weight:600; color:var(--pri); }
+  dialog .db { padding:14px 16px; display:flex; flex-direction:column; gap:12px; }
+  dialog .linkrow { display:flex; flex-wrap:wrap; gap:8px; }
+  dialog .linkrow a { padding:5px 10px; border:1px solid var(--line); border-radius:6px; text-decoration:none; font-size:.85rem; background:var(--soft2); }
   main { display:grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1fr); gap:16px; padding:16px; max-width:1500px; margin:0 auto; }
   @media (max-width: 980px) { main { grid-template-columns: 1fr; } }
   fieldset { background:var(--card); border:1px solid var(--line); border-radius:8px; margin:0 0 14px; padding:10px 14px 14px; }
@@ -26,39 +55,66 @@
   td, th { padding:3px; } th { text-align:left; color:var(--mut); font-weight:500; }
   td input, td select { width:100%; font:inherit; padding:4px; border:1px solid var(--line); border-radius:4px; }
   button { font:inherit; border:0; border-radius:6px; padding:8px 14px; cursor:pointer; background:var(--pri); color:#fff; }
-  .compbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; padding:8px 10px; background:#eef3f7; border:1px solid var(--line); border-radius:6px; }
+  .compbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; padding:8px 10px; background:var(--soft2); border:1px solid var(--line); border-radius:6px; }
   .compbar b { flex:1; min-width:140px; color:var(--pri); }
-  #msg { background:#e3f4e8; color:var(--ok); border:1px solid #b6dfc2; padding:8px 12px; border-radius:6px; display:none; white-space:pre-wrap; margin-bottom:10px; }
+  #msg { background:var(--okbg); color:var(--ok); border:1px solid var(--okline); padding:8px 12px; border-radius:6px; display:none; white-space:pre-wrap; margin-bottom:10px; }
   table.ops { font-size:.8rem; } table.ops td { vertical-align:top; padding:4px 5px; border-bottom:1px solid var(--line); }
   table.ops td.addr { font-family:ui-monospace,Consolas,monospace; font-size:.78rem; white-space:nowrap; }
   .badge { display:inline-block; padding:1px 8px; border-radius:10px; color:#fff; font-size:.75rem; white-space:nowrap; }
-  .st-running { background:var(--ok); } .st-stopped { background:#c98a00; } .st-failed { background:var(--bad); }
-  .st-starting, .st-stopping { background:#0b79b5; } .st-missing, .st-unknown { background:#7a8794; }
+  .st-running { background:var(--ok); } .st-stopped { background:var(--warn); } .st-failed { background:var(--bad); }
+  .st-starting, .st-stopping { background:var(--info); } .st-missing, .st-unknown { background:var(--gray); }
   .chk-ok { color:var(--ok); } .chk-bad { color:var(--bad); }
   .opbtn { padding:2px 8px; font-size:.75rem; margin:1px; }
-  #updbox { display:none; max-width:1500px; margin:12px auto 0; padding:12px 16px; background:#fff6dd; border:1px solid #f0d48a; border-radius:8px; }
-  #updbox.ok { background:#e3f4e8; border-color:#b6dfc2; } #updbox.bad { background:#fde8ec; border-color:#f3b8c2; }
-  #updbox pre { max-height:220px; background:#fff; color:var(--ink); border:1px solid var(--line); }
-  #updbox a.dl { display:inline-block; margin:4px 8px 0 0; padding:5px 10px; background:var(--pri); color:#fff; border-radius:6px; text-decoration:none; font-size:.85rem; }
+  #updbox { display:none; max-width:1500px; margin:12px auto 0; padding:12px 16px; background:var(--warnbg); border:1px solid var(--warnline); border-radius:8px; }
+  #updbox.ok { background:var(--okbg); border-color:var(--okline); } #updbox.bad { background:var(--badbg); border-color:var(--badline); }
+  #updbox pre { max-height:220px; background:var(--card); color:var(--ink); border:1px solid var(--line); }
+  #updbox a.dl { display:inline-block; margin:4px 8px 0 0; padding:5px 10px; background:var(--pri); color:var(--onpri); border-radius:6px; text-decoration:none; font-size:.85rem; }
   table.ex { font-size:.8rem; } table.ex td { vertical-align:top; padding:4px 5px; border-bottom:1px solid var(--line); }
-  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:.72rem; color:#fff; } .tag-ours { background:var(--ok); } .tag-foreign { background:#c98a00; } .tag-both { background:#0b79b5; }
-  #ex-conf { background:#fde8ec; border:1px solid #f3b8c2; border-radius:6px; padding:8px 12px; margin:8px 0; display:none; font-size:.85rem; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:.72rem; color:#fff; } .tag-ours { background:var(--ok); } .tag-foreign { background:var(--warn); } .tag-both { background:var(--info); }
+  #ex-conf { background:var(--badbg); border:1px solid var(--badline); border-radius:6px; padding:8px 12px; margin:8px 0; display:none; font-size:.85rem; }
   button.danger { background:var(--bad); }
   .clrow { display:flex; align-items:center; gap:10px; padding:3px 0; border-bottom:1px solid var(--line); } .clrow span { flex:1; }
-  button.sec { background:#e6ecf1; color:var(--ink); } button.go { background:var(--ok); } button.x { background:#fff; color:var(--bad); border:1px solid var(--line); padding:3px 8px; }
+  button.sec { background:var(--soft); color:var(--ink); } button.go { background:var(--ok); } button.x { background:var(--card); color:var(--bad); border:1px solid var(--line); padding:3px 8px; }
   button:disabled { opacity:.5; cursor:default; }
   .bar { position:sticky; bottom:0; background:var(--bg); padding:10px 0; display:flex; gap:10px; flex-wrap:wrap; }
   #side { position:sticky; top:8px; align-self:start; max-height:calc(100vh - 16px); display:flex; flex-direction:column; gap:10px; }
   #files { display:flex; gap:8px; } #files select { flex:1; font:inherit; padding:5px; }
-  pre { margin:0; padding:10px; background:#0f1b26; color:#d7e3ee; border-radius:6px; overflow:auto; font:12px/1.4 ui-monospace,Consolas,monospace; white-space:pre-wrap; word-break:break-all; }
+  pre { margin:0; padding:10px; background:var(--code); color:var(--codeink); border-radius:6px; overflow:auto; font:12px/1.4 ui-monospace,Consolas,monospace; white-space:pre-wrap; word-break:break-all; }
   #view { height:34vh; } #log { height:26vh; }
-  #err { background:#fde8ec; color:var(--bad); border:1px solid #f3b8c2; padding:8px 12px; border-radius:6px; display:none; white-space:pre-wrap; }
-  #warn { background:#fff6dd; border:1px solid #f0d48a; padding:8px 12px; border-radius:6px; display:none; font-size:.85rem; }
+  #err { background:var(--badbg); color:var(--bad); border:1px solid var(--badline); padding:8px 12px; border-radius:6px; display:none; white-space:pre-wrap; }
+  #warn { background:var(--warnbg); border:1px solid var(--warnline); padding:8px 12px; border-radius:6px; display:none; font-size:.85rem; }
   .sshbox { display:none; }
 </style>
 </head>
 <body>
-<header><h1>GIS Stack Installer</h1><span><small>v{{ version }}</small> <button type="button" class="sec" id="btn-upd" style="padding:3px 10px;margin-left:8px">განახლების შემოწმება</button></span></header>
+<header>
+  <h1>GIS Stack Installer</h1>
+  <span class="hdr">
+    <small>v{{ version }}</small>
+    <button type="button" class="hbtn" id="btn-upd">განახლების შემოწმება</button>
+    <span class="seg" id="langseg" role="group" aria-label="ენა"><button type="button" data-lang="ka">KA</button><button type="button" data-lang="en">EN</button></span>
+    <button type="button" class="hbtn" id="btn-theme" title="თემა: ავტომატური / ღია / მუქი">◐</button>
+    <button type="button" class="hbtn" id="btn-set" title="პარამეტრები">⚙ პარამეტრები</button>
+    <a class="hbtn" id="btn-gh" href="https://github.com/GIS-GEORGIA/gis-stack" target="_blank" rel="noopener" title="GitHub"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg> GitHub</a>
+  </span>
+</header>
+<dialog id="dlg-set">
+  <div class="dh"><span>პარამეტრები</span><button type="button" class="sec" id="set-close">დახურვა</button></div>
+  <div class="db">
+    <div class="row">
+      <div class="f w"><span>ენა</span><select id="set-lang"><option value="auto">ავტომატური</option><option value="ka">ქართული</option><option value="en">English</option></select></div>
+      <div class="f w"><span>თემა</span><select id="set-theme"><option value="auto">ავტომატური (სისტემის მიხედვით)</option><option value="light">ღია</option><option value="dark">მუქი</option></select></div>
+    </div>
+    <div class="linkrow">
+      <a href="https://github.com/GIS-GEORGIA/gis-stack" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/GIS-GEORGIA/gis-stack/blob/main/docs/USAGE.md" target="_blank" rel="noopener">ინსტრუქცია</a>
+      <a href="https://github.com/GIS-GEORGIA/gis-stack/releases" target="_blank" rel="noopener">გამოშვებები</a>
+      <a href="https://github.com/GIS-GEORGIA/gis-stack/issues/new/choose" target="_blank" rel="noopener">პრობლემის შეტყობინება</a>
+      <a href="https://github.com/GIS-GEORGIA/gis-stack/blob/main/LICENSE" target="_blank" rel="noopener">ლიცენზია</a>
+    </div>
+    <div class="note">ვერსია v{{ version }} · MIT · პარამეტრები ინახება ამ კომპიუტერზე (~/.gisstack/settings.json) და ორივე GUI-ს (ვებ და Desktop) საერთოა.</div>
+  </div>
+</dialog>
 <div id="updbox"></div>
 <main>
 <form id="form" onsubmit="return false">
@@ -743,7 +799,115 @@ async function exRun() {
   } catch (e) { showErr(e.message); }
 }
 
+// ---------------------------------------------------------------- i18n (Georgian is the source text)
+const KA_RE = /[Ⴀ-ჿ]/;
+let EN = {}, EN_RE = null, LANG = "ka", SETTINGS = {lang: "auto", theme: "auto"};
+const ORIG_TXT = new WeakMap(), ORIG_ATTR = new WeakMap();
+let SET_TXT = new WeakMap(), FORCE_ATTR = false;   // reset on every language change so all text is re-translated
+const ATTRS = ["placeholder", "title", "aria-label"];
+function buildEn(tbl) {
+  EN = tbl;
+  const keys = Object.keys(EN).sort((a, b) => b.length - a.length).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  EN_RE = new RegExp("(?<![Ⴀ-ჿ])(?:" + keys.join("|") + ")(?![Ⴀ-ჿ])", "g");
+}
+function trText(s) {
+  if (!s || !KA_RE.test(s)) return s;
+  const core = s.trim();
+  if (Object.prototype.hasOwnProperty.call(EN, core)) return s.replace(core, () => EN[core]);
+  return s.replace(EN_RE, (m) => EN[m]);
+}
+function skipNode(n) {   // never translate user data: the file preview, script/style, form values
+  const p = n.nodeType === 3 ? n.parentNode : n;
+  return !p || p.closest && p.closest("script,style,#view,#filesel,textarea");
+}
+function applyText(n) {
+  if (skipNode(n)) return;
+  const cur = n.nodeValue;
+  if (SET_TXT.get(n) === cur) return;                       // our own translation, nothing new
+  let orig = ORIG_TXT.get(n);
+  if (orig === undefined || (KA_RE.test(cur) && cur !== orig)) { if (KA_RE.test(cur)) { orig = cur; ORIG_TXT.set(n, orig); } }
+  if (orig === undefined) return;
+  const out = LANG === "en" ? trText(orig) : orig;
+  if (out !== cur) { n.nodeValue = out; }
+  SET_TXT.set(n, out);
+}
+function applyAttrs(el) {
+  if (!el.getAttribute || skipNode(el)) return;
+  let rec = ORIG_ATTR.get(el);
+  for (const a of ATTRS) {
+    if (!el.hasAttribute(a)) continue;
+    const cur = el.getAttribute(a);
+    if (!FORCE_ATTR && rec && rec[a] && rec[a].set === cur) continue;
+    if (KA_RE.test(cur)) { rec = rec || {}; rec[a] = {orig: cur, set: null}; ORIG_ATTR.set(el, rec); }
+    if (!rec || !rec[a]) continue;
+    const out = LANG === "en" ? trText(rec[a].orig) : rec[a].orig;
+    rec[a].set = out;
+    if (out !== cur) el.setAttribute(a, out);
+  }
+}
+function walk(root) {
+  if (root.nodeType === 3) return applyText(root);
+  if (root.nodeType !== 1) return;
+  applyAttrs(root);
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  let n; while ((n = w.nextNode())) { if (n.nodeType === 3) applyText(n); else applyAttrs(n); }
+}
+let OBS = null;
+function startObserver() {
+  if (OBS) return;
+  OBS = new MutationObserver((muts) => {
+    for (const m of muts) {
+      if (m.type === "characterData") applyText(m.target);
+      else if (m.type === "attributes") applyAttrs(m.target);
+      else m.addedNodes.forEach(walk);
+    }
+  });
+  OBS.observe(document.body, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATTRS});
+}
+const _confirm = window.confirm.bind(window), _alert = window.alert.bind(window);
+window.confirm = (m) => _confirm(LANG === "en" ? trText(String(m)) : m);
+window.alert = (m) => _alert(LANG === "en" ? trText(String(m)) : m);
+
+// ---------------------------------------------------------------- settings: language + theme
+function resolvedLang(v) { return v === "ka" || v === "en" ? v : ((navigator.language || "").toLowerCase().startsWith("ka") ? "ka" : "en"); }
+function resolvedTheme(v) { return v === "light" || v === "dark" ? v : (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); }
+function applySettings() {
+  LANG = resolvedLang(SETTINGS.lang);
+  document.documentElement.setAttribute("data-theme", resolvedTheme(SETTINGS.theme));
+  document.documentElement.lang = LANG;
+  try { localStorage.setItem("gs_theme", SETTINGS.theme); localStorage.setItem("gs_lang", SETTINGS.lang); } catch (e) {}
+  document.querySelectorAll("#langseg button").forEach((b) => b.classList.toggle("on", b.dataset.lang === LANG));
+  $("#set-lang").value = SETTINGS.lang; $("#set-theme").value = SETTINGS.theme;
+  SET_TXT = new WeakMap(); FORCE_ATTR = true;
+  try { walk(document.body); } finally { FORCE_ATTR = false; }
+}
+async function saveSettings(patch) {
+  SETTINGS = Object.assign({}, SETTINGS, patch);
+  applySettings();
+  try { await api("/api/settings", patch); } catch (e) { /* the choice still applies for this session */ }
+}
+function initSettings() {
+  document.querySelectorAll("#langseg button").forEach((b) => b.onclick = () => saveSettings({lang: b.dataset.lang}));
+  $("#btn-theme").onclick = () => { const next = {auto: "light", light: "dark", dark: "auto"}[SETTINGS.theme] || "auto"; saveSettings({theme: next}); };
+  $("#btn-set").onclick = () => $("#dlg-set").showModal();
+  $("#set-close").onclick = () => $("#dlg-set").close();
+  $("#set-lang").onchange = () => saveSettings({lang: $("#set-lang").value});
+  $("#set-theme").onchange = () => saveSettings({theme: $("#set-theme").value});
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (SETTINGS.theme === "auto") applySettings(); });
+}
+async function bootI18n() {
+  try {
+    const [st, tb] = await Promise.all([fetch("/api/settings").then((r) => r.json()), fetch("/api/i18n").then((r) => r.json())]);
+    SETTINGS = {lang: st.lang, theme: st.theme}; buildEn(tb.en);
+  } catch (e) { buildEn({}); }
+  initSettings();
+  applySettings();
+  startObserver();
+  document.documentElement.classList.add("ready");
+}
+
 (async function init() {
+  await bootI18n();
   const j = await (await fetch("/api/catalog")).json();
   CAT = j.catalog; DEF = j.defaults;
   fill(DEF);

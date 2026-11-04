@@ -67,6 +67,15 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - `psql -c "a; b"` ≤v14-ზე მხოლოდ ბოლო შედეგს ბეჭდავს — გამოიყენე stdin; Rocky-ზე PG პროცესის სახელი `postmaster`-ია.
 - დამპი root-ისაა (600): `pg_restore ... < "$f"` root-ის shell-იდან.
 
+## ენა და თემა (`i18n.py`, `settings.py`)
+- წყარო ენაა ქართული; `i18n.EN` = ქართული → ინგლისური. `tr()` ჯერ მთელ სტრიქონს ეძებს, მერე ფრაგმენტებს ქართული სიტყვის საზღვრებზე
+  (ამიტომ „ბექაფი: postgis“ სწორად ითარგმნება). ახალი ტექსტი **უნდა** ჩაემატოს, თორემ `I18nTests` ჩავარდება.
+- ვებ: გვერდი ფრაგმენტებს თარგმნის ბრაუზერში (`MutationObserver` + `/api/i18n`), ორიგინალი ინახება და ენის გადართვისას აღდგება;
+  `#view` (ფაილის გადახედვა) არ ითარგმნება. თემა — CSS ცვლადები + `html[data-theme]`; პარამეტრები — `/api/settings`.
+- Tk: ttk ვიჯეტების `text=`, `Notebook.add`, `Treeview.heading`, `messagebox`, `title()` გატარებულია `tr()`-ში ერთ ადგილას; ენა/თემა გადატვირთვით
+  (`os.execv`). `ttk.Style("clam")` + `recolor()` tk ვიჯეტებისთვის.
+- `desktop.LANG` ტესტში პირდაპირ ისმება; `importlib.reload(desktop)` არ გამოიყენო — monkeypatch-ები რეკურსიაში გადადის.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

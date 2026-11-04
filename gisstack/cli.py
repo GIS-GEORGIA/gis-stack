@@ -13,6 +13,7 @@
   gisstack scan     -c stack.json                         what is already installed on the server?
   gisstack existing backup|remove tomcat caddy ...         back up / uninstall programs found by scan
   gisstack deploy   -c stack.json --existing postgis=adopt,caddy=reuse   decide per program
+  gisstack settings [--lang auto|ka|en] [--theme auto|light|dark]   interface language and theme (both GUIs)
   gisstack update   [--check] [--download DIR] [-y]      newer release on GitHub? download / install it
   gisstack clean    -c stack.json [--only tomcat,caddy] [--purge] [--remove-postgres] [-y]
 """
@@ -24,7 +25,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, config, deploy, discover, existing, generate, ops, projects, updater
+from . import __version__, config, deploy, discover, existing, generate, ops, projects, settings, updater
 
 
 def _load(path: str | None) -> dict:
@@ -262,6 +263,10 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("projects", help="list saved projects")
 
+    se = sub.add_parser("settings", help="show / change the interface language and theme (shared by the web and desktop GUI)")
+    se.add_argument("--lang", choices=settings.LANGS)
+    se.add_argument("--theme", choices=settings.THEMES)
+
     up = sub.add_parser("update", help="check GitHub for a newer release; download / install it")
     up.add_argument("--check", action="store_true", help="only report (exit 10 if a newer version exists)")
     up.add_argument("--download", metavar="DIR", help="download the verified package / archive into DIR and stop")
@@ -326,6 +331,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.cmd == "update":
         return _update(a)
+
+    if a.cmd == "settings":
+        cur = settings.save(a.lang, a.theme) if (a.lang or a.theme) else settings.load()
+        print(f"lang={cur['lang']} (now: {settings.resolve_lang(cur['lang'])})  theme={cur['theme']}  repo={settings.REPO_URL}")
+        return 0
 
     try:
         cfg = config.resolve(_load(a.config), persist_secrets=True)

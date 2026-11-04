@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -9,7 +10,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gisstack import config, deploy, discover, existing, generate, ops, projects, updater  # noqa: E402
+from gisstack import config, deploy, discover, existing, generate, i18n, ops, projects, settings, updater  # noqa: E402
 
 
 def make(user=None):
@@ -831,6 +832,125 @@ ours=yes
         r = post("/api/deploy", {"mode": "local", "config": {"deploy_target": "native"}})
         self.assertEqual(r.status_code, 409)
         self.assertTrue(r.get_json()["existing"]["conflicts"])
+
+
+class I18nTests(unittest.TestCase):
+    RUN = re.compile("[^\\n\"`<>{}\\\\$\\[\\]]*[\u10A0-\u10FF][^\\n\"`<>{}\\\\$\\[\\]]*")
+    ALLOW = {"ჩემი რუკა", "Ⴀ-ჿ"}       # data default (web-map title) and the page's own Georgian regex
+
+    def _texts(self):
+        root = Path(__file__).resolve().parents[1] / "gisstack"
+        html = (root / "webgui/templates/index.html").read_text()
+        html = re.sub(r"<!--.*?-->", "", html, flags=re.S)
+        html = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+        html = re.sub(r"(?<![:\"'])//[^\n]*", "", html).replace("\\n", "\n")
+        yield "index.html", html
+        import ast as _ast
+        for f in ("desktop", "catalog", "config", "deploy", "ops", "existing", "discover", "updater", "projects", "webgui/app", "settings"):
+            tree = _ast.parse((root / f"{f}.py").read_text())
+            docs = {id(n.body[0].value) for n in _ast.walk(tree)
+                    if isinstance(n, (_ast.Module, _ast.FunctionDef, _ast.ClassDef)) and n.body
+                    and isinstance(n.body[0], _ast.Expr) and isinstance(getattr(n.body[0], "value", None), _ast.Constant)}
+            for n in _ast.walk(tree):
+                if isinstance(n, _ast.Constant) and isinstance(n.value, str) and id(n) not in docs:
+                    yield f, n.value
+
+    def test_every_interface_string_has_an_english_translation(self):
+        """Add new Georgian UI text to gisstack/i18n.py (Georgian -> English) or this fails."""
+        missing = {}
+        for label, text in self._texts():
+            for m in self.RUN.finditer(text):
+                run = m.group(0).strip()
+                if run not in self.ALLOW and i18n.untranslated(run):
+                    missing.setdefault(label, set()).add(run[:100])
+        self.assertEqual(missing, {})
+
+    def test_translate_whole_strings_fragments_and_word_boundaries(self):
+        self.assertEqual(i18n.tr("შენახვა", "en"), "Save")
+        self.assertEqual(i18n.tr("შენახვა", "ka"), "შენახვა")                      # Georgian is the source language
+        self.assertEqual(i18n.tr("  შენახვა\n", "en"), "  Save\n")                 # surrounding whitespace is kept
+        self.assertEqual(i18n.tr("== ბექაფი: postgis, tomcat", "en"), "== backup: postgis, tomcat")   # fragment + data
+        self.assertEqual(i18n.tr("ახალი ვერსია: 0.2.0 (შენი: 0.1.2)", "en"), "New version: 0.2.0 (yours: 0.1.2)")
+        self.assertEqual(i18n.tr("no georgian here", "en"), "no georgian here")
+        self.assertEqual(i18n.tr("შენახვები", "en"), "შენახვები")                  # unknown word containing a known one is left alone
+        self.assertNotIn("\\n", "".join(i18n.EN))
+
+    def test_settings_roundtrip_and_language_resolution(self):
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["GISSTACK_HOME"] = td
+            old = {k: os.environ.pop(k, None) for k in ("GISSTACK_LANG", "LC_ALL", "LC_MESSAGES", "LANG")}
+            try:
+                self.assertEqual(settings.load(), {"lang": "auto", "theme": "auto"})
+                os.environ["LANG"] = "ka_GE.UTF-8"
+                self.assertEqual(settings.resolve_lang(), "ka")
+                os.environ["LANG"] = "en_US.UTF-8"
+                self.assertEqual(settings.resolve_lang(), "en")
+                settings.save(lang="ka", theme="dark")
+                self.assertEqual(settings.load(), {"lang": "ka", "theme": "dark"})
+                self.assertEqual(settings.resolve_lang(), "ka")
+                self.assertEqual((Path(td) / "settings.json").stat().st_mode & 0o077, 0)
+                with self.assertRaises(ValueError):
+                    settings.save(lang="fr")
+                with self.assertRaises(ValueError):
+                    settings.save(theme="blue")
+            finally:
+                os.environ.pop("GISSTACK_HOME", None)
+                for k, v in old.items():
+                    if v is not None:
+                        os.environ[k] = v
+
+    def test_web_settings_and_table_endpoints(self):
+        try:
+            from gisstack.webgui.app import create_app
+        except ImportError:
+            self.skipTest("flask not installed")
+        os.environ["GISSTACK_HOME"] = tempfile.mkdtemp()
+        self.addCleanup(os.environ.pop, "GISSTACK_HOME", None)
+        c = create_app("tok").test_client()
+        c.get("/?token=tok")
+        h = {"X-GisStack": "1"}
+        self.assertEqual(c.get("/api/i18n").get_json()["en"]["შენახვა"], "Save")
+        self.assertEqual(c.get("/api/settings").get_json()["theme"], "auto")
+        self.assertEqual(c.post("/api/settings", json={"theme": "dark"}).status_code, 403)       # CSRF header required
+        r = c.post("/api/settings", json={"lang": "en", "theme": "dark"}, headers=h)
+        self.assertEqual((r.get_json()["lang_resolved"], r.get_json()["theme"]), ("en", "dark"))
+        self.assertEqual(c.post("/api/settings", json={"lang": "xx"}, headers=h).status_code, 400)
+        page = c.get("/").get_data(as_text=True)
+        for needle in ('id="btn-gh"', "https://github.com/GIS-GEORGIA/gis-stack", 'id="dlg-set"', 'data-lang="en"', 'html[data-theme="dark"]'):
+            self.assertIn(needle, page)
+
+
+class TkI18nTests(unittest.TestCase):
+    def test_desktop_gui_follows_language_and_theme(self):
+        try:
+            import tkinter
+            root = tkinter.Tk()
+            root.destroy()
+        except Exception:
+            self.skipTest("no display / tkinter")
+        old = os.environ.get("GISSTACK_HOME")
+        try:
+            for lang, theme, tab0, btn in (("en", "dark", "General", "⚙ Settings"), ("ka", "light", "ზოგადი", "⚙ პარამეტრები")):
+                with tempfile.TemporaryDirectory() as td:
+                    os.environ["GISSTACK_HOME"] = td
+                    settings.save(lang=lang, theme=theme)
+                    from gisstack import desktop
+                    desktop.LANG = settings.resolve_lang()      # normally read once when the program starts
+                    app = desktop.App()
+                    try:
+                        app.update()
+                        self.assertEqual(app.theme, theme)
+                        self.assertEqual(app.nb.tab(0, "text"), tab0)
+                        top = [w.cget("text") for w in app.winfo_children()[0].winfo_children() if w.winfo_class() == "TButton"]
+                        self.assertIn(btn, top)
+                        self.assertIn("GitHub", top)
+                    finally:
+                        app.destroy()
+        finally:
+            if old is None:
+                os.environ.pop("GISSTACK_HOME", None)
+            else:
+                os.environ["GISSTACK_HOME"] = old
 
 
 if __name__ == "__main__":

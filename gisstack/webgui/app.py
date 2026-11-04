@@ -23,7 +23,7 @@ from typing import Any
 
 from flask import Flask, Response, abort, jsonify, make_response, redirect, render_template, request, send_file
 
-from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, generate, ops as ops_mod, projects as projects_mod, updater as updater_mod
+from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, generate, ops as ops_mod, projects as projects_mod, updater as updater_mod, settings as settings_mod, i18n as i18n_mod
 
 MASK = "••••••••"
 MAX_PREVIEW_BYTES = 120_000
@@ -354,6 +354,24 @@ def create_app(token: str | None = None) -> Flask:
             abort(404)
         job.stop.set()
         return jsonify({"ok": True})
+
+    @app.get("/api/i18n")
+    def api_i18n() -> Response:
+        """Georgian -> English table for the page (the page translates text it shows)."""
+        return jsonify({"en": i18n_mod.EN})
+
+    @app.get("/api/settings")
+    def api_settings_get() -> Response:
+        return jsonify(settings_mod.view())
+
+    @app.post("/api/settings")
+    def api_settings_set() -> Response:
+        body = request.get_json(silent=True) or {}
+        try:
+            settings_mod.save(body.get("lang"), body.get("theme"))
+        except ValueError as e:
+            return make_response(jsonify({"error": str(e)}), 400)
+        return jsonify(settings_mod.view())
 
     @app.post("/api/update/check")
     def api_update_check() -> Response:
