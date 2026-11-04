@@ -6,6 +6,7 @@
 #   sudo ./install.sh --only postgis,caddy install just these steps
 #   sudo ./install.sh --skip qgis          everything except these
 #   sudo ./install.sh --list               show the steps
+#   sudo ./install.sh --adopt-postgres     build on the PostgreSQL server that is already running
 #
 # Safe to re-run: every step is idempotent.
 set -Eeuo pipefail
@@ -37,9 +38,11 @@ esac
 ARCH="$(uname -m)"
 
 STEPS="$ALL_STEPS"
+ADOPT_PG=0          # --adopt-postgres: use the PostgreSQL that is already there (no install, no tuning, no restart)
 while [ $# -gt 0 ]; do
   case "$1" in
     --list) echo "$ALL_STEPS" | tr ' ' '\n'; exit 0 ;;
+    --adopt-postgres) ADOPT_PG=1; shift ;;
     --only) STEPS="base $(echo "$2" | tr ',' ' ')"; shift 2 ;;
     --skip) for s in $(echo "$2" | tr ',' ' '); do STEPS="$(echo " $STEPS " | sed "s/ $s / /")"; done; shift 2 ;;
     -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
@@ -65,8 +68,13 @@ latest_pkg() {   # newest available rpm matching a glob, e.g. "postgis3*_16"
   dnf -q list "$1" 2>/dev/null | awk '$1 ~ /\./ {print $1}' | sed 's/\.[^.]*$//' | sort -V | tail -1
 }
 unit_install() {   # unit_install <file-in-bundle>
+  clear_mask "$1"
   install -m 644 "$HERE/systemd/$1" "/etc/systemd/system/$1"
   systemctl daemon-reload
+}
+clear_mask() {     # a removed distro package can leave its unit masked (symlink to /dev/null): writing through it would be lost
+  systemctl unmask "$1" 2>/dev/null || true
+  if [ -L "/etc/systemd/system/$1" ] && [ "$(readlink "/etc/systemd/system/$1")" = /dev/null ]; then rm -f "/etc/systemd/system/$1"; fi
 }
 wait_http() {      # wait_http <url> <seconds>
   local i
@@ -96,9 +104,13 @@ step_base() {
 step_postgis() {
   local V="$PG_VERSION" SVC
   if [ "$FAMILY" = deb ]; then
-    pkg_install postgresql-common
-    /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-    pkg_install "postgresql-$V" "postgresql-$V-postgis-3" "postgresql-$V-postgis-3-scripts"
+    if [ "$ADOPT_PG" = 1 ]; then
+      pkg_install "postgresql-$V-postgis-3" "postgresql-$V-postgis-3-scripts" || die "no PostGIS package for the existing PostgreSQL $V"
+    else
+      pkg_install postgresql-common
+      /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+      pkg_install "postgresql-$V" "postgresql-$V-postgis-3" "postgresql-$V-postgis-3-scripts"
+    fi
 {% if deb_pkgs | length > 2 %}
     pkg_try {% for p in deb_pkgs %}{% if not p.endswith('postgis-3') and not p.endswith('postgis-3-scripts') %}{{ p | shq }} {% endif %}{% endfor %}
 
@@ -111,7 +123,7 @@ step_postgis() {
     [ "$ID" = fedora ] || dnf config-manager --set-enabled crb 2>/dev/null || dnf config-manager --set-enabled powertools 2>/dev/null || true
     pkg_install "https://download.postgresql.org/pub/repos/yum/reporpms/${REPO}-${ARCH}/pgdg-redhat-repo-latest.noarch.rpm" || true
     dnf -qy module disable postgresql 2>/dev/null || true
-    pkg_install "postgresql${V}-server" "postgresql${V}-contrib"
+    [ "$ADOPT_PG" = 1 ] || pkg_install "postgresql${V}-server" "postgresql${V}-contrib"
     local PGIS; PGIS="$(latest_pkg "postgis3*_${V}")"
     [ -n "$PGIS" ] || die "no PostGIS package for PostgreSQL $V in the PGDG repository"
     pkg_install "$PGIS"
@@ -119,10 +131,18 @@ step_postgis() {
     pkg_try {% for p in rpm_pkgs %}{% if p != '@postgis' %}{{ p | shq }} {% endif %}{% endfor %}
 
 {% endif %}
-    if [ ! -f "/var/lib/pgsql/$V/data/PG_VERSION" ]; then "/usr/pgsql-$V/bin/postgresql-$V-setup" initdb; fi
     SVC="postgresql-$V"
-    systemctl enable --now "$SVC"
+    if [ "$ADOPT_PG" = 1 ]; then
+      systemctl list-unit-files --no-legend 2>/dev/null | grep -q "^postgresql-$V.service" || SVC=postgresql
+    else
+      if [ ! -f "/var/lib/pgsql/$V/data/PG_VERSION" ]; then "/usr/pgsql-$V/bin/postgresql-$V-setup" initdb; fi
+      systemctl enable --now "$SVC"
+    fi
   fi
+  if [ "$ADOPT_PG" = 1 ]; then
+    runuser -u postgres -- pg_isready -q || die "--adopt-postgres: no running PostgreSQL found"
+    log "using the existing PostgreSQL (no tuning, no restart, autostart untouched)"
+  else
   systemctl enable --now "$SVC"
 
   log "PostgreSQL tuning"
@@ -142,6 +162,7 @@ step_postgis() {
   fi
   systemctl restart "$SVC"
   for _ in $(seq 1 30); do runuser -u postgres -- pg_isready -q && break; sleep 1; done
+  fi
 
   log "database $DB_NAME, role $DB_USER, extensions"
   psql_pg -v dbuser="$DB_USER" -v dbpass="$DB_PASSWORD" -v dbname="$DB_NAME" <<'SQL'
@@ -293,6 +314,7 @@ while [ "\$n" -gt 1 ]; do $fcgi & n=\$((n - 1)); done
 exec $fcgi
 WRAP
   chmod 755 /opt/gisstack/qgis-fcgi.sh
+  clear_mask gisstack-qgis.service
   sed -e "s|@PROJECTS@|$QGIS_PROJECTS_DIR|g" "$HERE/systemd/gisstack-qgis.service" > /etc/systemd/system/gisstack-qgis.service
   sed -e "s|@BIND@|$BIND_BACKENDS|g" "$HERE/systemd/gisstack-qgis.socket" > /etc/systemd/system/gisstack-qgis.socket
   restorecon -R /opt/gisstack 2>/dev/null || true
@@ -341,6 +363,7 @@ step_caddy() {
   install -d /etc/caddy
   install -m 644 "$HERE/config/Caddyfile" /etc/caddy/Caddyfile
   /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  clear_mask caddy.service
   cat > /etc/systemd/system/caddy.service <<'UNIT'
 [Unit]
 Description=Caddy web server (gisstack)

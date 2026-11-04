@@ -10,6 +10,9 @@
   gisstack status   -c stack.json [--watch] [--json]      live state, IP:port, health of every program
   gisstack start|stop|restart|enable|disable -c stack.json [program...]
   gisstack logs     -c stack.json geoserver [-n 200] [-f]
+  gisstack scan     -c stack.json                         what is already installed on the server?
+  gisstack existing backup|remove tomcat caddy ...         back up / uninstall programs found by scan
+  gisstack deploy   -c stack.json --existing postgis=adopt,caddy=reuse   decide per program
   gisstack update   [--check] [--download DIR] [-y]      newer release on GitHub? download / install it
   gisstack clean    -c stack.json [--only tomcat,caddy] [--purge] [--remove-postgres] [-y]
 """
@@ -21,7 +24,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, config, deploy, generate, ops, projects, updater
+from . import __version__, config, deploy, discover, existing, generate, ops, projects, updater
 
 
 def _load(path: str | None) -> dict:
@@ -141,6 +144,49 @@ def _update(a: argparse.Namespace) -> int:
         return 1
 
 
+def _scan(a: argparse.Namespace, cfg: dict) -> int:
+    ssh = _parse_ssh(a)
+    if ssh is None:
+        return 2
+    try:
+        rep = discover.scan(cfg, a.mode, ssh, a.target or cfg["deploy_target"])
+    except deploy.DeployError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print(json.dumps(rep, ensure_ascii=False, indent=2) if a.json else discover.format_report(rep))
+    return 3 if rep["conflicts"] else 0
+
+
+def _existing(a: argparse.Namespace, cfg: dict) -> int:
+    ssh = _parse_ssh(a)
+    if ssh is None:
+        return 2
+    target = a.target or cfg["deploy_target"]
+    comps = ["qgis_server" if c == "qgis" else c for c in a.components]
+    if a.action == "remove" and not a.yes:
+        print(f"ამოიშლება: {', '.join(comps)}" + (" მონაცემებითურთ!" if a.purge else " (მონაცემები დარჩება)") + " — ბექაფი ჯერ შეიქმნება.")
+        if input("Type 'yes' to continue: ").strip() != "yes":
+            print("aborted")
+            return 1
+    plan = {c: {"action": "remove", "purge": a.purge} for c in comps}
+    try:
+        if a.action == "backup":
+            rep = discover.scan(cfg, a.mode, ssh, target)
+            import time as _t
+            ts = _t.strftime("%Y%m%d-%H%M%S")
+            out = ops._run(a.mode, ssh, existing.backup_script(rep, comps, ts, a.with_data), root=True, timeout=900)
+            print(out, end="")
+            print("ასლი ამ მანქანაზე:", existing.fetch_backup(a.mode, ssh, ts, a.backup_dir, existing.host_label(a.mode, ssh)))
+            return 0
+        for line in existing.run(cfg, target, a.mode, ssh, plan, lambda c: None, with_data=a.with_data,
+                                 backup_dir=a.backup_dir, install=False):
+            print(line, flush=True)
+        return 0
+    except deploy.DeployError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+
 def _apply(a: argparse.Namespace, cfg: dict) -> int:
     target = a.target or cfg["deploy_target"]
     ssh = _parse_ssh(a)
@@ -183,6 +229,10 @@ def main(argv: list[str] | None = None) -> int:
     d.add_argument("--mode", choices=["local", "ssh"], default="local")
     d.add_argument("--ssh", help="user@host[:port]")
     d.add_argument("--key", help="SSH private key file")
+    d.add_argument("--existing", metavar="PLAN", help="what to do with programs already on the server: "
+                   "comma list like postgis=adopt,tomcat=remove,caddy=reuse,nginx=disable (see: gisstack scan)")
+    d.add_argument("--with-data", action="store_true", help="with --existing: also dump databases before removing")
+    d.add_argument("--backup-dir", default=None, help="default: ~/.gisstack/backups")
 
     c = sub.add_parser("clean", help="remove the whole stack, or just some components")
     c.add_argument("-c", "--config")
@@ -239,6 +289,18 @@ def main(argv: list[str] | None = None) -> int:
     lg.add_argument("-n", "--lines", type=int, default=100)
     lg.add_argument("-f", "--follow", action="store_true")
 
+    sc = sub.add_parser("scan", help="what is already installed on the server? (before installing ours)")
+    conn(sc)
+    sc.add_argument("--json", action="store_true")
+    ex = sub.add_parser("existing", help="back up / remove / re-use programs that are already installed")
+    conn(ex)
+    ex.add_argument("action", choices=["backup", "remove"])
+    ex.add_argument("components", nargs="+", help="postgis tomcat geoserver qgis_server mapproxy caddy")
+    ex.add_argument("--purge", action="store_true", help="remove: also delete the program's data")
+    ex.add_argument("--with-data", action="store_true", help="backup: also dump databases / big data directories")
+    ex.add_argument("--backup-dir", default=None, help="default: ~/.gisstack/backups")
+    ex.add_argument("-y", "--yes", action="store_true")
+
     a = ap.parse_args(argv)
 
     if a.cmd == "web":
@@ -281,6 +343,11 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "clean":
         return _clean(a, cfg)
 
+    if a.cmd == "scan":
+        return _scan(a, cfg)
+    if a.cmd == "existing":
+        return _existing(a, cfg)
+
     if a.cmd in ("status", "logs") or a.cmd in ops.ACTIONS:
         return _ops(a, cfg)
 
@@ -310,7 +377,24 @@ def main(argv: list[str] | None = None) -> int:
             user, _, host = userhost.rpartition("@")
             ssh = {"user": user or "root", "host": host, "port": int(port or 22), "key": a.key or ""}
         try:
-            for line in deploy.deploy(cfg, out, target, a.mode, ssh):
+            if a.existing is not None:
+                plan = existing.parse_plan_spec(a.existing) if a.existing else {}
+
+                def make(c: dict) -> Path:
+                    generate.generate_bundle(c, out)
+                    return out
+                lines = existing.run(cfg, target, a.mode, ssh, plan, make, with_data=a.with_data, backup_dir=a.backup_dir)
+            else:
+                # no plan given: refuse only when someone else holds a port we need
+                if target == "native":
+                    rep = discover.scan(cfg, a.mode, ssh, target)
+                    if rep["conflicts"]:
+                        print(discover.format_report(rep), file=sys.stderr)
+                        print("\nERROR: ზოგიერთი საჭირო პორტი დაკავებულია. გადაწყვიტე რა ვუყოთ არსებულს: "
+                              "gisstack deploy ... --existing postgis=adopt,tomcat=remove,caddy=reuse,nginx=disable", file=sys.stderr)
+                        return 3
+                lines = deploy.deploy(cfg, out, target, a.mode, ssh)
+            for line in lines:
                 print(line, flush=True)
         except deploy.DeployError as e:
             print(f"ERROR: {e}", file=sys.stderr)

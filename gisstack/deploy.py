@@ -167,11 +167,11 @@ def _check_bundle(bundle: Path, target: str, mode: str) -> None:
 
 
 def deploy(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,
-           ssh: dict[str, Any] | None = None) -> Iterator[str]:
-    """Yield log lines. Raises DeployError on failure."""
+           ssh: dict[str, Any] | None = None, extra_args: list[str] | None = None) -> Iterator[str]:
+    """Yield log lines. Raises DeployError on failure.  extra_args go to the entry script (native: install.sh)."""
     bundle = Path(bundle_dir)
     _check_bundle(bundle, target, mode)
-    yield from _run_entry(cfg, bundle, target, mode, ssh, _ENTRY[target], [])
+    yield from _run_entry(cfg, bundle, target, mode, ssh, _ENTRY[target], list(extra_args or []))
 
 
 def clean(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,

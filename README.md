@@ -63,6 +63,10 @@ Token: `/var/lib/gisstack-installer/web.token`.
    გაშვება, გაჩერება, რესტარტი, ავტოგაშვების ჩართვა/გამორთვა, ლოგი (ბოლო სტრიქონები ან ცოცხლად).
    Native-ზე ეს systemd ერთეულებია, Compose-ზე — კონტეინერები, Kubernetes-ზე — workload-ები.
 
+6. **არსებული პროგრამები** — დაყენებამდე ამოწმებს, რა დგას უკვე სერვერზე (PostgreSQL, Tomcat, GeoServer, QGIS, MapProxy, Caddy, nginx/apache),
+   აჩვენებს IP:პორტს და კონფლიქტებს. თითოეულზე: დაშენება, წაშლა (ბექაფით), გამოყენება ჩვენში (ბაზების, GeoServer-ის workspace-ების, QGIS პროექტების
+   და Caddy-ს საიტების გადმოტანით) ან დატოვება. მხოლოდ native.
+
 ### უგრაფიკოდ (CLI)
 
 ```bash

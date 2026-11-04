@@ -57,6 +57,16 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
   Tk ჩანართი „დიაგნოსტიკა“. გადამოწმებულია Ubuntu და Rocky VM-ზე (ssh, არა-root მომხმარებელი + `sudo -n`).
 - Flask ინახავს შაბლონებს ქეშში — HTML-ის შეცვლის შემდეგ ვებ სერვერი თავიდან გაუშვი.
 
+## არსებული პროგრამები (`discover.py`, `existing.py`)
+- `discover.scan()` ერთი root სკრიპტით (dpkg/rpm, systemctl, ss, psql) აგროვებს ფაქტებს; `parse/analyse/conflicts` წმინდაა და ტესტირდება
+  მზა ტექსტებზე. „ჩვენია“ = `gisstack-*` unit-ები / `/etc/gisstack/stack.env`; დარჩენილი ფაილები (წაშლილი პაკეტის /var/lib/...) უცხო პროგრამა არ არის.
+- `existing.run()` = scan → plan-ის შემოწმება (`validate`) → ბექაფი → წაშლა → `deploy(extra_args=["--adopt-postgres"])` → იმპორტი.
+  სკრიპტებში პაკეტების/ბაზების სახელები regex-ით მოწმდება და `shlex.quote`-ით ჩაიწერება; ბექაფის გზები მუდმივებია.
+- Debian-ზე `apt remove` ტოვებს unit-ს **masked**-ად (symlink → /dev/null) — `systemctl unmask` + `clear_mask` install.sh-ში;
+  `apt purge postgresql-*` კლასტერებს შლის, ამიტომ purge მხოლოდ ექსპლიციტურად; `/etc/postgresql` გვერდზე გადაინაცვლებს, თორემ ახალი კლასტერი 5433-ზე ავა.
+- `psql -c "a; b"` ≤v14-ზე მხოლოდ ბოლო შედეგს ბეჭდავს — გამოიყენე stdin; Rocky-ზე PG პროცესის სახელი `postmaster`-ია.
+- დამპი root-ისაა (600): `pg_restore ... < "$f"` root-ის shell-იდან.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

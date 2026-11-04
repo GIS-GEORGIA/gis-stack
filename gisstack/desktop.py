@@ -14,7 +14,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Any
 
-from . import __version__, catalog, config, deploy, generate, ops, projects, updater
+from . import __version__, catalog, config, deploy, discover, existing, generate, ops, projects, updater
 
 LAYER_HELP = ("ერთი ფენა ხაზზე:  სახელი | სათაური EN | სათაური KA | წყარო | WMS ფენა | URL\n"
               "წყარო: geoserver | qgis | wms | tiles")
@@ -64,6 +64,7 @@ class App(tk.Tk):
 
         nb = ttk.Notebook(self)
         nb.pack(fill="both", expand=True, padx=8, pady=8)
+        self.nb = nb
         self._tab_components_vars()
         self._tab_general(nb)
         self._tab_components(nb)
@@ -72,6 +73,7 @@ class App(tk.Tk):
         self._tab_mapproxy(nb)
         self._tab_map(nb)
         self._tab_deploy(nb)
+        self._tab_existing(nb)
         self._tab_clean(nb)
         self._tab_ops(nb)
 
@@ -241,6 +243,158 @@ class App(tk.Tk):
         self._entry(f, "K8s namespace", "k8s.namespace", 8)
         self._entry(f, "K8s StorageClass", "k8s.storage_class", 9)
         self._combo(f, "K8s Service ტიპი", "k8s.service_type", ["LoadBalancer", "NodePort", "ClusterIP"], 10)
+
+    def _tab_existing(self, nb):
+        f = self._tab(nb, "არსებული პროგრამები")
+        self.exist_tab = f
+        self.exist_plan: dict[str, dict[str, Any]] = {}
+        self.exist_rep = None
+        ttk.Label(f, text="სანამ ჩვენს სტეკს დავაყენებთ, ვამოწმებთ რა დგას სერვერზე. აირჩიე პროგრამა სიაში და მიუთითე რა ვუყოთ.\n"
+                          "Deploy გამოიყენებს ამ გეგმას. მხოლოდ native სამიზნე; ყოველ წაშლამდე ბექაფი კეთდება.",
+                  justify="left").pack(anchor="w", padx=4, pady=2)
+        top = ttk.Frame(f)
+        top.pack(fill="x", pady=4)
+        ttk.Button(top, text="შემოწმება", command=self.exist_scan).pack(side="left", padx=2)
+        self.exist_data = tk.BooleanVar(value=False)
+        ttk.Checkbutton(top, text="ბექაფში მონაცემებიც (ბაზების დამპი)", variable=self.exist_data).pack(side="left", padx=8)
+        self.exist_info = tk.StringVar(value="")
+        ttk.Label(top, textvariable=self.exist_info).pack(side="left", padx=8)
+        cols = ("state", "found", "plan")
+        self.exist_tree = ttk.Treeview(f, columns=cols, height=8)
+        self.exist_tree.heading("#0", text="პროგრამა")
+        self.exist_tree.column("#0", width=170)
+        for c, t, w in (("state", "ვისია", 70), ("found", "რა არის ნაპოვნი", 480), ("plan", "გეგმა", 150)):
+            self.exist_tree.heading(c, text=t)
+            self.exist_tree.column(c, width=w, anchor="w")
+        self.exist_tree.pack(fill="x", pady=4)
+        self.exist_conf = tk.Text(f, height=4, state="disabled", font=("monospace", 9), foreground="#b00020")
+        self.exist_conf.pack(fill="x", pady=2)
+        bar = ttk.Frame(f)
+        bar.pack(fill="x", pady=4)
+        for text, act in (("დატოვება", "ignore"), ("დაშენება (PostgreSQL)", "adopt"), ("წაშლა", "remove"),
+                          ("წაშლა + მონაცემები", "remove+purge"), ("გამოყენება ჩვენში", "reuse"), ("გავთიშო (web სერვერი)", "disable")):
+            ttk.Button(bar, text=text, command=lambda a=act: self.exist_set(a)).pack(side="left", padx=2)
+        bar2 = ttk.Frame(f)
+        bar2.pack(fill="x", pady=4)
+        b1 = ttk.Button(bar2, text="ბექაფი (უცხო პროგრამების)", command=self.exist_backup)
+        b2 = ttk.Button(bar2, text="გეგმის შესრულება (დაყენების გარეშე)", command=self.exist_run)
+        b1.pack(side="left", padx=2)
+        b2.pack(side="left", padx=2)
+        self.clean_btns += [b1, b2]
+
+    # ------------------------------------------------------------ existing programs
+    def _exist_conn(self):
+        got = self._ops_cfg()
+        if not got:
+            return None
+        cfg, mode, ssh = got
+        if cfg["deploy_target"] != "native":
+            messagebox.showinfo("არსებული პროგრამები", "ეს ფუნქცია მხოლოდ native სამიზნეზეა (ჩანართი „სამიზნე / Deploy“).")
+            return None
+        return cfg, mode, ssh
+
+    def exist_scan(self) -> None:
+        got = self._exist_conn()
+        if not got:
+            return
+        cfg, mode, ssh = got
+        self.exist_info.set("მოწმდება…")
+
+        def run() -> None:
+            try:
+                rep = discover.scan(cfg, mode, ssh, "native")
+                self.after(0, lambda: self._exist_show(rep, None))
+            except deploy.DeployError as e:
+                self.after(0, lambda: self._exist_show(None, str(e)))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _exist_show(self, rep, err) -> None:
+        if err:
+            self.exist_info.set("შეცდომა: " + err)
+            return
+        self.exist_rep = rep
+        self.exist_info.set(f"{rep['os']} · კონფლიქტები: {len(rep['conflicts'])}")
+        self.exist_tree.delete(*self.exist_tree.get_children())
+        for c in rep["components"].values():
+            if not c["found"]:
+                continue
+            who = "ჩვენია" if c["ours"] and not c["foreign"] else ("უცხო" if c["foreign"] and not c["ours"] else "ორივე")
+            bits = ([c["version"]] if c["version"] else []) + [f"{s['name']}:{s['active']}" for s in c["services"][:3]] \
+                + c["listen"][:2] + c["data"][:3]
+            self.exist_tree.insert("", "end", iid=c["id"], text=c["name"], values=(who, "; ".join(bits), self._plan_label(c["id"])))
+        for w in rep["web_servers"]:
+            self.exist_tree.insert("", "end", iid=w["name"], text=w["name"],
+                                   values=("web სერვერი", "; ".join(f"{s['name']}:{s['active']}" for s in w["services"]) + " " + " ".join(w["listen"]),
+                                           self._plan_label(w["name"])))
+        self.exist_conf.configure(state="normal")
+        self.exist_conf.delete("1.0", "end")
+        self.exist_conf.insert("1.0", "\n".join(f"პორტი {x['port']} ({x['component']}) დაკავებულია: {x['process']} {x['addr']}" for x in rep["conflicts"]))
+        self.exist_conf.configure(state="disabled")
+
+    def _plan_label(self, comp: str) -> str:
+        p = self.exist_plan.get(comp)
+        return "-" if not p else p["action"] + ("+purge" if p["purge"] else "")
+
+    def exist_set(self, act: str) -> None:
+        sel = self.exist_tree.selection()
+        if not sel:
+            messagebox.showinfo("არსებული პროგრამები", "აირჩიე პროგრამა სიაში")
+            return
+        purge = act.endswith("+purge")
+        action = act.removesuffix("+purge")
+        for comp in sel:
+            if action == "ignore":
+                self.exist_plan.pop(comp, None)
+            else:
+                self.exist_plan[comp] = {"action": action, "purge": purge}
+            self.exist_tree.set(comp, "plan", self._plan_label(comp))
+
+    def _exist_job(self, title: str, steps) -> None:
+        if self.busy:
+            return
+        self.busy = True
+        self.deploy_btn.state(["disabled"])
+        for b in self.clean_btns:
+            b.state(["disabled"])
+
+        def run() -> None:
+            try:
+                for line in steps():
+                    self._log(line)
+            except deploy.DeployError as e:
+                self._log(f"ERROR: {e}")
+            finally:
+                self.log_q.put(None)
+                self.after(0, self.exist_scan)
+        threading.Thread(target=run, daemon=True).start()
+
+    def exist_backup(self) -> None:
+        got = self._exist_conn()
+        if not got or not self.exist_rep:
+            if got:
+                messagebox.showinfo("არსებული პროგრამები", "ჯერ დააჭირე „შემოწმებას“")
+            return
+        cfg, mode, ssh = got
+        comps = [c["id"] for c in self.exist_rep["components"].values() if c["foreign"]]
+        if not comps:
+            messagebox.showinfo("არსებული პროგრამები", "უცხო პროგრამა არ არის ნაპოვნი")
+            return
+        wd = self.exist_data.get()
+        self._exist_job("backup", lambda: existing.backup(cfg, "native", mode, ssh, comps, with_data=wd))
+
+    def exist_run(self) -> None:
+        got = self._exist_conn()
+        if not got:
+            return
+        cfg, mode, ssh = got
+        if not self.exist_plan:
+            messagebox.showinfo("არსებული პროგრამები", "გეგმა ცარიელია")
+            return
+        what = "\n".join(f"{k}: {self._plan_label(k)}" for k in self.exist_plan)
+        if not messagebox.askyesno("გეგმის შესრულება", f"შესრულდება (ყოველ წაშლამდე ბექაფი):\n{what}\n\nგავაგრძელო?", icon="warning"):
+            return
+        plan, wd = dict(self.exist_plan), self.exist_data.get()
+        self._exist_job("run", lambda: existing.run(cfg, "native", mode, ssh, plan, lambda c: None, with_data=wd, install=False))
 
     def _tab_clean(self, nb):
         f = self._tab(nb, "გასუფთავება / Cleanup")
@@ -612,6 +766,23 @@ class App(tk.Tk):
         mode, ssh, where = self._ssh_mode()
         target = cfg["deploy_target"]
         if not messagebox.askyesno("Deploy", f"{target} → {where}\nგავაგრძელო?"):
+            return
+        if target == "native":
+            plan, wd = dict(self.exist_plan), self.exist_data.get()
+
+            def steps(b):
+                if plan:
+                    def make(c):
+                        generate.generate_bundle(c, b)
+                        return b
+                    yield from existing.run(cfg, target, mode, ssh, plan, make, with_data=wd)
+                    return
+                rep = discover.scan(cfg, mode, ssh, target)
+                if rep["conflicts"]:
+                    self.after(0, lambda: (self._exist_show(rep, None), self.nb.select(self.exist_tab)))
+                    raise deploy.DeployError("საჭირო პორტები დაკავებულია — აირჩიე რა ვუყოთ არსებულ პროგრამებს (ჩანართი „არსებული პროგრამები“)")
+                yield from deploy.deploy(cfg, b, target, mode, ssh)
+            self._run_job(cfg, "desktop", steps)
             return
         self._run_job(cfg, "desktop", lambda b: deploy.deploy(cfg, b, target, mode, ssh))
 

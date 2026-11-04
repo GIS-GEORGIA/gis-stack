@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gisstack import config, deploy, generate, ops, projects, updater  # noqa: E402
+from gisstack import config, deploy, discover, existing, generate, ops, projects, updater  # noqa: E402
 
 
 def make(user=None):
@@ -633,6 +633,204 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual((r.status_code, r.get_json()["error"]), (502, "offline"))
         r = c.post("/api/update/apply", json={}, headers={"X-GisStack": "1"})
         self.assertEqual(r.status_code, 502)
+
+
+SCAN_OUT = """@@os deb Ubuntu 24.04.5 LTS
+@@root 0
+@@ours no
+@@pkgs
+caddy 2.6.2-6
+nginx 1.24.0
+postgresql-18 18.6-1
+postgresql-client-18 18.6-1
+postgresql-common 293
+postgis 3.4
+qgis-server-bin 3.34.4
+tomcat10 10.1.55
+@@units
+caddy.service active running
+nginx.service active running
+postgresql@18-main.service active running
+postgresql@.service inactive dead
+tomcat10.service active running
+@@unitfiles
+caddy.service enabled
+nginx.service enabled
+tomcat10.service enabled
+@@ss
+LISTEN 0 4096 127.0.0.1:5432 0.0.0.0:* users:(("postgres",pid=900,fd=5))
+LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:(("nginx",pid=700,fd=5))
+LISTEN 0 511 [::]:80 [::]:* users:(("nginx",pid=700,fd=6))
+LISTEN 0 100 *:8080 *:* users:(("java",pid=800,fd=38))
+@@paths
+/etc/caddy
+/etc/postgresql
+/var/lib/postgresql
+/var/lib/tomcat10
+/var/lib/geoserver_data
+/var/lib/tomcat10/webapps/geoserver
+@@webapps
+/var/lib/tomcat10/webapps/geoserver
+@@caddy
+bin=/usr/bin/caddy
+version=v2.6.2
+ours=no
+@@mapproxy
+bin=
+@@qgis
+fcgi=/usr/lib/cgi-bin/qgis_mapserv.fcgi
+@@pg
+ver|18.6
+port|5432
+datadir|/var/lib/postgresql/18/main
+db|legacy|7340032
+db|gis|16777216
+@@end
+"""
+
+
+class ExistingTests(unittest.TestCase):
+    def setUp(self):
+        self.cfg = config.resolve({"components": {"geoserver": True, "qgis_server": True, "mapproxy": True,
+                                                  "caddy": True, "webmap": True}}, generate_secrets=False)
+        self.rep = discover.analyse(discover.parse(SCAN_OUT), self.cfg)
+        self.rep["conflicts"] = discover.conflicts(self.rep, self.cfg)
+        self.rep["target"] = "native"
+
+    def test_scan_classification(self):
+        c = self.rep["components"]
+        self.assertTrue(c["postgis"]["foreign"] and not c["postgis"]["ours"])
+        self.assertEqual(c["postgis"]["major"], "18")
+        self.assertEqual(c["postgis"]["databases"], ["legacy", "gis"])
+        self.assertTrue(c["tomcat"]["foreign"])
+        self.assertTrue(c["geoserver"]["foreign"])            # a geoserver webapp inside somebody's Tomcat
+        self.assertTrue(c["qgis_server"]["foreign"])
+        self.assertTrue(c["caddy"]["foreign"])
+        self.assertFalse(c["mapproxy"]["found"])
+        self.assertEqual([w["name"] for w in self.rep["web_servers"]], ["nginx"])
+        self.assertNotIn("postgresql@.service", [u["name"] for u in c["postgis"]["services"]])   # systemd template ignored
+
+    def test_conflicts_are_per_port_and_name_the_owner(self):
+        got = {(x["component"], x["port"]): x for x in self.rep["conflicts"]}
+        self.assertEqual(set(got), {("postgis", 5432), ("tomcat", 8080), ("caddy", 80)})
+        self.assertEqual(got[("caddy", 80)]["process"], "nginx")
+        self.assertEqual(got[("caddy", 80)]["addr"], "0.0.0.0:80, [::]:80")      # IPv4 + IPv6 merged
+
+    OURS_OUT = """@@os deb Ubuntu 24.04
+@@root 0
+@@ours yes
+@@pkgs
+postgresql-17 17.11
+@@units
+gisstack-tomcat.service active running
+gisstack-mapproxy.service active running
+caddy.service active running
+@@unitfiles
+gisstack-tomcat.service enabled
+@@ss
+LISTEN 0 100 127.0.0.1:8080 0.0.0.0:* users:(("java",pid=8,fd=1))
+LISTEN 0 100 127.0.0.1:8081 0.0.0.0:* users:(("gunicorn",pid=9,fd=1))
+LISTEN 0 100 0.0.0.0:443 0.0.0.0:* users:(("caddy",pid=10,fd=1))
+@@paths
+/opt/tomcat
+/var/lib/tomcat10
+/etc/caddy
+@@webapps
+/opt/tomcat/webapps/geoserver
+/opt/apache-tomcat-11.0.27/webapps/geoserver
+@@caddy
+bin=/usr/local/bin/caddy
+ours=yes
+@@end
+"""
+
+    def test_our_own_install_is_not_a_conflict(self):
+        rep = discover.analyse(discover.parse(self.OURS_OUT), self.cfg)
+        c = rep["components"]
+        self.assertTrue(c["tomcat"]["ours"] and not c["tomcat"]["foreign"])        # leftover /var/lib/tomcat10 is just files
+        self.assertTrue(c["geoserver"]["ours"] and not c["geoserver"]["foreign"])
+        self.assertTrue(c["mapproxy"]["ours"] and c["caddy"]["ours"] and not c["caddy"]["foreign"])
+        self.assertEqual(discover.conflicts(rep, self.cfg), [])
+        self.assertTrue(any("დარჩენილი ფაილები" in d for d in c["tomcat"]["details"]))
+
+    def test_plan_spec_and_validation(self):
+        self.assertEqual(existing.parse_plan_spec("qgis=remove, caddy=reuse+purge")["qgis_server"], {"action": "remove", "purge": False})
+        self.assertTrue(existing.parse_plan_spec("caddy=remove+purge")["caddy"]["purge"])
+        for bad in ("tomcat=explode", "tomcat"):
+            with self.assertRaises(existing.PlanError):
+                existing.parse_plan_spec(bad)
+        with self.assertRaises(existing.PlanError):
+            existing._norm({"nonsense": "remove"})
+        v = lambda spec: existing.validate(existing._norm(existing.parse_plan_spec(spec)), self.rep, self.cfg)   # noqa: E731
+        self.assertEqual(len(v("")), 3)                                   # postgres, tomcat, nginx/caddy all unresolved
+        self.assertEqual(v("postgis=adopt,tomcat=remove,nginx=disable"), [])
+        self.assertEqual(v("postgis=reuse,tomcat=reuse,nginx=disable"), [])
+        self.assertTrue(any("adopt" in x for x in v("tomcat=adopt,postgis=adopt,nginx=disable")))      # adopt is PostgreSQL only
+        self.assertTrue(any("nginx" in x for x in v("postgis=adopt,tomcat=remove")))                    # port 80 needs nginx dealt with
+        self.assertTrue(any("არ ნაპოვნია" in x for x in v("mapproxy=remove,postgis=adopt,tomcat=remove,nginx=disable")))
+
+    def test_scripts_are_safe_and_complete(self):
+        rep = dict(self.rep, pkgs_all=[{"name": "tomcat10", "version": "1"}, {"name": "evil; rm -rf /", "version": "1"},
+                                       {"name": "postgresql-18", "version": "1"}, {"name": "postgresql-common", "version": "1"}])
+        rem = existing.remove_script(rep, "tomcat", purge=False)
+        self.assertIn("apt-get remove -y tomcat10", rem)               # remove, not purge: data and config stay
+        self.assertNotIn("evil", rem)
+        self.assertNotIn("rm -rf /var/lib/tomcat", rem)
+        self.assertIn("rm -rf", existing.remove_script(rep, "tomcat", purge=True))
+        self.assertIn("apt-get purge -y tomcat10", existing.remove_script(rep, "tomcat", purge=True))
+        pg = existing.remove_script(rep, "postgis", purge=False)
+        self.assertIn("postgresql-18", pg)
+        self.assertNotIn("postgresql-common", pg)                      # shared with other tools
+        self.assertIn("/etc/postgresql moved aside", pg)               # keeps Debian from reserving the old port
+        self.assertIn("systemctl unmask", existing.remove_script(rep, "caddy", purge=False))
+        bk = existing.backup_script(dict(rep), ["postgis", "caddy"], "20260101-000000", with_data=True)
+        self.assertIn("pg_dump -Fc legacy", bk)
+        self.assertIn("pg-globals.sql", bk)
+        self.assertNotIn("pg_dump -Fc legacy", existing.backup_script(rep, ["postgis"], "20260101-000000", with_data=False))
+        for comps in (["postgis", "geoserver", "qgis_server", "caddy", "tomcat", "mapproxy"],):
+            for script in (bk, existing.import_script(rep, comps, "20260101-000000"), rem):
+                r = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
+                self.assertEqual(r.returncode, 0, r.stderr)
+        imp = existing.import_script(rep, ["geoserver"], "20260101-000000")
+        self.assertIn("security", imp)                                 # our admin password must survive the import
+        # a hostile database name never reaches a shell
+        evil = dict(rep, components=dict(rep["components"], postgis=dict(rep["components"]["postgis"], databases=["x; touch /tmp/pwned"])))
+        self.assertNotIn("pwned", existing.backup_script(evil, ["postgis"], "20260101-000000", True))
+
+    def test_caddyfile_imports_carried_over_sites_on_native_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = generate.generate_bundle(config.resolve({"targets": ["native", "compose"]}), Path(td) / "b")
+            self.assertIn("import /etc/gisstack/caddy.d/*", (out / "native/config/Caddyfile").read_text())
+            self.assertNotIn("caddy.d", (out / "compose/caddy/Caddyfile").read_text())
+            inst = (out / "native/install.sh").read_text()
+            self.assertIn("--adopt-postgres", inst)
+            self.assertIn("clear_mask", inst)
+
+    def test_web_existing_validation(self):
+        try:
+            from gisstack.webgui.app import create_app
+        except ImportError:
+            self.skipTest("flask not installed")
+        os.environ["GISSTACK_HOME"] = tempfile.mkdtemp()
+        self.addCleanup(os.environ.pop, "GISSTACK_HOME", None)
+        c = create_app("tok").test_client()
+        c.get("/?token=tok")
+        h = {"X-GisStack": "1"}
+        post = lambda url, body: c.post(url, json=body, headers=h)   # noqa: E731
+        self.assertEqual(c.post("/api/existing/scan", json={"mode": "local"}).status_code, 403)
+        self.assertEqual(post("/api/existing/scan", {"mode": "local", "config": {"deploy_target": "compose"}}).status_code, 400)
+        self.assertEqual(post("/api/existing/backup", {"mode": "local", "components": ["x"]}).status_code, 400)
+        self.assertEqual(post("/api/existing/execute", {"mode": "local", "plan": {"tomcat": "explode"}}).status_code, 400)
+        # Deploy refuses (409) when somebody else holds a port we need, and returns the report for the UI
+        real = discover.scan
+        discover.scan = lambda *a, **k: dict(self.rep)
+        self.addCleanup(setattr, discover, "scan", real)
+        real_pf = deploy.preflight
+        deploy.preflight = lambda *a, **k: []
+        self.addCleanup(setattr, deploy, "preflight", real_pf)
+        r = post("/api/deploy", {"mode": "local", "config": {"deploy_target": "native"}})
+        self.assertEqual(r.status_code, 409)
+        self.assertTrue(r.get_json()["existing"]["conflicts"])
 
 
 if __name__ == "__main__":

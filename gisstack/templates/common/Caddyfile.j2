@@ -74,3 +74,8 @@
 	}
 {% endif %}
 }
+{% if target == 'native' %}
+
+# site blocks carried over from a previously installed Caddy (see: gisstack scan / reuse)
+import /etc/gisstack/caddy.d/*
+{% endif %}

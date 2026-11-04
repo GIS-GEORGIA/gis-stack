@@ -40,6 +40,9 @@
   #updbox.ok { background:#e3f4e8; border-color:#b6dfc2; } #updbox.bad { background:#fde8ec; border-color:#f3b8c2; }
   #updbox pre { max-height:220px; background:#fff; color:var(--ink); border:1px solid var(--line); }
   #updbox a.dl { display:inline-block; margin:4px 8px 0 0; padding:5px 10px; background:var(--pri); color:#fff; border-radius:6px; text-decoration:none; font-size:.85rem; }
+  table.ex { font-size:.8rem; } table.ex td { vertical-align:top; padding:4px 5px; border-bottom:1px solid var(--line); }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:.72rem; color:#fff; } .tag-ours { background:var(--ok); } .tag-foreign { background:#c98a00; } .tag-both { background:#0b79b5; }
+  #ex-conf { background:#fde8ec; border:1px solid #f3b8c2; border-radius:6px; padding:8px 12px; margin:8px 0; display:none; font-size:.85rem; }
   button.danger { background:var(--bad); }
   .clrow { display:flex; align-items:center; gap:10px; padding:3px 0; border-bottom:1px solid var(--line); } .clrow span { flex:1; }
   button.sec { background:#e6ecf1; color:var(--ink); } button.go { background:var(--ok); } button.x { background:#fff; color:var(--bad); border:1px solid var(--line); padding:3px 8px; }
@@ -174,6 +177,22 @@
       <div class="f w"><span>Key (გზა ამ მანქანაზე)</span><input id="ssh_key" placeholder="~/.ssh/id_ed25519"></div>
     </div>
     <p class="note" id="rootnote"></p>
+  </fieldset>
+
+  <fieldset><legend>7ა. არსებული პროგრამები (დაყენებამდე)</legend>
+    <p class="note">სანამ ჩვენს სტეკს დავაყენებთ, სერვერზე ვამოწმებთ, უკვე ხომ არ დგას PostgreSQL, Tomcat, GeoServer, QGIS Server, MapProxy, Caddy ან სხვა web სერვერი. თითოეულზე შეგიძლია აირჩიო:
+    <b>დაშენება</b> (PostgreSQL: ვიყენებთ არსებულს), <b>წაშლა</b> (ჯერ ბექაფი), <b>გამოყენება ჩვენში</b> (ბექაფი, წაშლა, დაყენება, შემდეგ ბაზების / GeoServer-ის workspace-ების / QGIS პროექტების / Caddy-ს საიტების გადმოტანა) ან <b>დატოვება</b>. გეგმას Deploy ავტომატურად გამოიყენებს. მხოლოდ native სამიზნე.</p>
+    <div class="row">
+      <button type="button" class="sec" id="btn-ex-scan">შემოწმება</button>
+      <label><input type="checkbox" id="ex_data"> ბექაფში მონაცემებიც (ბაზების დამპი, დიდი საქაღალდეები)</label>
+    </div>
+    <div id="ex-conf"></div>
+    <div style="overflow-x:auto"><table class="ex"><thead><tr><th>პროგრამა</th><th>რა არის ნაპოვნი</th><th>რა ვქნათ</th></tr></thead><tbody id="ex-body"></tbody></table></div>
+    <div class="row">
+      <button type="button" class="sec" id="btn-ex-backup">ბექაფი (უცხო პროგრამების)</button>
+      <button type="button" class="danger" id="btn-ex-run">გეგმის შესრულება (დაყენების გარეშე)</button>
+    </div>
+    <p class="note" id="ex-note"></p>
   </fieldset>
 
   <fieldset><legend>8. გასუფთავება / Cleanup</legend>
@@ -364,7 +383,14 @@ async function deploy() {
   const log = $("#log"); log.textContent = "";
   try {
     const body = {config: cfg, mode, ssh: {host: $("#ssh_host").value.trim(), port: Number($("#ssh_port").value), user: $("#ssh_user").value.trim(), key: $("#ssh_key").value.trim()}};
-    const {job} = await (await api("/api/deploy", body)).json();
+    const plan = exPlan();
+    const planned = Object.keys(plan).length > 0;
+    const r0 = await fetch(planned ? "/api/existing/execute" : "/api/deploy", {method: "POST", headers: H,
+      body: JSON.stringify(planned ? Object.assign({plan, install: true, with_data: $("#ex_data").checked}, body) : body)});
+    const j0 = await r0.json();
+    if (r0.status === 409 && j0.existing) { renderEx(j0.existing); throw new Error(j0.error + " (იხილე სექცია 7ა)"); }
+    if (!r0.ok) throw new Error(j0.error || r0.statusText);
+    const job = j0.job;
     let next = 0, done = false;
     while (!done) {
       const j = await (await fetch(`/api/jobs/${job}?since=${next}`)).json();
@@ -639,6 +665,84 @@ async function applyUpdate() {
 }
 document.addEventListener("click", (ev) => { if (ev.target && ev.target.id === "upd-close") { ev.preventDefault(); $("#updbox").style.display = "none"; } });
 
+let EX = null;
+const EX_LABEL = {ignore: "დავტოვო როგორც არის", adopt: "დაშენება (გამოვიყენოთ არსებული)", remove: "წაშლა (ჯერ ბექაფი)", reuse: "გამოყენება ჩვენში (ბექაფი → წაშლა → იმპორტი)", disable: "გავაჩერო და გავთიშო"};
+function exOpts(opts) { return opts.map((o) => `<option value="${o}">${esc(EX_LABEL[o])}</option>`).join(""); }
+function exFound(c) {
+  const bits = [];
+  if (c.version) bits.push(`<b>${esc(c.version)}</b>`);
+  c.services.slice(0, 4).forEach((x) => bits.push(`service ${esc(x.name)}: ${esc(x.active)}`));
+  c.packages.slice(0, 3).forEach((x) => bits.push(`pkg ${esc(x.name)}`));
+  c.listen.forEach((x) => bits.push(`<code>${esc(x)}</code>`));
+  c.data.forEach((x) => bits.push(`მონაცემები: ${esc(x)}`));
+  c.details.forEach((x) => bits.push(`<span class="note">${esc(x)}</span>`));
+  return bits.join("<br>") || "—";
+}
+function renderEx(rep) {
+  EX = rep;
+  const rows = [];
+  Object.values(rep.components).filter((c) => c.found).forEach((c) => {
+    const tag = c.ours && !c.foreign ? '<span class="tag tag-ours">ჩვენია</span>' : (c.foreign && !c.ours ? '<span class="tag tag-foreign">უცხო</span>' : '<span class="tag tag-both">ორივე</span>');
+    let act = "<span class='note'>ჩვენი ინსტალაცია — არაფერს ვუშვებთ</span>";
+    if (c.foreign) {
+      const o = c.id === "postgis" ? ["ignore", "adopt", "remove", "reuse"] : ["ignore", "remove", "reuse"];
+      act = `<select class="ex-act" data-c="${esc(c.id)}">${exOpts(o)}</select> <label><input type="checkbox" class="ex-purge" data-c="${esc(c.id)}"> მონაცემებიც წაიშალოს</label>`;
+    }
+    rows.push(`<tr><td><b>${esc(c.name)}</b><br>${tag}</td><td>${exFound(c)}</td><td>${act}</td></tr>`);
+  });
+  rep.web_servers.forEach((w) => {
+    const active = w.services.some((x) => x.active === "active");
+    rows.push(`<tr><td><b>${esc(w.name)}</b><br><span class="tag tag-foreign">სხვა web სერვერი</span></td><td>${w.services.map((x) => `service ${esc(x.name)}: ${esc(x.active)}`).join("<br>")}<br>${w.listen.map((x) => `<code>${esc(x)}</code>`).join("<br>")}</td>
+      <td><select class="ex-act" data-c="${esc(w.name)}">${exOpts(active ? ["ignore", "disable"] : ["ignore"])}</select></td></tr>`);
+  });
+  $("#ex-body").innerHTML = rows.join("") || '<tr><td colspan="3">✔ არაფერი ნაპოვნია — სუფთა სერვერია.</td></tr>';
+  const box = $("#ex-conf");
+  if (rep.conflicts.length) {
+    box.style.display = "block";
+    box.innerHTML = "<b>⚠ პორტის კონფლიქტი</b> (Deploy ვერ გაეშვება, სანამ არ აირჩევ):<br>" +
+      rep.conflicts.map((x) => `${esc(x.component)}: პორტი ${x.port} დაკავებულია — ${esc(x.process)} (${esc(x.addr)})`).join("<br>");
+  } else box.style.display = "none";
+  $("#ex-note").textContent = `${rep.os} · ${rep.conflicts.length ? "კონფლიქტები: " + rep.conflicts.length : "კონფლიქტები არ არის"}`;
+}
+function exPlan() {
+  const plan = {};
+  document.querySelectorAll("#ex-body select.ex-act").forEach((sel) => {
+    if (sel.value === "ignore") return;
+    const p = document.querySelector(`#ex-body input.ex-purge[data-c="${sel.dataset.c}"]`);
+    plan[sel.dataset.c] = {action: sel.value, purge: !!(p && p.checked)};
+  });
+  return plan;
+}
+async function exScan() {
+  showErr(""); showMsg("");
+  if (!opsOk()) return;
+  if ($("#deploy_target").value !== "native") return showErr("არსებული პროგრამების შემოწმება მხოლოდ native სამიზნეზეა (სექცია 7).");
+  $("#ex-note").textContent = "მოწმდება…";
+  try {
+    const j = await (await api("/api/existing/scan", opsBody())).json();
+    renderEx(j);
+  } catch (e) { showErr(e.message); $("#ex-note").textContent = ""; }
+}
+async function exBackup() {
+  showErr("");
+  if (!opsOk()) return;
+  const comps = EX ? Object.values(EX.components).filter((c) => c.foreign).map((c) => c.id) : [];
+  if (!comps.length) return showErr("ჯერ დააჭირე „შემოწმებას“ — უცხო პროგრამა არ არის ნაპოვნი.");
+  try { await streamJob("/api/existing/backup", opsBody({components: comps, with_data: $("#ex_data").checked})); } catch (e) { showErr(e.message); }
+}
+async function exRun() {
+  showErr("");
+  if (!opsOk()) return;
+  const plan = exPlan();
+  if (!Object.keys(plan).length) return showErr("გეგმა ცარიელია: აირჩიე მოქმედება მინიმუმ ერთ პროგრამაზე.");
+  const what = Object.entries(plan).map(([k, v]) => `${k}: ${v.action}${v.purge ? " + მონაცემები" : ""}`).join("\n");
+  if (!confirm(`შესრულდება (ყოველ წაშლამდე ბექაფი):\n${what}\n\nგავაგრძელო?`)) return;
+  try {
+    await streamJob("/api/existing/execute", opsBody({plan, install: false, with_data: $("#ex_data").checked}));
+    await exScan();
+  } catch (e) { showErr(e.message); }
+}
+
 (async function init() {
   const j = await (await fetch("/api/catalog")).json();
   CAT = j.catalog; DEF = j.defaults;
@@ -646,6 +750,7 @@ document.addEventListener("click", (ev) => { if (ev.target && ev.target.id === "
   cleanRows();
   buildBars();
   initOps();
+  $("#btn-ex-scan").onclick = exScan; $("#btn-ex-backup").onclick = exBackup; $("#btn-ex-run").onclick = exRun;
   $("#btn-upd").onclick = checkUpdate;
   await loadProjects();
   $("#btn-proj-load").onclick = loadProject; $("#btn-proj-save").onclick = saveProject;

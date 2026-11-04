@@ -23,7 +23,7 @@ from typing import Any
 
 from flask import Flask, Response, abort, jsonify, make_response, redirect, render_template, request, send_file
 
-from .. import __version__, catalog, config, deploy as deploy_mod, generate, ops as ops_mod, projects as projects_mod, updater as updater_mod
+from .. import __version__, catalog, config, deploy as deploy_mod, discover as discover_mod, existing as existing_mod, generate, ops as ops_mod, projects as projects_mod, updater as updater_mod
 
 MASK = "••••••••"
 MAX_PREVIEW_BYTES = 120_000
@@ -188,6 +188,15 @@ def create_app(token: str | None = None) -> Flask:
         problems = deploy_mod.preflight(target, mode)
         if problems:
             return make_response(jsonify({"error": "; ".join(problems)}), 400)
+        if target == "native":
+            # somebody else's program on a port we need: do not start, show what is there so the user can decide
+            try:
+                rep = discover_mod.scan(cfg, mode, ssh, target)
+            except deploy_mod.DeployError:
+                rep = None                       # cannot inspect (e.g. no sudo): the installer will report its own errors
+            if rep and rep["conflicts"]:
+                return make_response(jsonify({"error": "ზოგიერთი საჭირო პორტი დაკავებულია — აირჩიე რა ვუყოთ არსებულ პროგრამებს",
+                                              "existing": rep}), 409)
         return _start_job(cfg, lambda b: deploy_mod.deploy(cfg, b, target, mode, ssh))
 
     @app.post("/api/clean")
@@ -246,6 +255,58 @@ def create_app(token: str | None = None) -> Flask:
 
         threading.Thread(target=run, daemon=True).start()
         return jsonify({"job": job.id})
+
+    @app.post("/api/existing/scan")
+    def api_existing_scan() -> Response:
+        """Body: {config, mode, ssh}. What is already installed on the server / which of our ports are taken."""
+        cfg, mode, ssh, target = _ops_args(request.get_json(silent=True) or {})
+        if target != "native":
+            return make_response(jsonify({"error": "native სამიზნე სჭირდება"}), 400)
+        try:
+            return jsonify(discover_mod.scan(cfg, mode, ssh, target))
+        except deploy_mod.DeployError as e:
+            return make_response(jsonify({"error": str(e)}), 502)
+
+    def _plan_arg(body: dict[str, Any]) -> dict[str, Any]:
+        try:
+            return existing_mod._norm(body.get("plan"))
+        except existing_mod.PlanError as e:
+            abort(make_response(jsonify({"error": str(e)}), 400))
+
+    @app.post("/api/existing/backup")
+    def api_existing_backup() -> Response:
+        """Body: {config, mode, ssh, components, with_data?}. Back up settings of installed programs; copy comes here."""
+        body = request.get_json(silent=True) or {}
+        cfg, mode, ssh, target = _ops_args(body)
+        comps = body.get("components")
+        if not isinstance(comps, list) or not comps or any(c not in discover_mod.COMPONENTS for c in comps):
+            return make_response(jsonify({"error": "components must be a non-empty list of known program ids"}), 400)
+        return _plain_job(lambda job: existing_mod.backup(cfg, target, mode, ssh, comps, with_data=bool(body.get("with_data"))),
+                          locked=True)
+
+    @app.post("/api/existing/execute")
+    def api_existing_execute() -> Response:
+        """Body: {config, mode, ssh, plan, with_data?, install?}.  Back up -> remove -> (install) -> import."""
+        body = request.get_json(silent=True) or {}
+        cfg, mode, ssh, target = _ops_args(body)
+        plan = _plan_arg(body)
+        install = body.get("install", True)
+        if target != "native":
+            return make_response(jsonify({"error": "native სამიზნე სჭირდება"}), 400)
+        problems = deploy_mod.preflight(target, mode)
+        if problems:
+            return make_response(jsonify({"error": "; ".join(problems)}), 400)
+        wd = bool(body.get("with_data"))
+
+        def steps(job: Job) -> Any:
+            bundle_dir = deploy_mod.home_dir() / "bundles" / f"{cfg['project']}-{job.id}"
+
+            def make(c: dict[str, Any]) -> Path:
+                generate.generate_bundle(c, bundle_dir)
+                os.chmod(bundle_dir, 0o700)
+                return bundle_dir
+            yield from existing_mod.run(cfg, target, mode, ssh, plan, make, with_data=wd, install=bool(install))
+        return _plain_job(steps, locked=True)
 
     @app.post("/api/ops/status")
     def api_ops_status() -> Response:
