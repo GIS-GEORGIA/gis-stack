@@ -1,29 +1,36 @@
 # GIS Stack Installer
 
-ერთი ხელსაწყო, რომელიც Linux სერვერზე აყენებს სრულ GIS სტეკს — ბრძანებების ხელით აკრეფის გარეშე:
+[![tests](https://github.com/GIS-GEORGIA/gis-stack/actions/workflows/tests.yml/badge.svg)](https://github.com/GIS-GEORGIA/gis-stack/actions/workflows/tests.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**KA** — ერთი ხელსაწყო, რომელიც Linux სერვერზე აყენებს სრულ GIS სტეკს ბრძანებების ხელით აკრეფის გარეშე.
+**EN** — Generate and run a complete open-source GIS server stack (PostGIS, Tomcat, GeoServer, QGIS Server,
+MapProxy, Caddy, a bilingual web map and mobile app templates) from a web or desktop GUI, a CLI, or plain
+config files. Targets: native packages (apt / dnf), Docker / Podman Compose, Kubernetes.
 
 | კომპონენტი | შენიშვნა |
 |---|---|
 | PostgreSQL + PostGIS | ექსთენშენები მონიშვნით (raster, topology, pgRouting, pointcloud, ogr_fdw, H3, hstore, pg_trgm …), RAM-ის მიხედვით ტიუნინგი |
 | Apache Tomcat | 9 / 10.1 / 11 (GeoServer-ის ხაზი თავად განსაზღვრავს) |
 | GeoServer | 3.0.2 (Tomcat 11) ან 2.28.6 (Tomcat 9), გაფართოებები მონიშვნით, admin პაროლი ავტომატურად იცვლება |
-| QGIS Server | FastCGI (native) ან კონტეინერი |
+| QGIS Server | FastCGI (native, systemd socket) ან კონტეინერი |
 | MapProxy 7 | grid-ები (3857, 4326, UTM 37N/38N), file/sqlite/geopackage ქეში, ფენები, seed |
 | Caddy | ერთი შესასვლელი `/`, `/geoserver`, `/mapproxy`, `/qgis`; ავტომატური HTTPS |
 | ვებ რუკა | ორენოვანი (KA/EN) Leaflet, ოფლაინ-ბიბლიოთეკით, უკვე მიბმული შენს ფენებზე |
 | მობილური | React Native (Expo) და Flutter შაბლონები, მიბმული შენს სერვერზე |
 
-სამიზნეები: **პირდაპირ სერვერზე** (apt / dnf), **Docker / Podman Compose**, **Kubernetes**.
-
 ## დაყენება
 
 ```bash
-# 1) პაკეტი
-sudo apt install ./gisstack-installer_0.1.2_all.deb          # Debian / Ubuntu
-sudo dnf install ./gisstack-installer-0.1.2-1.noarch.rpm      # RHEL / Rocky / Alma / Fedora (python3-flask: EPEL)
-
-# 2) პაკეტის გარეშე, ამ საქაღალდიდან
+git clone https://github.com/GIS-GEORGIA/gis-stack.git && cd gis-stack
 sudo ./install.sh            # ან ./install.sh --tk  (Desktop GUI-სთვის)
+```
+
+ან როგორც პაკეტი (იხ. [პაკეტების აგება](#პაკეტების-აგება)):
+
+```bash
+sudo apt install ./gisstack-installer_<ver>_all.deb          # Debian / Ubuntu
+sudo dnf install ./gisstack-installer-<ver>-1.noarch.rpm     # RHEL / Rocky / Alma / Fedora (python3-flask: EPEL)
 ```
 
 ## გამოყენება
@@ -37,16 +44,34 @@ gisstack desktop      # Desktop GUI (python3-tk)
 `ssh -L 8765:127.0.0.1:8765 user@server`, შემდეგ გახსენი `http://127.0.0.1:8765/?token=…`.
 Token: `/var/lib/gisstack-installer/web.token`.
 
-GUI-ში: მონიშნე კომპონენტები → „წინასწარი ნახვა“ (პაროლები დაფარულია) → **Deploy**
-(ამ მანქანაზე, SSH-ით სხვა სერვერზე, ან მხოლოდ ZIP).
+### GUI
 
-### უგრაფიკოდ
+1. მონიშნე კომპონენტები და შეავსე მათი პარამეტრები → **წინასწარი ნახვა** (პაროლები დაფარულია).
+2. თითოეულ პროგრამას აქვს ზოლი: ☑ **ჩართულია** · **შენახვა** (წერს მხოლოდ ამ პროგრამის პარამეტრებს) ·
+   **შენახვა და გამოყენება** (ააყენებს/გადატვირთავს მხოლოდ მას, დანარჩენს არ ეხება).
+3. **Deploy** — ყველაფერი ერთად: ამ მანქანაზე, SSH-ით სხვა სერვერზე, ან მხოლოდ ZIP.
+4. **გასუფთავება** — თითოეული პროგრამა ცალკე, ან მთელი სტეკი; „მონაცემების წაშლაც“ ჩართვის გარეშე ბაზა,
+   GeoServer-ის მონაცემები და ქეშები რჩება.
+
+პროექტები ინახება `~/.gisstack/projects/<პროექტი>.json`-ში (მხოლოდ მფლობელისთვის წაკითხვადი); GUI-ს
+ზედა ზოლიდან ჩაიტვირთება. გენერირებული პაროლები ცალკე ინახება და ხელახალ გაშვებაზე იგივე რჩება.
+
+### უგრაფიკოდ (CLI)
 
 ```bash
-gisstack defaults > stack.json          # შეცვალე ველები
+gisstack defaults > stack.json                         # შეცვალე ველები
 gisstack generate -c stack.json -o ./bundle
 gisstack deploy   -c stack.json --mode ssh --ssh root@server --key ~/.ssh/id_ed25519
+gisstack save     -c stack.json --component mapproxy   # მხოლოდ ამ პროგრამის პარამეტრები → პროექტი
+gisstack apply    -c stack.json mapproxy --save        # მხოლოდ MapProxy-ის გამოყენება
+gisstack clean    -c stack.json --only tomcat,caddy    # ცალკეული პროგრამების გასუფთავება
+gisstack clean    -c stack.json --purge -y             # მთელი სტეკი + მონაცემები
+gisstack projects                                      # შენახული პროექტები
 ```
+
+`clean` ნაგულისხმევად მონაცემებს ინახავს. `--purge` შლის ბაზას, GeoServer-ის მონაცემებს, ქეშებს, volume-ებს;
+PostgreSQL-ის სერვერსაც მხოლოდ `--purge --remove-postgres` შლის (და უარს ამბობს, თუ იქ სხვა ბაზებიც არის).
+Kubernetes-ზე მთელი სტეკის გასუფთავება შლის namespace-ს, ანუ ყველა volume-საც.
 
 ## რას აგენერირებს (`bundle/`)
 
@@ -58,8 +83,11 @@ webmap/    index.html  app.js  config.js  vendor/leaflet/
 mobile/    react-native/  flutter/
 ```
 
-`native/install.sh` იდემპოტენტურია: `--only postgis,caddy`, `--skip qgis`, `--list`.
-`compose/up.sh`: `up | down | logs | ps | seed`. `k8s/apply.sh`: `apply | delete | status`.
+| სამიზნე | შესასვლელი |
+|---|---|
+| native | `install.sh [--only postgis,caddy] [--skip qgis] [--list]` · `uninstall.sh [--only …] [--purge] [--remove-postgres]` (იდემპოტენტურია) |
+| compose | `up.sh up \| down \| logs \| ps \| seed \| only <სერვისი>… \| clean [--purge] [სერვისი…]` |
+| k8s | `apply.sh apply \| delete \| status \| only <კომპონენტი>… \| clean [--purge] [კომპონენტი…]` |
 
 ## უსაფრთხოება
 
@@ -68,20 +96,21 @@ mobile/    react-native/  flutter/
 - Tomcat manager არ ექვემდებარება გარე წვდომას (Caddy 403-ს აბრუნებს).
 - PostgreSQL გარე წვდომა გამორთულია, სანამ GUI-ში არ ჩართავ.
 - K8s `secret.yaml` — პროდაქშენისთვის ჩაანაცვლე SealedSecrets / Vault-ით.
+- დაუცველობის შესახებ შეტყობინება: [SECURITY.md](SECURITY.md).
 
-## რა არის გადამოწმებული და რა — არა
+## რა არის გადამოწმებული
 
-გადამოწმებულია ამ გარემოში: გენერატორი სამივე სამიზნეზე; ყველა YAML იპარსება; shell-ები
-`bash -n`-ს გადის; `docker compose config` ამოწმებს Compose ფაილს; MapProxy-ის კონფიგი იტვირთება
-რეალურ MapProxy 7.0.0-ში; ვებ GUI-ის API (ავტორიზაცია, CSRF, ვალიდაცია); deb და rpm იგება და ინსტალირდება; Caddy + MapProxy + ვებ რუკა end-to-end (ტაილების კოორდინატები Leaflet-ის XYZ-ს ემთხვევა: კლიენტები იყენებენ MapProxy-ის WMTS REST მისამართს `/mapproxy/wmts/<ფენა>/GLOBAL_WEBMERCATOR/{z}/{x}/{y}.png`, რადგან TMS მისამართს დონე/Y-ღერძი აცდენილი აქვს).
+გადამოწმებულია რეალურ გარემოზე:
 
-**ჯერ არ გაშვებულა რეალურ მანქანებზე** — პირველ რეალურ გაშვებამდე ჩაატარე სატესტო VM-ზე:
-- `native/install.sh` რეალურ Debian/Ubuntu/Rocky სერვერზე (პაკეტების სახელები და PGDG/EPEL ნაბიჯები);
-- Caddyfile `caddy validate`-ით (ამ გარემოში Caddy-ს ბინარი ვერ ჩამოვტვირთე);
-- Docker image tag-ები (`postgis/postgis:<ver>-3.5`, `docker.osgeo.org/geoserver:3.0.2`, `camptocamp/qgis-server`) — ვერ ვადასტურებ; `up.sh` pull-ზე გაჩერდება, თუ რომელიმე არასწორია — შეცვალე `docker-compose.yml`-ში (GeoServer-ის tag: GUI/კონფიგის `geoserver.image`);
-- Desktop GUI (Tkinter არ იყო დაყენებული; კონფიგის შეგროვების ლოგიკა გატესტილია, ვიჯეტები — არა);
-- React Native / Flutter კოდი არ დაკომპილებულა; Flutter მიზნად ისახავს `flutter_map` 6–8 API-ს;
-- GeoServer 3 / Tomcat 11 შესაბამისობა აღებულია GeoServer-ის დოკუმენტაციიდან (10.1 — მხარდაუჭერელი).
+- `native/install.sh` და `uninstall.sh` — **Ubuntu 24.04** და **Rocky Linux 9.8** (SELinux enforcing) VM-ებზე: სრული
+  ინსტალაცია, განმეორებითი გაშვება, ცალკეული პროგრამის გასუფთავება და გამოყენება, `--purge`, ხელახალი ინსტალაცია;
+- Docker Compose (`up.sh up|clean`), Kubernetes (`kubectl apply -k` kind-ზე);
+- Flutter (`flutter analyze`) და Expo (`expo export`) კოდი; ვებ და Tkinter GUI;
+- ავტომატური ტესტები (`python3 tests/test_gisstack.py`), მათ შორის რეალური MapProxy 7-ით.
+
+**ჯერ არ არის გადამოწმებული:** Debian 12, Fedora, AlmaLinux; PostgreSQL 16/18; `QGIS_OFFICIAL_REPO=1`;
+APK/iOS ბილდი; Expo-ს MapLibre ეკრანი; k8s-ის გასუფთავება რეალურ კლასტერზე; QGIS Server რეალური პროექტით.
+თუ ამათგან რომელიმეს გამოსცდი — მოგვწერე [issue](https://github.com/GIS-GEORGIA/gis-stack/issues)-ში.
 
 ## პაკეტების აგება
 
@@ -92,4 +121,12 @@ python3 tests/test_gisstack.py
 packaging/vendor.sh           # Leaflet-ის ოფლაინ ასლის განახლება
 ```
 
-ლიცენზია: MIT. Leaflet — BSD-2-Clause (`gisstack/vendor/leaflet/LICENSE.txt`).
+## წვლილის შეტანა / Contributing
+
+წვლილის შეტანა ნებისმიერს შეუძლია: გახსენი issue, გააკეთე fork და გამოაგზავნე pull request. დეტალები —
+[CONTRIBUTING.md](CONTRIBUTING.md). ყველა მონაწილე იცავს [ქცევის კოდექსს](CODE_OF_CONDUCT.md).
+
+## ლიცენზია / License
+
+[MIT](LICENSE) © GIS GEORGIA contributors. წვლილი ამავე ლიცენზიით ქვეყნდება.
+Leaflet — BSD-2-Clause (`gisstack/vendor/leaflet/LICENSE.txt`).

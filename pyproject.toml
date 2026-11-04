@@ -9,6 +9,16 @@ description = "One-click GIS server stack: PostGIS, GeoServer, Tomcat, MapProxy,
 requires-python = ">=3.9"
 dependencies = ["Flask>=3.0", "Jinja2>=3.1", "PyYAML>=6.0"]
 license = { text = "MIT" }
+readme = "README.md"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+
+[project.urls]
+Homepage = "https://github.com/GIS-GEORGIA/gis-stack"
+Issues = "https://github.com/GIS-GEORGIA/gis-stack/issues"
 
 [project.scripts]
 gisstack = "gisstack.cli:main"
