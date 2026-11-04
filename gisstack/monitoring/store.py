@@ -139,7 +139,8 @@ class Store:
     def series(self, name: str, labels: Optional[Labels] = None, since: Optional[float] = None, until: Optional[float] = None,
                limit: int = 5000, step: Optional[float] = None) -> list[dict[str, Any]]:
         """Points of one metric (all label sets unless `labels` filters).  `step` averages into buckets of that many seconds."""
-        q, args = "SELECT ts, labels, value FROM metrics WHERE name = ?", [name]
+        q = "SELECT ts, labels, value FROM metrics WHERE name = ?"
+        args: list[Any] = [name]
         if labels is not None:
             q += " AND labels = ?"
             args.append(_labels_key(labels))
@@ -160,7 +161,8 @@ class Store:
         return [{"ts": ts, "labels": json.loads(lab), "value": v} for ts, lab, v in rows[-max(1, int(limit)):]]
 
     def events(self, since: Optional[float] = None, level: Optional[str] = None, limit: int = 200) -> list[dict[str, Any]]:
-        q, args = "SELECT ts, level, kind, subject, message FROM events WHERE 1=1", []
+        q = "SELECT ts, level, kind, subject, message FROM events WHERE 1=1"
+        args: list[Any] = []
         if since is not None:
             q += " AND ts >= ?"
             args.append(since)

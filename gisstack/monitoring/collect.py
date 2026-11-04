@@ -356,7 +356,7 @@ def build_sample(cfg: dict[str, Any], target: str, text: str, rows: list[dict[st
     for r in rows:
         u = usage.get(r["id"], {})
         sample["services"].append({"id": r["id"], "state": r["state"], "up": r["state"] == "running", "restarts": r.get("restarts"),
-                                   "enabled": r.get("enabled"), **{k: v for k, v in u.items()}})
+                                   "enabled": r.get("enabled"), **u})
     if target == "native" and generate.effective_components(cfg, "native").get("postgis"):
         pg = postgres_metrics(sec.get("postgres", []))
         if pg:
