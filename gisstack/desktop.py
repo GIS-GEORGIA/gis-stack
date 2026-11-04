@@ -14,7 +14,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from typing import Any
 
-from . import __version__, catalog, config, deploy, generate, ops, projects
+from . import __version__, catalog, config, deploy, generate, ops, projects, updater
 
 LAYER_HELP = ("ერთი ფენა ხაზზე:  სახელი | სათაური EN | სათაური KA | წყარო | WMS ფენა | URL\n"
               "წყარო: geoserver | qgis | wms | tiles")
@@ -59,6 +59,7 @@ class App(tk.Tk):
         self.proj_box.pack(side="left", padx=4)
         ttk.Button(top, text="ჩატვირთვა", command=self.load_project).pack(side="left", padx=2)
         ttk.Button(top, text="მთელი პროექტის შენახვა", command=self.save_project).pack(side="left", padx=2)
+        ttk.Button(top, text="განახლების შემოწმება", command=self.check_update).pack(side="right", padx=2)
         self.refresh_projects()
 
         nb = ttk.Notebook(self)
@@ -730,6 +731,50 @@ class App(tk.Tk):
         if not self.do_save_comp(comp):
             return
         self._run_job(cfg, "desktop-apply", lambda b: deploy.apply_component(cfg, b, target, mode, ssh, comp))
+
+    # ------------------------------------------------------------ updates
+    def check_update(self) -> None:
+        self._log("განახლების შემოწმება GitHub-ზე…")
+
+        def run() -> None:
+            try:
+                info = updater.check()
+                self.after(0, lambda: self._show_update(info))
+            except updater.UpdateError as e:
+                self.after(0, lambda: messagebox.showerror("განახლება", str(e)))
+        threading.Thread(target=run, daemon=True).start()
+
+    def _show_update(self, info) -> None:
+        if not info["newer"]:
+            messagebox.showinfo("განახლება", f"უკვე უახლესი ვერსიაა ({info['current']}).")
+            return
+        notes = "\n".join(info["notes"].splitlines()[:12])
+        text = (f"ახალი ვერსია: {info['latest']} (შენი: {info['current']})\n\n{notes}\n\n")
+        if info["can_auto"]:
+            if messagebox.askyesno("განახლება", text + "განვაახლო ახლავე? (ჩამოტვირთვა + SHA-256 შემოწმება + pip)"):
+                self._run_update(info)
+            return
+        import webbrowser
+        if messagebox.askyesno("განახლება", text + "ამ დაყენების ავტომატური განახლება შეუძლებელია.\nგავხსნა ჩამოტვირთვის გვერდი?"):
+            webbrowser.open(info["url"])
+
+    def _run_update(self, info) -> None:
+        if self.busy:
+            return
+        self.busy = True
+        self.deploy_btn.state(["disabled"])
+
+        def run() -> None:
+            import tempfile
+            try:
+                with tempfile.TemporaryDirectory() as td:
+                    for line in updater.apply(info, td):
+                        self._log(line)
+            except updater.UpdateError as e:
+                self._log(f"ERROR: {e}")
+            finally:
+                self.log_q.put(None)
+        threading.Thread(target=run, daemon=True).start()
 
 
 def main() -> None:

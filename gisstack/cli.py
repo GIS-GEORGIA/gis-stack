@@ -10,6 +10,7 @@
   gisstack status   -c stack.json [--watch] [--json]      live state, IP:port, health of every program
   gisstack start|stop|restart|enable|disable -c stack.json [program...]
   gisstack logs     -c stack.json geoserver [-n 200] [-f]
+  gisstack update   [--check] [--download DIR] [-y]      newer release on GitHub? download / install it
   gisstack clean    -c stack.json [--only tomcat,caddy] [--purge] [--remove-postgres] [-y]
 """
 from __future__ import annotations
@@ -20,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, config, deploy, generate, ops, projects
+from . import __version__, config, deploy, generate, ops, projects, updater
 
 
 def _load(path: str | None) -> dict:
@@ -102,6 +103,44 @@ def _ops(a: argparse.Namespace, cfg: dict) -> int:
         return 1
 
 
+def _update(a: argparse.Namespace) -> int:
+    try:
+        info = updater.check()
+        print(f"installed: {info['current']}   latest: {info['latest']}"
+              + (f"   ({info['published']})" if info["published"] else "") + f"   [{info['install_kind']}]")
+        if not info["newer"]:
+            print("უკვე უახლესი ვერსიაა.")
+            return 0
+        print(f"ახალი ვერსია: {info['name']}\n{info['url']}")
+        if info["notes"]:
+            print("\n" + "\n".join(info["notes"].splitlines()[:25]) + "\n")
+        if a.check:
+            return 10
+        if a.download:
+            asset = info["package"] or info["sdist"]
+            if asset is None:
+                raise updater.UpdateError("ამ გამოშვებაში ჩამოსატვირთი ფაილი არ არის")
+            path = updater.download(asset, info["sums"], a.download)
+            print(f"ჩამოტვირთულია და SHA-256 გადამოწმებულია: {path}")
+            print(f"დასაყენებლად: {updater.package_hint(path)}")
+            return 0
+        if not info["can_auto"]:
+            raise updater.UpdateError(
+                {"package": "პაკეტით დაყენებულია: gisstack update --download ~/Downloads, შემდეგ დააყენე ჩამოტვირთული ფაილი",
+                 "source": "git checkout-ია: git pull"}.get(info["install_kind"], "ჩამოტვირთე ხელით: " + info["url"]))
+        if not a.yes and input("განვაახლო ახლავე? (yes/no): ").strip().lower() not in ("y", "yes"):
+            print("გაუქმდა")
+            return 1
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            for line in updater.apply(info, td):
+                print(line, flush=True)
+        return 0
+    except updater.UpdateError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+
 def _apply(a: argparse.Namespace, cfg: dict) -> int:
     target = a.target or cfg["deploy_target"]
     ssh = _parse_ssh(a)
@@ -173,6 +212,11 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("projects", help="list saved projects")
 
+    up = sub.add_parser("update", help="check GitHub for a newer release; download / install it")
+    up.add_argument("--check", action="store_true", help="only report (exit 10 if a newer version exists)")
+    up.add_argument("--download", metavar="DIR", help="download the verified package / archive into DIR and stop")
+    up.add_argument("-y", "--yes", action="store_true", help="do not ask for confirmation")
+
     def conn(sp: argparse.ArgumentParser) -> None:
         sp.add_argument("-c", "--config")
         sp.add_argument("--target", choices=["native", "compose", "k8s"], help="default: deploy_target from config")
@@ -217,6 +261,9 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "projects":
         print("\n".join(projects.list_projects()))
         return 0
+
+    if a.cmd == "update":
+        return _update(a)
 
     try:
         cfg = config.resolve(_load(a.config), persist_secrets=True)

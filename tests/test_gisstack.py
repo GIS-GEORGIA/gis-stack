@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gisstack import config, deploy, generate, ops, projects  # noqa: E402
+from gisstack import config, deploy, generate, ops, projects, updater  # noqa: E402
 
 
 def make(user=None):
@@ -502,6 +502,137 @@ class OpsTests(unittest.TestCase):
         self.assertEqual(post("/api/ops/control", {"mode": "local", "action": "stop", "components": ["x"]}).status_code, 400)
         self.assertEqual(post("/api/ops/logs", {"mode": "local", "component": "x"}).status_code, 400)
         self.assertEqual(post("/api/jobs/nope/cancel", {}).status_code, 404)
+
+
+class _Resp:
+    def __init__(self, data: bytes):
+        self._d, self._pos = data, 0
+
+    def read(self, n=-1):
+        if n is None or n < 0:
+            n = len(self._d)
+        chunk = self._d[self._pos:self._pos + n]
+        self._pos += len(chunk)
+        return chunk
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+class UpdaterTests(unittest.TestCase):
+    TAG = "v9.9.9"
+    SDIST = b"fake sdist bytes"
+
+    def release(self, **kw):
+        import hashlib
+        base = updater.ASSET_PREFIX + self.TAG + "/"
+        data = {"tag_name": self.TAG, "name": "Release 9.9.9", "body": "- new things", "published_at": "2026-12-01T10:00:00Z",
+                "html_url": "https://github.com/GIS-GEORGIA/gis-stack/releases/tag/v9.9.9",
+                "assets": [{"name": "gisstack_installer-9.9.9.tar.gz", "browser_download_url": base + "gisstack_installer-9.9.9.tar.gz", "size": 10},
+                           {"name": "SHA256SUMS", "browser_download_url": base + "SHA256SUMS", "size": 100},
+                           {"name": "evil", "browser_download_url": "https://evil.example/x", "size": 1}]}
+        data.update(kw)
+        sums = f"{hashlib.sha256(self.SDIST).hexdigest()}  gisstack_installer-9.9.9.tar.gz\n"
+        return data, sums
+
+    def opener(self, data, sums, sdist=None):
+        def op(req, timeout=0):
+            url = req.full_url
+            if url == updater.API_LATEST:
+                return _Resp(json.dumps(data).encode())
+            if url.endswith("SHA256SUMS"):
+                return _Resp(sums.encode())
+            return _Resp(sdist if sdist is not None else self.SDIST)
+        return op
+
+    def test_version_compare(self):
+        self.assertTrue(updater.is_newer("0.1.10", "0.1.9"))
+        self.assertTrue(updater.is_newer("v1.0", "0.9.9"))
+        self.assertFalse(updater.is_newer("0.1.2", "0.1.2"))
+        self.assertFalse(updater.is_newer("0.1.1", "0.1.2"))
+        self.assertFalse(updater.is_newer("1.0.0", "1.0"))
+        for bad in ("latest", "1.0-beta", "", "1..2"):
+            with self.assertRaises(updater.UpdateError):
+                updater.parse_version(bad)
+
+    def test_check_reports_newer_and_filters_foreign_assets(self):
+        data, sums = self.release()
+        info = updater.check(self.opener(data, sums))
+        self.assertTrue(info["newer"])
+        self.assertEqual(info["latest"], "9.9.9")
+        self.assertEqual([a["name"] for a in info["assets"]], ["gisstack_installer-9.9.9.tar.gz", "SHA256SUMS"])   # evil host dropped
+        self.assertEqual(info["sdist"]["name"], "gisstack_installer-9.9.9.tar.gz")
+        self.assertIn(info["install_kind"], ("venv", "package", "source", "unknown"))
+
+    def test_up_to_date(self):
+        data, sums = self.release(tag_name="v" + updater.__version__)
+        self.assertFalse(updater.check(self.opener(data, sums))["newer"])
+
+    def test_check_errors_are_friendly(self):
+        import urllib.error
+
+        def http404(req, timeout=0):
+            raise urllib.error.HTTPError(req.full_url, 404, "nf", {}, None)
+
+        def offline(req, timeout=0):
+            raise urllib.error.URLError("no network")
+        with self.assertRaises(updater.UpdateError) as cm:
+            updater.check(http404)
+        self.assertIn("release", str(cm.exception))
+        with self.assertRaises(updater.UpdateError):
+            updater.check(offline)
+        data, sums = self.release(tag_name="nightly")
+        with self.assertRaises(updater.UpdateError):
+            updater.check(self.opener(data, sums))
+
+    def test_download_verifies_checksum(self):
+        data, sums = self.release()
+        info = updater.check(self.opener(data, sums))
+        with tempfile.TemporaryDirectory() as td:
+            path = updater.download(info["sdist"], info["sums"], td, self.opener(data, sums))
+            self.assertEqual(path.read_bytes(), self.SDIST)
+            # tampered download: hash mismatch -> file removed, error raised
+            with self.assertRaises(updater.UpdateError):
+                updater.download(info["sdist"], info["sums"], td, self.opener(data, sums, sdist=b"tampered"))
+            self.assertFalse((Path(td) / "gisstack_installer-9.9.9.tar.gz").exists())
+            # asset missing from SHA256SUMS -> refuse
+            with self.assertRaises(updater.UpdateError):
+                updater.download(info["sdist"], info["sums"], td, self.opener(data, "deadbeef  other.tar.gz\n"))
+            # untrusted URL / no checksum file -> refuse
+            with self.assertRaises(updater.UpdateError):
+                updater.download({"name": "x.tar.gz", "url": "https://evil.example/x.tar.gz"}, info["sums"], td, self.opener(data, sums))
+            with self.assertRaises(updater.UpdateError):
+                updater.download(info["sdist"], None, td, self.opener(data, sums))
+
+    def test_apply_is_refused_where_unsafe(self):
+        data, sums = self.release()
+        info = updater.check(self.opener(data, sums))
+        info = dict(info, can_auto=False, install_kind="package")
+        with self.assertRaises(updater.UpdateError):
+            list(updater.apply(info, tempfile.gettempdir(), self.opener(data, sums)))
+        same = dict(info, newer=False)
+        self.assertIn("უახლესი", next(iter(updater.apply(same, tempfile.gettempdir()))))
+
+    def test_web_update_check_error_is_reported(self):
+        try:
+            from gisstack.webgui.app import create_app
+        except ImportError:
+            self.skipTest("flask not installed")
+        os.environ["GISSTACK_HOME"] = tempfile.mkdtemp()
+        self.addCleanup(os.environ.pop, "GISSTACK_HOME", None)
+        real = updater.check
+        updater.check = lambda *a, **k: (_ for _ in ()).throw(updater.UpdateError("offline"))
+        self.addCleanup(setattr, updater, "check", real)
+        c = create_app("tok").test_client()
+        c.get("/?token=tok")
+        self.assertEqual(c.post("/api/update/check", json={}).status_code, 403)          # CSRF header required
+        r = c.post("/api/update/check", json={}, headers={"X-GisStack": "1"})
+        self.assertEqual((r.status_code, r.get_json()["error"]), (502, "offline"))
+        r = c.post("/api/update/apply", json={}, headers={"X-GisStack": "1"})
+        self.assertEqual(r.status_code, 502)
 
 
 if __name__ == "__main__":

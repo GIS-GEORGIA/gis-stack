@@ -104,6 +104,12 @@ mobile/    react-native/  flutter/
 | compose | `up.sh up \| down \| logs \| ps \| seed \| only <სერვისი>… \| clean [--purge] [სერვისი…]` |
 | k8s | `apply.sh apply \| delete \| status \| only <კომპონენტი>… \| clean [--purge] [კომპონენტი…]` |
 
+## განახლება
+
+`gisstack update` (ან ღილაკი „განახლების შემოწმება“ GUI-ში) ამოწმებს GitHub-ზე ახალ გამოშვებას, აჩვენებს ცვლილებებს და ჩამოტვირთავს
+SHA-256-ით გადამოწმებულ ფაილს; `install.sh`-ით დაყენებულს თავადაც განაახლებს. შემოწმება მხოლოდ შენს ბრძანებაზე ხდება.
+გამოშვების გამოქვეყნება (მეინტეინერებისთვის): [RELEASING.md](RELEASING.md). ცვლილებები: [CHANGELOG.md](CHANGELOG.md).
+
 ## უსაფრთხოება
 
 - პაროლები ავტომატურად გენერირდება; ფაილები (`stack.env`, `.env`, `secret.yaml`, `stack.json`) 600 უფლებით. **git-ში არ ატვირთო.**

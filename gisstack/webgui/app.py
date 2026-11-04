@@ -23,7 +23,7 @@ from typing import Any
 
 from flask import Flask, Response, abort, jsonify, make_response, redirect, render_template, request, send_file
 
-from .. import __version__, catalog, config, deploy as deploy_mod, generate, ops as ops_mod, projects as projects_mod
+from .. import __version__, catalog, config, deploy as deploy_mod, generate, ops as ops_mod, projects as projects_mod, updater as updater_mod
 
 MASK = "••••••••"
 MAX_PREVIEW_BYTES = 120_000
@@ -235,7 +235,7 @@ def create_app(token: str | None = None) -> Flask:
                 for line in steps(job):
                     job.add(line)
                 job.ok = True
-            except deploy_mod.DeployError as e:
+            except (deploy_mod.DeployError, updater_mod.UpdateError) as e:
                 job.add(f"ERROR: {e}")
             except Exception as e:  # noqa: BLE001
                 job.add(f"ERROR: {type(e).__name__}: {e}")
@@ -293,6 +293,33 @@ def create_app(token: str | None = None) -> Flask:
             abort(404)
         job.stop.set()
         return jsonify({"ok": True})
+
+    @app.post("/api/update/check")
+    def api_update_check() -> Response:
+        """Ask GitHub whether a newer release exists (only when the user clicks)."""
+        try:
+            info = updater_mod.check()
+        except updater_mod.UpdateError as e:
+            return make_response(jsonify({"error": str(e)}), 502)
+        return jsonify(info)
+
+    @app.post("/api/update/apply")
+    def api_update_apply() -> Response:
+        """Download, verify (SHA-256) and install the new release into this virtualenv."""
+        try:
+            info = updater_mod.check()
+        except updater_mod.UpdateError as e:
+            return make_response(jsonify({"error": str(e)}), 502)
+        if not info["newer"] or not info["can_auto"]:
+            return make_response(jsonify({"error": "automatic update is not available here"}), 400)
+
+        def steps(job: Job) -> Any:
+            with tempfile.TemporaryDirectory() as td:
+                yield from updater_mod.apply(info, td)
+        try:
+            return _plain_job(steps, locked=True)
+        except updater_mod.UpdateError as e:
+            return make_response(jsonify({"error": str(e)}), 400)
 
     @app.get("/api/projects")
     def api_projects() -> Response:

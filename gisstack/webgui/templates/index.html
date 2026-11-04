@@ -36,6 +36,10 @@
   .st-starting, .st-stopping { background:#0b79b5; } .st-missing, .st-unknown { background:#7a8794; }
   .chk-ok { color:var(--ok); } .chk-bad { color:var(--bad); }
   .opbtn { padding:2px 8px; font-size:.75rem; margin:1px; }
+  #updbox { display:none; max-width:1500px; margin:12px auto 0; padding:12px 16px; background:#fff6dd; border:1px solid #f0d48a; border-radius:8px; }
+  #updbox.ok { background:#e3f4e8; border-color:#b6dfc2; } #updbox.bad { background:#fde8ec; border-color:#f3b8c2; }
+  #updbox pre { max-height:220px; background:#fff; color:var(--ink); border:1px solid var(--line); }
+  #updbox a.dl { display:inline-block; margin:4px 8px 0 0; padding:5px 10px; background:var(--pri); color:#fff; border-radius:6px; text-decoration:none; font-size:.85rem; }
   button.danger { background:var(--bad); }
   .clrow { display:flex; align-items:center; gap:10px; padding:3px 0; border-bottom:1px solid var(--line); } .clrow span { flex:1; }
   button.sec { background:#e6ecf1; color:var(--ink); } button.go { background:var(--ok); } button.x { background:#fff; color:var(--bad); border:1px solid var(--line); padding:3px 8px; }
@@ -51,7 +55,8 @@
 </style>
 </head>
 <body>
-<header><h1>GIS Stack Installer</h1><small>v{{ version }}</small></header>
+<header><h1>GIS Stack Installer</h1><span><small>v{{ version }}</small> <button type="button" class="sec" id="btn-upd" style="padding:3px 10px;margin-left:8px">განახლების შემოწმება</button></span></header>
+<div id="updbox"></div>
 <main>
 <form id="form" onsubmit="return false">
   <div id="err"></div>
@@ -603,6 +608,37 @@ function initOps() {
   });
 }
 
+function updMsg(cls, html) { const b = $("#updbox"); b.className = cls; b.style.display = "block"; b.innerHTML = html; }
+async function checkUpdate() {
+  updMsg("", "მოწმდება GitHub-ზე…");
+  try {
+    const j = await (await api("/api/update/check", {})).json();
+    if (!j.newer) return updMsg("ok", `✔ უკვე უახლესი ვერსიაა (<b>${esc(j.current)}</b>). <a href="#" id="upd-close">დახურვა</a>`);
+    const links = j.assets.map((a) => `<a class="dl" href="${esc(a.url)}" rel="noopener">⬇ ${esc(a.name)}</a>`).join("");
+    const how = {
+      venv: "ეს დაყენება შეიძლება განახლდეს ავტომატურად (ჩამოტვირთვა → SHA-256 შემოწმება → pip).",
+      package: "პაკეტით დაყენებულია: ჩამოტვირთე შესაბამისი .deb/.rpm და დააყენე (apt install ./ფაილი / dnf install ./ფაილი).",
+      source: "git checkout-ია: გაუშვი <code>git pull</code>.",
+    }[j.install_kind] || "ჩამოტვირთე ახალი ვერსია ხელით.";
+    updMsg("", `<b>ახალი ვერსია: ${esc(j.latest)}</b> (შენი: ${esc(j.current)}) ${j.published ? "· " + esc(j.published) : ""}
+      <div class="note">${how}</div>
+      ${j.notes ? `<pre>${esc(j.notes)}</pre>` : ""}
+      <div>${links}<a class="dl" style="background:#5b6b7a" href="${esc(j.url)}" target="_blank" rel="noopener">გამოშვების გვერდი</a>
+      ${j.can_auto ? '<button type="button" class="go" id="upd-apply" style="margin-top:4px">განახლება ახლავე</button>' : ""}
+      <a href="#" id="upd-close" style="margin-left:10px">დახურვა</a></div>`);
+    if ($("#upd-apply")) $("#upd-apply").onclick = applyUpdate;
+  } catch (e) { updMsg("bad", `ვერ შევამოწმე: ${esc(e.message)} <a href="#" id="upd-close">დახურვა</a>`); }
+}
+async function applyUpdate() {
+  if (!confirm("ახალი ვერსია ჩამოიტვირთება, შემოწმდება (SHA-256) და ჩანაცვლდება ამ პროგრამის ფაილები. გავაგრძელო?")) return;
+  showErr("");
+  try {
+    await streamJob("/api/update/apply", {});
+    updMsg("ok", "✔ განახლება დასრულდა (ლოგი მარჯვნივ). <b>გადატვირთე <code>gisstack web</code></b> ახალი ვერსიის გასაშვებად.");
+  } catch (e) { showErr(e.message); }
+}
+document.addEventListener("click", (ev) => { if (ev.target && ev.target.id === "upd-close") { ev.preventDefault(); $("#updbox").style.display = "none"; } });
+
 (async function init() {
   const j = await (await fetch("/api/catalog")).json();
   CAT = j.catalog; DEF = j.defaults;
@@ -610,6 +646,7 @@ function initOps() {
   cleanRows();
   buildBars();
   initOps();
+  $("#btn-upd").onclick = checkUpdate;
   await loadProjects();
   $("#btn-proj-load").onclick = loadProject; $("#btn-proj-save").onclick = saveProject;
   $("#rootnote").textContent = j.is_root ? "" : "გაფრთხილება: ეს პროცესი root-ით არ მუშაობს — „ამ მანქანაზე“ native ინსტალაცია არ იმუშავებს.";
