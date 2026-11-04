@@ -2,13 +2,14 @@
 # Installs the gisstack GUI/CLI from this folder (no .deb/.rpm needed).
 #   sudo ./install.sh            -> /opt/gisstack-installer + /usr/local/bin/gisstack
 #   ./install.sh                 -> ~/.local/share/gisstack + ~/.local/bin/gisstack
-#   ./install.sh --tk            also install python3-tk (desktop GUI)
+#   ./install.sh --tk            also install python3-tk (desktop GUI) without asking
+#   ./install.sh --no-tk         do not offer to install python3-tk
 #   ./install.sh --start         start the web GUI afterwards
 set -Eeuo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TK=0; START=0
+TK=0; START=0; NOTK=0
 for a in "$@"; do
-  case "$a" in --tk) TK=1 ;; --start) START=1 ;; -h|--help) sed -n '2,7p' "$0"; exit 0 ;; *) echo "unknown option $a" >&2; exit 2 ;; esac
+  case "$a" in --tk) TK=1 ;; --no-tk) NOTK=1 ;; --start) START=1 ;; -h|--help) sed -n '2,7p' "$0"; exit 0 ;; *) echo "unknown option $a" >&2; exit 2 ;; esac
 done
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 
@@ -45,6 +46,25 @@ python3 -m venv --system-site-packages "$PREFIX/venv"
 "$PREFIX/venv/bin/pip" install --quiet --upgrade pip
 "$PREFIX/venv/bin/pip" install --quiet "$HERE"
 ln -sfn "$PREFIX/venv/bin/gisstack" "$BIN/gisstack"
+
+# The desktop GUI needs Tkinter. Ask before installing a system package; the web GUI works without it.
+if ! "$PREFIX/venv/bin/python" -c 'import tkinter' 2>/dev/null; then
+  TKPKG=""; TKCMD=""
+  if [ "$PM" = apt ]; then TKPKG=python3-tk; TKCMD="apt-get install -y python3-tk"
+  elif [ "$PM" = dnf ]; then TKPKG=python3-tkinter; TKCMD="dnf install -y python3-tkinter"; fi
+  if [ -n "$TKPKG" ] && [ "$NOTK" != 1 ]; then
+    case "${LC_ALL:-${LANG:-}}" in ka*) Q="Desktop GUI-ს სჭირდება $TKPKG. დავაყენო ახლავე? [y/N] ";; *) Q="The desktop GUI needs $TKPKG. Install it now? [y/N] ";; esac
+    if [ -t 0 ] && [ -t 1 ]; then
+      read -r -p "$Q" ans || ans=""
+      case "$ans" in
+        y|Y|yes|YES|კი) log "installing $TKPKG"; if [ "$PM" = apt ]; then $SUDO apt-get update -qq; fi; $SUDO $TKCMD || echo "could not install $TKPKG - run: sudo $TKCMD" >&2 ;;
+        *) echo "skipped. Desktop GUI later:  sudo $TKCMD   (or use: gisstack web)" ;;
+      esac
+    else
+      echo "note: the desktop GUI needs $TKPKG (not installed):  sudo $TKCMD   (web GUI works without it)"
+    fi
+  fi
+fi
 
 log "installed: $BIN/gisstack"
 case ":$PATH:" in *":$BIN:"*) ;; *) echo "note: add $BIN to your PATH" ;; esac

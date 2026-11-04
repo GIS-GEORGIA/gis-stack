@@ -418,6 +418,29 @@ EN.update({
 # keys were extracted from source text where a newline is written \n; at run time it is a real newline
 EN = {k.replace("\\n", "\n").strip(): v.replace("\\n", "\n").strip() for k, v in EN.items()}
 
+
+EN.update({
+    "ბიბლიოთეკა Tkinter არ არის დაყენებული (Desktop GUI-ს სჭირდება). დააყენე შენი სისტემის პაკეტით (Python-ის tkinter) და გაუშვი თავიდან.":
+        "Tkinter is not installed (the desktop GUI needs it). Install your system's Python tkinter package and run again.",
+    "Desktop GUI-ს სჭირდება Tkinter (პაკეტი": "The desktop GUI needs Tkinter (package",
+    "ბრძანება:": "command:",
+    "sudo ვერ მოიძებნა — გაუშვი ბრძანება root-ით და შემდეგ გაუშვი gisstack desktop.":
+        "sudo was not found - run the command as root, then run gisstack desktop.",
+    "დაყენება არ ხდება: მოთხოვნა ტერმინალში არ არის. გაუშვი ზემოთ მოცემული ბრძანება.":
+        "Not installing: there is no terminal to ask in. Run the command shown above.",
+    "დავაყენო ახლავე? [y/N] ": "Install it now? [y/N] ",
+    "გაუქმდა. Desktop GUI-ის გარეშე გამოიყენე ვებ GUI: gisstack web": "Cancelled. Use the web GUI instead: gisstack web",
+    "დაყენება ვერ მოხერხდა.": "Installation failed.",
+    "პაკეტი დაყენდა, მაგრამ Python მას ვერ ხედავს (ვირტუალური გარემო system-site-packages-ის გარეშე?). გაუშვი თავიდან ./install.sh --tk":
+        "The package was installed but Python cannot see it (a virtual environment without system-site-packages?). Run ./install.sh --tk again.",
+    "✔ Tkinter დაყენებულია": "✔ Tkinter installed",
+    "დავაყენო ახლავე?": "Install it now?",
+    "გრაფიკული ეკრანი არ არის ხელმისაწვდომი (DISPLAY არ არის დაყენებული). გამოიყენე ვებ GUI: gisstack web, ან SSH -X.":
+        "No graphical display is available (DISPLAY is not set). Use the web GUI: gisstack web, or SSH -X.",
+    "კი": "Yes",
+    "დიახ": "Yes",
+})
+
 _GEO = "Ⴀ-ჿ"
 _compiled: tuple[re.Pattern[str], dict[str, str]] | None = None
 

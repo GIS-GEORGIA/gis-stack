@@ -25,7 +25,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, config, deploy, discover, existing, generate, ops, projects, settings, updater
+from . import __version__, config, deploy, deps, discover, existing, generate, i18n, ops, projects, settings, updater
 
 
 def _load(path: str | None) -> dict:
@@ -313,12 +313,17 @@ def main(argv: list[str] | None = None) -> int:
         web_main(a.host, a.port)
         return 0
     if a.cmd == "desktop":
-        try:
-            from .desktop import main as desk_main
-        except ImportError:
-            print("Tkinter is missing: sudo apt install python3-tk  |  sudo dnf install python3-tkinter", file=sys.stderr)
+        if not deps.ensure_tk():           # asks before installing the system package
             return 1
-        desk_main()
+        from .desktop import main as desk_main
+        try:
+            desk_main()
+        except Exception as e:  # noqa: BLE001 - tkinter.TclError: no display (SSH session, server without a desktop)
+            if type(e).__name__ != "TclError":
+                raise
+            print(i18n.tr("გრაფიკული ეკრანი არ არის ხელმისაწვდომი (DISPLAY არ არის დაყენებული). გამოიყენე ვებ GUI: gisstack web, ან SSH -X.",
+                          settings.resolve_lang()), file=sys.stderr)
+            return 1
         return 0
     if a.cmd == "defaults":
         d0 = config.default_config()

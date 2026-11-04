@@ -55,6 +55,11 @@ gisstack --version
 | `gisstack desktop` | Desktop GUI (Tkinter; საჭიროა `python3-tk`) |
 | `gisstack ...` | ბრძანების ხაზი, GUI-ს გარეშე ([იხ. 9](#9-იგივე-ბრძანების-ხაზიდან)) |
 
+> **Desktop GUI და Tkinter.** `gisstack desktop` სჭირდება სისტემური პაკეტი `python3-tk` (Debian/Ubuntu) ან `python3-tkinter` (RHEL/Rocky/Fedora). თუ ის არ არის,
+> პროგრამა **გეკითხება**: აჩვენებს პაკეტს და ზუსტ ბრძანებას (`sudo apt-get install -y python3-tk`) და „დავაყენო ახლავე? [y/N]“. **y**-ზე დააყენებს (sudo-ს პაროლს
+> ითხოვს, თუ root არ ხარ), **n**-ზე არაფერს შეცვლის და ვებ GUI-ს შემოგთავაზებს. იგივე კითხვას `./install.sh` სვამს ტერმინალში. ხელით:
+> `./install.sh --tk` დააყენებს კითხვის გარეშე, `./install.sh --no-tk` კითხვას გამოტოვებს. სერვერზე გრაფიკული ეკრანის გარეშე გამოიყენე ვებ GUI.
+
 > თუ `gisstack` ვერ მოიძებნა და `~/.local/bin`-ში დააყენე, დაამატე იგი `PATH`-ში:
 > `export PATH="$HOME/.local/bin:$PATH"`.
 

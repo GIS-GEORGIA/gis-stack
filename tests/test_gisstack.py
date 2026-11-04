@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gisstack import config, deploy, discover, existing, generate, i18n, ops, projects, settings, updater  # noqa: E402
+from gisstack import config, deploy, deps, discover, existing, generate, i18n, ops, projects, settings, updater  # noqa: E402
 
 
 def make(user=None):
@@ -846,7 +846,7 @@ class I18nTests(unittest.TestCase):
         html = re.sub(r"(?<![:\"'])//[^\n]*", "", html).replace("\\n", "\n")
         yield "index.html", html
         import ast as _ast
-        for f in ("desktop", "catalog", "config", "deploy", "ops", "existing", "discover", "updater", "projects", "webgui/app", "settings"):
+        for f in ("desktop", "catalog", "config", "deploy", "ops", "existing", "discover", "updater", "projects", "webgui/app", "settings", "deps", "cli"):
             tree = _ast.parse((root / f"{f}.py").read_text())
             docs = {id(n.body[0].value) for n in _ast.walk(tree)
                     if isinstance(n, (_ast.Module, _ast.FunctionDef, _ast.ClassDef)) and n.body
@@ -951,6 +951,77 @@ class TkI18nTests(unittest.TestCase):
                 os.environ.pop("GISSTACK_HOME", None)
             else:
                 os.environ["GISSTACK_HOME"] = old
+
+
+class DepsTests(unittest.TestCase):
+    """Tkinter is installed only after the user says yes."""
+
+    def setUp(self):
+        self.msgs = []
+        self.calls = []
+        self._orig = (deps.tk_available, deps._family)
+        self.state = {"tk": False}
+        deps.tk_available = lambda: self.state["tk"]
+        deps._family = lambda: "deb"
+        self.addCleanup(lambda: (setattr(deps, "tk_available", self._orig[0]), setattr(deps, "_family", self._orig[1])))
+        os.environ["GISSTACK_LANG"] = "en"
+        self.addCleanup(os.environ.pop, "GISSTACK_LANG", None)
+
+    def run_fn(self, rc=0, installs=True):
+        def run(cmd, **kw):
+            self.calls.append(cmd)
+            if installs and rc == 0:
+                self.state["tk"] = True
+            return subprocess.CompletedProcess(cmd, rc)
+        return run
+
+    def test_nothing_happens_when_tkinter_is_there(self):
+        self.state["tk"] = True
+        self.assertTrue(deps.ensure_tk(ask=lambda q: self.fail("must not ask"), run=self.run_fn(), out=self.msgs.append))
+        self.assertEqual((self.calls, self.msgs), ([], []))
+
+    def test_asks_first_and_installs_on_yes(self):
+        asked = []
+        ok = deps.ensure_tk(ask=lambda q: asked.append(q) or "y", run=self.run_fn(), interactive=True, out=self.msgs.append)
+        self.assertTrue(ok)
+        self.assertEqual(len(asked), 1)
+        self.assertIn("Install it now", asked[0])
+        cmd = self.calls[0]
+        self.assertEqual(cmd[-4:] if cmd[0] != "sudo" else cmd[-4:], ["apt-get", "install", "-y", "python3-tk"][-4:])
+        self.assertTrue(any("python3-tk" in m for m in self.msgs))               # the user is told which package
+
+    def test_no_means_no(self):
+        for answer in ("", "n", "no", "maybe"):
+            self.calls.clear()
+            self.assertFalse(deps.ensure_tk(ask=lambda q, a=answer: a, run=self.run_fn(), interactive=True, out=self.msgs.append))
+            self.assertEqual(self.calls, [])
+        self.assertTrue(any("web GUI" in m for m in self.msgs))                   # points at the alternative
+
+    def test_never_installs_without_a_terminal_or_on_eof(self):
+        self.assertFalse(deps.ensure_tk(ask=lambda q: self.fail("no prompt"), run=self.run_fn(), interactive=False, out=self.msgs.append))
+        def eof(q):
+            raise EOFError
+        self.assertFalse(deps.ensure_tk(ask=eof, run=self.run_fn(), interactive=True, out=self.msgs.append))
+        self.assertEqual(self.calls, [])
+
+    def test_failures_and_other_distributions(self):
+        self.assertFalse(deps.ensure_tk(ask=lambda q: "y", run=self.run_fn(rc=100), interactive=True, out=self.msgs.append))
+        self.assertTrue(any("failed" in m for m in self.msgs))
+        self.state["tk"] = False
+        self.assertFalse(deps.ensure_tk(ask=lambda q: "y", run=self.run_fn(installs=False), interactive=True, out=self.msgs.append))
+        self.assertTrue(any("cannot see it" in m for m in self.msgs))               # installed but not importable (venv)
+        deps._family = lambda: "rpm"
+        self.assertEqual(deps.tk_package(), ("python3-tkinter", ["dnf", "install", "-y", "python3-tkinter"]))
+        deps._family = lambda: ""
+        self.calls.clear()
+        self.assertFalse(deps.ensure_tk(ask=lambda q: "y", run=self.run_fn(), interactive=True, out=self.msgs.append))
+        self.assertEqual(self.calls, [])
+
+    def test_install_script_asks_before_installing(self):
+        sh = (Path(__file__).resolve().parents[1] / "install.sh").read_text()
+        self.assertIn("Install it now? [y/N]", sh)
+        self.assertIn("[ -t 0 ]", sh)                     # only on a terminal
+        self.assertIn("--no-tk", sh)
 
 
 if __name__ == "__main__":
