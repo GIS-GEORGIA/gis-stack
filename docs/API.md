@@ -324,6 +324,153 @@ What is already installed / which of our ports are taken.
   - `ssh` (object)
 * Errors: 400, 401, 403, 502
 
+## geoserver
+
+### `POST /api/v1/geoserver/capabilities`
+
+Layers and formats a WMS / WFS / WMTS capabilities document advertises.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `service` (string, required) - one of `WMS`, `WFS`, `WMTS`
+* Response `data`:
+  - `service` (string, required)
+  - `version` (string)
+  - `layers` (array, required)
+  - `formats` (array)
+* Errors: 400, 401, 403, 404, 502
+
+### `POST /api/v1/geoserver/health`
+
+REST reachable, credentials accepted, WMS answering.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+* Response `data`:
+  - `ok` (boolean, required)
+  - `version` (object)
+  - `workspaces` (integer|null)
+  - `checks` (array, required)
+* Errors: 400, 401, 403, 404, 502
+
+### `POST /api/v1/geoserver/inventory`
+
+Workspaces, datastores, layers, layer groups and styles (each part reports its own error).
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+* Response `data`:
+  - `version` (object)
+  - `workspaces` (array)
+  - `datastores` (array)
+  - `layers` (array)
+  - `layergroups` (array)
+  - `styles` (array)
+  - `errors` (object, required)
+* Errors: 400, 401, 403, 404, 502
+
+### `POST /api/v1/geoserver/layers/detail`
+
+One layer: type, default style, enabled.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `name` (string, required) - pattern `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,62})?$`
+* Response `data`:
+  - `name` (string, required)
+  - `type` (string)
+  - `enabled` (boolean)
+  - `default_style` (string)
+  - `resource` (string)
+  - `resource_type` (string)
+* Errors: 400, 401, 403, 404, 502
+
+### `POST /api/v1/geoserver/preview`
+
+Layer preview: WMS GetMap proxied from the server (PNG/JPEG, max 2048 px).
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `layers` (string, required) - maxLength `400`
+  - `bbox` (string, required) - maxLength `120`
+  - `width` (integer, required) - min `16`; max `2048`
+  - `height` (integer, required) - min `16`; max `2048`
+  - `srs` (string) - maxLength `12`
+  - `format` (string) - one of `image/png`, `image/jpeg`
+  - `style` (string) - maxLength `80`
+* Response: `application/octet-stream` (no envelope)
+* Errors: 400, 401, 403, 404, 502
+
+### `POST /api/v1/geoserver/reload`
+
+Reload GeoServer's catalog and configuration from disk.
+
+* Scope: **operate**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+* Response `data`:
+  - `reloaded` (boolean)
+* Errors: 400, 401, 403, 404, 502
+
+### `POST /api/v1/geoserver/validate`
+
+Configuration findings: empty workspaces, datastores without layers ....
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+* Response `data`: an array
+* Errors: 400, 401, 403, 404, 502
+
+### `POST /api/v1/geoserver/workspaces`
+
+Create a workspace.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `name` (string, required) - pattern `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}$`
+* Response `data`:
+  - `name` (string, required)
+* Errors: 400, 401, 403, 404, 502
+
+### `POST /api/v1/geoserver/workspaces/delete`
+
+Delete a workspace; recurse=true also deletes everything in it and needs confirm=true.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `name` (string, required) - pattern `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}$`
+  - `recurse` (boolean)
+  - `confirm` (boolean)
+* Response `data`:
+  - `deleted` (string)
+* Errors: 400, 401, 403, 404, 502
+
 ## jobs
 
 ### `GET /api/v1/jobs/{id}`

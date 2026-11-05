@@ -123,6 +123,9 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - ტოკენის სკოუპი: წაკითხვა `read`, ოპერაცია `operate`, დესტრუქციული/კონფიგურაცია `admin`. ტესტი `test_scope_matrix_over_every_route` ყველა მარშრუტს ამოწმებს.
 - პლაგინები: `gisstack/plugins/` (`contract` არაფერს არ ანაწილებს gisstack-იდან, `loader` იზოლირებს ჩავარდნებს, `kit` ავტორებისთვის). ყველა გამოძახება `plugins.safe_call`-ით.
 
+## GeoServer მენეჯერი (Phase 4)
+- `gisstack/geoserver/`: `gateway` (curl 127.0.0.1-დან transport-ით, პაროლი stdin-ზე, `data-raw` არასდროს `data-binary`), `manager` (REST/OGC, სახელების ვალიდაცია, XML-ს DTD-ს უარყოფს); მარშრუტები `api/routes_geoserver.py`; გვერდი `views/geoserver.js`. ახალი ოპერაცია = ფუნქცია `manager.py`-ში + მარშრუტი + ტესტი fake `Gateway`-ით და (თუ შეიძლება) რეალურ კონტეინერზე.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

@@ -169,7 +169,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
         resp.headers["Cache-Control"] = "no-store"
         if request.path == "/dashboard" or request.path.startswith("/static/dashboard/"):
             # the dashboard has no inline script or style at all, so nothing needs 'unsafe-inline' (audit S-07)
-            resp.headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+            resp.headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
                                                        "font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
         else:
             resp.headers["Content-Security-Policy"] = (
@@ -674,7 +674,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
         return jsonify({"lines": lines, "next": since + len(lines), "done": job.done, "ok": job.ok})
 
     # ---------------------------------------------------------------- /api/v1 and the deprecation of the old /api routes
-    from ..api import routes as _routes, routes_monitor as _routes_monitor  # noqa: F401 - importing registers the routes
+    from ..api import routes as _routes, routes_geoserver as _routes_geoserver, routes_monitor as _routes_monitor  # noqa: F401 - importing registers the routes
     api_mount.mount(app, api_registry, __version__)
     legacy = {}
     for r in api_registry.routes:

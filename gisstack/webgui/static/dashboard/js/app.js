@@ -13,6 +13,7 @@ import backups from "./views/backups.js";
 import deployments from "./views/deployments.js";
 import logs from "./views/logs.js";
 import settings from "./views/settings.js";
+import geoserver from "./views/geoserver.js";
 
 
 const NAV = [
@@ -20,6 +21,7 @@ const NAV = [
   { route: "infra", ico: "☰", label: "ინფრასტრუქტურა" },
   { route: "service/postgis", ico: "▤", label: "PostgreSQL / PostGIS", comp: "postgis" },
   { route: "service/geoserver", ico: "◍", label: "GeoServer", comp: "geoserver" },
+  { route: "geoserver", ico: "◈", label: "GeoServer-ის მენეჯერი", comp: "geoserver", feature: "geoserver_manager" },
   { route: "service/qgis_server", ico: "◧", label: "QGIS Server", comp: "qgis_server" },
   { route: "service/mapproxy", ico: "▥", label: "MapProxy", comp: "mapproxy" },
   { route: "service/webmap", ico: "◎", label: "ვებ რუკები", comp: "webmap" },
@@ -154,7 +156,7 @@ async function boot() {
   observe();
   applySettings();
   initAutoRefresh();
-  for (const [name, view] of Object.entries({ overview, infra, service, monitoring, backups, deployments, logs, settings })) router.register(name, view);
+  for (const [name, view] of Object.entries({ overview, infra, service, monitoring, backups, deployments, logs, settings, geoserver })) router.register(name, view);
   try { await state.loadConfig(); } catch (e) { toast(e.message, "bad"); }
   updateChip();
   buildNav();

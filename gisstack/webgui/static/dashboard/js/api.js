@@ -29,6 +29,18 @@ export const get = (url, params) => request("GET", params ? url + "?" + new URLS
 export const post = (url, body) => request("POST", url, body || {});
 export const put = (url, body) => request("PUT", url, body || {});
 
+// POST that answers with an image (layer preview): returns an object URL the caller must revoke.
+export async function postImage(url, body) {
+  let r;
+  try { r = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-GisStack": "1" }, body: JSON.stringify(body || {}) }); }
+  catch (e) { throw new ApiError("სერვერთან კავშირი ვერ დამყარდა", "network", 0); }
+  if (!r.ok || !(r.headers.get("Content-Type") || "").startsWith("image/")) {
+    let j = null; try { j = await r.json(); } catch (e) { /* not JSON */ }
+    throw new ApiError((j && j.error && j.error.message) || r.statusText || "შეცდომა", j && j.error && j.error.code, r.status);
+  }
+  return URL.createObjectURL(await r.blob());
+}
+
 // Start a background job (deploy, backup, logs ...) and follow its log. onLines(newLines) is called as they arrive.
 export async function runJob(url, body, { onLines, signal, interval = 900 } = {}) {
   const { job } = await post(url, body);

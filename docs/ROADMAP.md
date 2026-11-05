@@ -79,7 +79,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - **Infrastructure:** version, installation type, state, autostart, health, listen address/port, start/stop/restart, enable/disable, logs — a re-skin of the current diagnostics on the service layer.
 - **Exit criteria:** every current web workflow is reachable in the new UI before the old page is retired.
 
-### Phase 4 — GeoServer manager · **L** (flag `geoserver_manager`)
+### Phase 4 — GeoServer manager · **L** (flag `geoserver_manager`) — ✅ first release (native target; health, inventory, capabilities, preview, validation, workspace create/delete, reload). Left: datastore/layer/style/layer-group editing, security rules, Compose/Kubernetes, GeoServer 3.0 container test; see `docs/GEOSERVER.md`
 - Official REST API only (`/rest`), server-side credentials (never sent to the browser), honour GeoServer roles; workspaces, datastores, layers, layer groups, styles, WMS/WFS/WMTS capabilities, layer preview (WMS GetMap proxied), health checks, configuration validation, visual layer browser with endpoints.
 - **Tests:** against a real GeoServer container; error mapping; permission handling.
 

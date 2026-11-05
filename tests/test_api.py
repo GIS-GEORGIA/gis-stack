@@ -123,7 +123,8 @@ class RouteTableTests(unittest.TestCase):
 
     def test_mutating_routes_need_at_least_operate_unless_they_only_read(self):
         read_posts = {"/ops/status", "/ops/preflight", "/ops/logs", "/existing/scan", "/backups/list", "/config/validate", "/bundle/preview", "/updates/check",
-                      "/dashboard/summary"}
+                      "/dashboard/summary", "/geoserver/inventory", "/geoserver/health", "/geoserver/validate", "/geoserver/capabilities", "/geoserver/layers/detail",
+                      "/geoserver/preview"}
         for r in registry.routes:
             if r.method in ("POST", "PUT", "DELETE") and r.scope == "read":
                 self.assertIn(r.path, read_posts, f"{r.method} {r.path} changes things but only needs the read scope")
