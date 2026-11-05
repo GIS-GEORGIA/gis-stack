@@ -152,7 +152,7 @@ def parse_capabilities(xml: bytes, service: str) -> dict[str, Any]:
     if b"<!doctype" in head or b"<!entity" in xml.lower():
         raise GeoServerError("geoserver: capabilities document has a DTD - refused", 0, "upstream")
     try:
-        root = ET.fromstring(xml)  # noqa: S314 - DTDs/entities are rejected above
+        root = ET.fromstring(xml)  # noqa: S314  # nosec B314 - DTDs/entities are rejected above
     except ET.ParseError as e:
         raise GeoServerError("geoserver: capabilities is not valid XML", 0, "upstream") from e
     if _local(root.tag) == "ServiceExceptionReport" or _local(root.tag) == "ExceptionReport":
