@@ -1,5 +1,5 @@
 // GeoServer manager: health, inventory (workspaces, layers, groups, styles), capabilities, layer preview and workspace changes.
-// All calls go through /api/v1/geoserver/*; the server talks to GeoServer with the stack's own credentials (never shown here).
+// All calls go through the /api/v1/geoserver routes; the server talks to GeoServer with the stack's own credentials (never shown here).
 import { post, postImage } from "../api.js";
 import { h, append, clear, toast, loading, done, errorBox, pill, table, kv, typedConfirm, modal } from "../ui.js";
 import * as state from "../state.js";

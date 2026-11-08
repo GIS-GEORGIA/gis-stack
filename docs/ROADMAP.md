@@ -83,7 +83,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - Official REST API only (`/rest`), server-side credentials (never sent to the browser), honour GeoServer roles; workspaces, datastores, layers, layer groups, styles, WMS/WFS/WMTS capabilities, layer preview (WMS GetMap proxied), health checks, configuration validation, visual layer browser with endpoints.
 - **Tests:** against a real GeoServer container; error mapping; permission handling.
 
-### Phase 5 — PostGIS manager · **L** (flag `postgis_manager`)
+### Phase 5 — PostGIS manager · **L** (flag `postgis_manager`) — ✅ first release (native target; inventory, health, read-only SQL editor with dedicated role, time-boxed write mode with audit). Left: Compose/Kubernetes, query history/saved queries, EXPLAIN visualisation, data import/export; see `docs/POSTGIS.md`
 - Inventory: databases, schemas, tables, spatial columns, geometry types, SRIDs, spatial indexes, sizes, connections, `pg_stat_statements` overview, extension availability, health.
 - **SQL editor:** read-only transaction by default (`SET TRANSACTION READ ONLY`), statement timeout, row/size limits with pagination, dedicated least-privilege role, writes only after an explicit per-session elevation with confirmation and audit log; server-side parsing is *not* trusted as a security boundary — the database role and read-only transaction are.
 - **Tests:** attempts to write in read-only mode, long queries, large results, permission failures — against a real PostGIS container.

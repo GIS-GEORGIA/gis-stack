@@ -16,7 +16,7 @@ PREFIX = "/api/v1"
 HTTP_STATUS = {
     "config": 400, "secret": 400, "project": 400, "plan": 400, "deploy": 400, "rules": 400, "bad_request": 400, "validation": 400,
     "unauthorized": 401, "forbidden": 403, "not_found": 404, "feature_disabled": 404,
-    "conflict": 409, "preflight": 409, "busy": 409, "too_large": 413, "rate_limited": 429,
+    "conflict": 409, "not_ready": 409, "sql": 400, "postgis": 502, "preflight": 409, "busy": 409, "too_large": 413, "rate_limited": 429,
     "transport": 502, "upstream": 502, "geoserver": 502, "runner": 502, "update": 502, "notify": 502, "unreachable": 502, "timeout": 504, "store": 500, "error": 500, "internal": 500,
 }
 

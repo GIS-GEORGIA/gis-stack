@@ -126,6 +126,10 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 ## GeoServer მენეჯერი (Phase 4)
 - `gisstack/geoserver/`: `gateway` (curl 127.0.0.1-დან transport-ით, პაროლი stdin-ზე, `data-raw` არასდროს `data-binary`), `manager` (REST/OGC, სახელების ვალიდაცია, XML-ს DTD-ს უარყოფს); მარშრუტები `api/routes_geoserver.py`; გვერდი `views/geoserver.js`. ახალი ოპერაცია = ფუნქცია `manager.py`-ში + მარშრუტი + ტესტი fake `Gateway`-ით და (თუ შეიძლება) რეალურ კონტეინერზე.
 
+## PostGIS მენეჯერი (Phase 5)
+- `gisstack/postgis/`: `sqlsplit` (მხოლოდ UX, **არა** უსაფრთხოების საზღვარი), `server` (`ScriptGateway`: psql სერვერზე, SQL stdin-ზე base64, **ყოველთვის** ფიქსირებული `SET …;` პრეფიქსით — `psql -c '\! cmd'` ასრულებს shell-ს), `manager` (inventory/health/query/execute/Elevations). საზღვარი = როლი `gisstack_ro` + read-only ტრანზაქცია. ახალი ოპერაცია = ტესტი რეალურ PostGIS კონტეინერზე (shim `psql` + `GS_PGRUN=""`, `GS_PG_PWFILE`; pg_hba-ში loopback უნდა გახდეს scram, სურათში `trust`-ია).
+- JS ფაილის კომენტარში არ დაწერო `/*` (i18n ტესტი მას ბლოკ-კომენტარად აღიქვამს და ფაილს გამოტოვებს).
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

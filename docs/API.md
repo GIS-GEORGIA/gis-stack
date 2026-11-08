@@ -686,6 +686,145 @@ Installed plugins, the plugin API version and plugins that failed to load.
   - `failures` (array, required)
 * Errors: 401, 403
 
+## postgis
+
+### `POST /api/v1/postgis/editor/setup`
+
+Create or refresh the least-privilege read-only role (idempotent); its password stays on the server.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `statement_timeout` (integer) - min `1`; max `60`
+* Response `data`:
+  - `role` (string, required)
+  - `database` (string, required)
+  - `statement_timeout` (integer)
+* Errors: 400, 401, 403, 409, 502, 504
+
+### `POST /api/v1/postgis/elevate`
+
+Open a write elevation for this caller, project and machine (max 15 minutes); confirm=true is required.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `minutes` (integer) - min `1`; max `15`
+  - `confirm` (boolean, required)
+* Response `data`:
+  - `elevation` (string, required)
+  - `expires` (number, required)
+  - `minutes` (number)
+* Errors: 400, 401, 403, 409, 502, 504
+
+### `POST /api/v1/postgis/elevate/revoke`
+
+End a write elevation now.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `elevation` (string, required)
+* Response `data`:
+  - `revoked` (boolean)
+* Errors: 400, 401, 403, 409, 502, 504
+
+### `POST /api/v1/postgis/execute`
+
+Run ONE statement that may change data (needs a valid elevation and confirm=true; journalled and audited).
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `sql` (string, required) - maxLength `100000`
+  - `elevation` (string, required)
+  - `confirm` (boolean, required)
+* Response `data`:
+  - `columns` (array, required)
+  - `rows` (array, required)
+  - `row_count` (integer)
+  - `has_more` (boolean)
+  - `truncated` (boolean)
+  - `elapsed_ms` (integer)
+  - `offset` (integer)
+  - `limit` (integer)
+  - `paged` (boolean)
+  - `tag` (string)
+* Errors: 400, 401, 403, 409, 502, 504
+
+### `POST /api/v1/postgis/health`
+
+Findings over the inventory: connections, cache, geometry columns without index, missing extensions.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `database` (string) - pattern `^[A-Za-z_][A-Za-z0-9_]{0,62}$`
+* Response `data`:
+  - `ok` (boolean, required)
+  - `findings` (array, required)
+  - `server` (object)
+* Errors: 400, 401, 403, 409, 502, 504
+
+### `POST /api/v1/postgis/inventory`
+
+Databases, schemas, tables, spatial columns (SRID, type, index), extensions, connections, query statistics.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `database` (string) - pattern `^[A-Za-z_][A-Za-z0-9_]{0,62}$`
+* Response `data`:
+  - `database` (string, required)
+  - `server` (object, required)
+  - `databases` (array)
+  - `connections` (object)
+  - `extensions` (array)
+  - `available` (array)
+  - `schemas` (array)
+  - `tables` (array, required)
+  - `spatial` (array, required)
+  - `statements` (array|null)
+  - `errors` (object, required)
+* Errors: 400, 401, 403, 409, 502, 504
+
+### `POST /api/v1/postgis/query`
+
+Run ONE statement read-only (dedicated role, read-only transaction, timeout, row and size limits, paging).
+
+* Scope: **operate**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `sql` (string, required) - maxLength `100000`
+  - `limit` (integer) - min `1`; max `5000`
+  - `offset` (integer) - min `0`
+* Response `data`:
+  - `columns` (array, required)
+  - `rows` (array, required)
+  - `row_count` (integer)
+  - `has_more` (boolean)
+  - `truncated` (boolean)
+  - `elapsed_ms` (integer)
+  - `offset` (integer)
+  - `limit` (integer)
+  - `paged` (boolean)
+  - `tag` (string)
+* Errors: 400, 401, 403, 409, 502, 504
+
 ## security
 
 ### `POST /api/v1/credentials/rotate`
