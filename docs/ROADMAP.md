@@ -88,7 +88,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - **SQL editor:** read-only transaction by default (`SET TRANSACTION READ ONLY`), statement timeout, row/size limits with pagination, dedicated least-privilege role, writes only after an explicit per-session elevation with confirmation and audit log; server-side parsing is *not* trusted as a security boundary — the database role and read-only transaction are.
 - **Tests:** attempts to write in read-only mode, long queries, large results, permission failures — against a real PostGIS container.
 
-### Phase 6 — MapProxy manager · **M** (flag `mapproxy_manager`)
+### Phase 6 — MapProxy manager · **M** (flag `mapproxy_manager`) — ✅ first release (native target; health, config view, cache stats, tile preview, validated edits with backups/restore, seeding with estimate and limits, cleanup). Left: Compose/Kubernetes, tile-store types other than file for age-based cleanup, scheduled seeding; see `docs/MAPPROXY.md`
 - Cache statistics and size, grid and layer management (validated config edits with automatic backup), seed management and progress, cache cleanup with prominent destructive-operation warnings, tile preview, configuration validation, health checks.
 - **Tests:** real MapProxy 7 in CI (the repository already tests config loading against it).
 

@@ -130,6 +130,9 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - `gisstack/postgis/`: `sqlsplit` (მხოლოდ UX, **არა** უსაფრთხოების საზღვარი), `server` (`ScriptGateway`: psql სერვერზე, SQL stdin-ზე base64, **ყოველთვის** ფიქსირებული `SET …;` პრეფიქსით — `psql -c '\! cmd'` ასრულებს shell-ს), `manager` (inventory/health/query/execute/Elevations). საზღვარი = როლი `gisstack_ro` + read-only ტრანზაქცია. ახალი ოპერაცია = ტესტი რეალურ PostGIS კონტეინერზე (shim `psql` + `GS_PGRUN=""`, `GS_PG_PWFILE`; pg_hba-ში loopback უნდა გახდეს scram, სურათში `trust`-ია).
 - JS ფაილის კომენტარში არ დაწერო `/*` (i18n ტესტი მას ბლოკ-კომენტარად აღიქვამს და ფაილს გამოტოვებს).
 
+## MapProxy მენეჯერი (Phase 6)
+- `gisstack/mapproxy/`: `server` (`ScriptGateway`: სკრიპტები სერვერზე, `GS_MP_*` გარემოს ცვლადები მხოლოდ ტესტებისთვის, ფაილის შიგთავსი stdin-ზე base64), `manager` (yaml ოპერაციები, seed-ის დაცვა, სტატისტიკა). **MapProxy-ის `load_configuration` ნაგულისხმევად მხოლოდ აფრთხილებს** — ვალიდატორი `ignore_warnings=False` + `configured_services()`-ს იყენებს. `mapproxy-seed` ნაგულისხმევად ყველა ფილას თავიდან იღებს — ჩვენ `refresh_before: 2000-01-01`-ს ვსვამთ. `pgrep -f` საკუთარ `bash -c` სკრიპტს ემთხვევა, თუ სკრიპტში ტექსტი პირდაპირ წერია (`[m]approxy-seed` ხრიკი + `mapproxy"-seed`). `journal.Operation(op, **meta)` — meta-ში `op=` არ გამოიყენო.
+
 ## გაკვეთილები
 - EL9: `python3` = 3.9, MapProxy 7 ითხოვს 3.10+ (ვიყენებთ `python3.12`); `spawn-fcgi` არ არის EL9-ში → QGIS FastCGI სოკეტს systemd აძლევს.
 - `dnf list --available` არ აჩვენებს უკვე დაყენებულ პაკეტს — იდემპოტენტურობისთვის `dnf list` გამოიყენე.

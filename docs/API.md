@@ -499,6 +499,191 @@ Ask a job to stop (log following ends at once).
   - `ok` (boolean)
 * Errors: 401, 403, 404
 
+## mapproxy
+
+### `POST /api/v1/mapproxy/cache`
+
+Cache size, tile count and tiles per level for every cache.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+* Response `data`:
+  - `available` (boolean, required)
+  - `cache_dir` (string)
+  - `disk_total_kb` (integer|null)
+  - `disk_free_kb` (integer|null)
+  - `caches` (array, required)
+  - `unmanaged` (array)
+  - `total_bytes` (integer)
+* Errors: 400, 401, 403, 404, 409, 502
+
+### `POST /api/v1/mapproxy/cache/cleanup`
+
+Delete a cache's tiles (or only tiles older than N days). Dry run by default; real deletion needs dry_run=false AND confirm=true.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `cache` (string, required) - pattern `^[A-Za-z0-9_]{1,60}$`
+  - `older_than_days` (integer) - min `1`; max `36500`
+  - `dry_run` (boolean)
+  - `confirm` (boolean)
+* Response `data`:
+  - `cache` (string, required)
+  - `dry_run` (boolean, required)
+  - `entries` (array)
+  - `files` (integer, required)
+  - `bytes` (integer, required)
+  - `older_than_days` (integer|null)
+  - `note` (string)
+* Errors: 400, 401, 403, 404, 409, 502
+
+### `POST /api/v1/mapproxy/config`
+
+The live configuration summarised: layers, caches, sources (credentials hidden), grids, seeds.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+* Response `data`:
+  - `services` (array)
+  - `layers` (array, required)
+  - `caches` (array, required)
+  - `sources` (array, required)
+  - `grids` (array, required)
+  - `seeds` (array)
+  - `cache_dir` (string)
+  - `demo` (boolean)
+* Errors: 400, 401, 403, 404, 409, 502
+
+### `POST /api/v1/mapproxy/config/backups`
+
+Configuration backups made automatically before every change (newest first).
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+* Response `data`: an array
+* Errors: 400, 401, 403, 404, 409, 502
+
+### `POST /api/v1/mapproxy/config/edit`
+
+Add/remove a layer or a grid: validated by MapProxy, backed up, installed atomically (dry_run defaults to true).
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `op` (string, required) - one of `add_grid`, `add_layer`, `remove_grid`, `remove_layer`
+  - `params` (object, required)
+  - `dry_run` (boolean)
+* Response `data`:
+  - `changes` (array, required)
+  - `dry_run` (boolean, required)
+  - `backup` (string)
+  - `warnings` (array)
+  - `note` (string)
+* Errors: 400, 401, 403, 404, 409, 502
+
+### `POST /api/v1/mapproxy/config/restore`
+
+Put a configuration backup back (the current one is backed up first); confirm=true is required.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `id` (string, required) - pattern `^\d{8}-\d{6}-[0-9a-f]{4}$`
+  - `confirm` (boolean, required)
+* Response `data`:
+  - `restored` (string, required)
+  - `backup_of_previous` (string)
+* Errors: 400, 401, 403, 404, 409, 502
+
+### `POST /api/v1/mapproxy/health`
+
+Service, HTTP, cache directory, disk, configuration validity, advertised layers.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+* Response `data`:
+  - `ok` (boolean, required)
+  - `findings` (array, required)
+  - `service` (string)
+  - `http` (integer)
+  - `seeding` (boolean)
+  - `layers_served` (array)
+  - `config_valid` (boolean|null)
+* Errors: 400, 401, 403, 404, 409, 502
+
+### `POST /api/v1/mapproxy/seed`
+
+Estimate (default) or run seeding of caches (job): a dry run always comes first, real runs need confirm=true and stay under max_tiles.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `caches` (array, required)
+  - `grids` (array)
+  - `level_from` (integer) - min `0`; max `20`
+  - `level_to` (integer, required) - min `0`; max `20`
+  - `bbox` (array, required)
+  - `refresh` (boolean)
+  - `concurrency` (integer) - min `1`; max `4`
+  - `max_tiles` (integer) - min `1`; max `50000000`
+  - `dry_run` (boolean)
+  - `confirm` (boolean)
+* Response `data`: `{"job": "<id>"}` (a background job)
+* Errors: 400, 401, 403, 404, 409, 502
+
+### `POST /api/v1/mapproxy/tile`
+
+Preview ONE tile through the running MapProxy (PNG/JPEG; a missing tile is fetched and cached).
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `layer` (string, required) - pattern `^[A-Za-z][A-Za-z0-9_]{0,40}$`
+  - `grid` (string, required) - pattern `^[A-Za-z][A-Za-z0-9_]{0,60}$`
+  - `z` (integer, required) - min `0`; max `24`
+  - `x` (integer, required) - min `0`
+  - `y` (integer, required) - min `0`
+* Response: `application/octet-stream` (no envelope)
+* Errors: 400, 401, 403, 404, 409, 502
+
+### `POST /api/v1/mapproxy/validate`
+
+Validate the live configuration (and seed.yaml) with MapProxy itself, strictly.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+* Response `data`:
+  - `ok` (boolean, required)
+  - `errors` (array, required)
+  - `warnings` (array)
+* Errors: 400, 401, 403, 404, 409, 502
+
 ## meta
 
 ### `GET /api/v1/i18n`
