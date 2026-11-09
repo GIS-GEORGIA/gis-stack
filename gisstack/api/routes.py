@@ -14,6 +14,7 @@ from flask import Response, make_response
 from .. import (__version__, plugins, backup as backup_mod, catalog, config, deploy, discover, existing, generate, i18n, journal, ops, preflight as preflight_mod,
                 projects, rotation, services, settings, updater)
 from ..core import features, paths
+from ..servers import store as servers_store
 from ..core.errors import ConfigError, DeployError, GisStackError, PlanError, ProjectError
 from . import jobs
 from .mount import Req
@@ -34,6 +35,7 @@ SSH: Schema = registry.component("Ssh", {"type": "object", "properties": {"host"
                                          "additionalProperties": False})
 CONFIG: Schema = registry.component("Config", {"type": "object", "description": "A gis-stack configuration (see /catalog for the defaults); sparse is fine."})
 MODE: Schema = {"type": "string", "enum": ["local", "ssh"]}
+SERVER: Schema = {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,30}$", "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"}
 COMPONENT: Schema = {"type": "string", "enum": list(deploy.CLEAN_COMPONENTS)}
 JOB_ID: Schema = {"type": "string", "pattern": "^[0-9a-f]{12}$"}
 BACKUP_ID: Schema = {"type": "string", "pattern": r"^(pre-)?\d{8}-\d{6}-[0-9a-f]{8}$"}
@@ -49,7 +51,7 @@ JOB_DATA: Schema = {"type": "object", "required": ["job"], "properties": {"job":
 def body(props: Optional[dict[str, Schema]] = None, required: tuple[str, ...] = ()) -> Schema:
     """Request body of a route that talks about a machine: {config?, mode, ssh?} plus the route's own fields."""
     return {"type": "object", "required": ["mode", *required], "additionalProperties": False,
-            "properties": {"config": CONFIG, "mode": MODE, "ssh": SSH, **(props or {})}}
+            "properties": {"config": CONFIG, "mode": MODE, "ssh": SSH, "server": SERVER, **(props or {})}}
 
 
 # --------------------------------------------------------------------------- helpers
@@ -62,6 +64,14 @@ def cfg_of(req: Req, persist: bool = False) -> dict[str, Any]:
 
 def machine(req: Req, persist: bool = False) -> tuple[dict[str, Any], str, dict[str, Any], str]:
     cfg = cfg_of(req, persist)
+    if req.body.get("server"):
+        feature_gate("multi_server")
+        if req.body["mode"] != "ssh":
+            raise ApiError(400, "config", "a server profile needs mode=ssh")
+        try:
+            return cfg, "ssh", servers_store.ssh_for(req.body["server"]), cfg["deploy_target"]
+        except servers_store.ServerError as e:
+            raise ApiError.from_exc(e) from e
     return cfg, req.body["mode"], req.body.get("ssh") or {}, cfg["deploy_target"]
 
 

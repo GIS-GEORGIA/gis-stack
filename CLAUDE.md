@@ -140,3 +140,12 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - Bash heredoc-ში `EOF` შიდა ტექსტი ხურავს გარე heredoc-ს — გამოიყენე უნიკალური ტერმინატორი.
 - `pkill -f` შეიძლება საკუთარ shell-ს მოკლას — გამოიყენე PID.
 - JSX `{{ }}` ეჯახება Jinja-ს; RN შაბლონებში StyleSheet გამოიყენე.
+
+## მრავალი სერვერი (Phase 9, flag `multi_server`)
+- `gisstack/servers/{store,hostkey,service}.py`, `api/routes_servers.py`, `views/servers.js`, `tests/test_servers.py`, `docs/SERVERS.md`.
+- პროფილები: `~/.gisstack/servers.json` (0600) + `known_hosts/<id>` (0600). ინახება მხოლოდ გასაღების **გზა**; „PRIVATE KEY", ახალი ხაზი ან ფარდობითი გზა უარყოფილია. პაროლი/passphrase არ არსებობს (BatchMode, `sudo -n`).
+- `transport.ssh_base`: თუ `ssh["known_hosts"]` არის, გამოიყენება `StrictHostKeyChecking=yes` + `UserKnownHostsFile=<ის> ` + `GlobalKnownHostsFile=/dev/null`; კლიენტის `ssh` სქემა `known_hosts`-ს არ იღებს (additionalProperties=false), მხოლოდ `store.ssh_for(id)` ამატებს.
+- `routes.machine()` ერთადერთი ადგილია, სადაც `server` იხსნება: `mode` უნდა იყოს `ssh`, უფიქსირებელი სერვერი უარყოფილია, ბადიში მოსული `ssh` იგნორირებულია. ახალი მანქანის მარშრუტი ავტომატურად მუშაობს სერვერებზე, თუ `machine()`-ს იყენებს.
+- host key-ის დაფიქსირება: scan არაფერს ენდობა; pin ითხოვს ანაბეჭდს (`SHA256:...`), რომელსაც ოპერატორი სერვერის კონსოლიდან ადარებს; არსებულის ჩანაცვლებას `replace=true` (UI: აკრიფე REPLACE) სჭირდება.
+- ისტორია იკითხება ჟურნალიდან `host`-ის მიხედვით (ერთი მისამართის ორი პროფილი ერთსა და იმავე ისტორიას ხედავს).
+- ტესტებში რეალური `sshd` უნდა გაეშვას 127.0.0.1-ზე უპრივილეგიოდ (`-D -e -f`), `StrictModes no`, `UsePAM no`; თუ ვერ ეშვება, ტესტი skip-დება.

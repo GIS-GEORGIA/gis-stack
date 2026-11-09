@@ -16,6 +16,7 @@ import settings from "./views/settings.js";
 import geoserver from "./views/geoserver.js";
 import postgis from "./views/postgis.js";
 import mapproxy from "./views/mapproxy.js";
+import servers from "./views/servers.js";
 
 
 const NAV = [
@@ -29,6 +30,7 @@ const NAV = [
   { route: "mapproxy", ico: "◫", label: "MapProxy-ის მენეჯერი", comp: "mapproxy", feature: "mapproxy_manager" },
   { route: "service/mapproxy", ico: "▥", label: "MapProxy", comp: "mapproxy" },
   { route: "service/webmap", ico: "◎", label: "ვებ რუკები", comp: "webmap" },
+  { route: "servers", ico: "⌘", label: "სერვერები", feature: "multi_server" },
   { route: "deployments", ico: "↻", label: "ოპერაციები" },
   { route: "monitoring", ico: "∿", label: "მონიტორინგი", feature: "monitoring" },
   { route: "backups", ico: "⛁", label: "ბექაფები" },
@@ -160,8 +162,9 @@ async function boot() {
   observe();
   applySettings();
   initAutoRefresh();
-  for (const [name, view] of Object.entries({ overview, infra, service, monitoring, backups, deployments, logs, settings, geoserver, postgis, mapproxy })) router.register(name, view);
+  for (const [name, view] of Object.entries({ overview, infra, service, monitoring, backups, deployments, logs, settings, geoserver, postgis, mapproxy, servers })) router.register(name, view);
   try { await state.loadConfig(); } catch (e) { toast(e.message, "bad"); }
+  state.onConn(updateChip);
   updateChip();
   buildNav();
   await router.start($("#main"));

@@ -92,7 +92,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - Cache statistics and size, grid and layer management (validated config edits with automatic backup), seed management and progress, cache cleanup with prominent destructive-operation warnings, tile preview, configuration validation, health checks.
 - **Tests:** real MapProxy 7 in CI (the repository already tests config loading against it).
 
-### Phase 9 — Multi-server management · **XL** (flag `multi_server`)
+### Phase 9 — Multi-server management · **XL** (flag `multi_server`) — ✅ first release (profiles with environment tags, key path/agent only, pinned host keys, probe, comparison, per-server history, `server` on every machine route). Left: keyring-stored sudo/passphrase support, fleet-wide deploy, drift remediation; see `docs/SERVERS.md`
 - Server profiles with environment tags (production/development/testing); credentials stored outside project files (OS keyring or `0600` secrets file; SSH keys referenced by path/agent only, never embedded); pinned host keys; remote health, deployment and service management through the existing runner/providers; deployment history per server (journal); server comparison (config drift, versions, health).
 - **Exit criteria:** two servers can be operated from one UI with independent credentials; no key material in any config file.
 

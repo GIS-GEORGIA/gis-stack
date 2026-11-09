@@ -33,7 +33,13 @@ def ssh_base(ssh: dict[str, Any]) -> list[str]:
         raise DeployError("SSH user არასწორია")
     if not 1 <= port <= 65535:
         raise DeployError("SSH port არასწორია")
-    cmd = ["ssh", "-p", str(port), "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
+    # a server profile brings its own pinned known_hosts file: that key or nothing (no trust-on-first-use, no global known_hosts)
+    kh = ssh.get("known_hosts")
+    if kh and (not isinstance(kh, str) or not Path(kh).is_file() or any(c in kh for c in ",\n")):
+        raise DeployError("known_hosts ფაილი ვერ მოიძებნა")
+    trust = (["-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={kh}", "-o", "GlobalKnownHostsFile=/dev/null"] if kh
+             else ["-o", "StrictHostKeyChecking=accept-new"])
+    cmd = ["ssh", "-p", str(port), "-o", "BatchMode=yes", *trust,
            "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4"]   # a dead link ends in ~1 min, not never
     key = ssh.get("key")
     if key:

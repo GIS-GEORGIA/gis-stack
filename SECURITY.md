@@ -107,5 +107,5 @@ on failure. Restore refuses archives with `..`, absolute paths, escaping links o
 contain secrets (`credentials.txt`, role password hashes): they are not encrypted yet - keep the directory and downloaded copies private.
 
 **Not covered yet (see `docs/ROADMAP.md`):** release artefacts are not signed (S-09, needs a decision on the signing tool), the CSP
-still allows inline scripts (S-07), SSH host keys are trust-on-first-use (S-08, Phase 9), rollback after a failed upgrade and a
+still allows inline scripts (S-07), SSH host keys are trust-on-first-use unless you use a server profile with a pinned host key (S-08; `docs/SERVERS.md`, flag `multi_server`), rollback after a failed upgrade and a
 `restore` command (R-03, Phase 7), and the Tk desktop GUI is not part of the automated coverage figure.

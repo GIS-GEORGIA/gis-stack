@@ -674,7 +674,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
         return jsonify({"lines": lines, "next": since + len(lines), "done": job.done, "ok": job.ok})
 
     # ---------------------------------------------------------------- /api/v1 and the deprecation of the old /api routes
-    from ..api import routes as _routes, routes_geoserver as _routes_geoserver, routes_mapproxy as _routes_mapproxy, routes_monitor as _routes_monitor, routes_postgis as _routes_postgis  # noqa: F401 - importing registers the routes
+    from ..api import routes as _routes, routes_geoserver as _routes_geoserver, routes_mapproxy as _routes_mapproxy, routes_monitor as _routes_monitor, routes_postgis as _routes_postgis, routes_servers as _routes_servers  # noqa: F401 - importing registers the routes
     api_mount.mount(app, api_registry, __version__)
     legacy = {}
     for r in api_registry.routes:

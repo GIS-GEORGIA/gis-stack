@@ -24,6 +24,7 @@ Create a verified backup (job).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `components` (array)
   - `with_cache` (boolean)
   - `note` (string) - maxLength `200`
@@ -40,6 +41,7 @@ Backups on the server.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `backups` (array, required)
 * Errors: 400, 401, 403, 502
@@ -53,6 +55,7 @@ Copy a verified backup to every BackupProvider plugin (job).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `id` (string, required) - pattern `^(pre-)?\d{8}-\d{6}-[0-9a-f]{8}$`
 * Response `data`: `{"job": "<id>"}` (a background job)
 * Errors: 400, 401, 403, 409
@@ -67,6 +70,7 @@ Delete old backups (job). Defaults to a dry run; the newest backup is never dele
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `keep` (integer) - min `1`
   - `keep_pre` (integer) - min `0`
   - `days` (integer|null) - min `0`
@@ -84,6 +88,7 @@ Restore a backup (job). Defaults to a plan; replacing live data needs dry_run=fa
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `id` (string, required) - pattern `^(pre-)?\d{8}-\d{6}-[0-9a-f]{8}$`
   - `only` (array)
   - `dry_run` (boolean)
@@ -104,6 +109,7 @@ Re-read a backup and check every checksum (job).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `id` (string, required) - pattern `^(pre-)?\d{8}-\d{6}-[0-9a-f]{8}$`
 * Response `data`: `{"job": "<id>"}` (a background job)
 * Errors: 400, 401, 403, 409
@@ -220,6 +226,7 @@ Live status + newest stored metrics + recent operations in one call (each part r
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `project` (string, required)
   - `target` (string, required)
@@ -243,6 +250,7 @@ Remove the whole stack or some programs (job). Purge deletes data.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `components` (array|null)
   - `purge` (boolean)
   - `remove_postgres` (boolean)
@@ -260,6 +268,7 @@ Roll out only one program with the current settings (job).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `save` (boolean)
 * Response `data`: `{"job": "<id>"}` (a background job)
 * Errors: 400, 401, 403, 409
@@ -274,6 +283,7 @@ Deploy the stack (job). Runs the pre-flight and port-conflict checks first.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `skip_preflight` (boolean)
 * Response `data`: `{"job": "<id>"}` (a background job)
 * Errors: 400, 401, 403, 409, 502
@@ -290,6 +300,7 @@ Back up the settings of programs already installed (job).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `components` (array, required)
   - `with_data` (boolean)
 * Response `data`: `{"job": "<id>"}` (a background job)
@@ -305,6 +316,7 @@ Back up -> remove -> (install) -> import for programs already on the server (job
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `plan` (object, required)
   - `with_data` (boolean)
   - `install` (boolean)
@@ -322,6 +334,7 @@ What is already installed / which of our ports are taken.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Errors: 400, 401, 403, 502
 
 ## geoserver
@@ -335,6 +348,7 @@ Layers and formats a WMS / WFS / WMTS capabilities document advertises.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `service` (string, required) - one of `WMS`, `WFS`, `WMTS`
 * Response `data`:
   - `service` (string, required)
@@ -352,6 +366,7 @@ REST reachable, credentials accepted, WMS answering.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `ok` (boolean, required)
   - `version` (object)
@@ -368,6 +383,7 @@ Workspaces, datastores, layers, layer groups and styles (each part reports its o
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `version` (object)
   - `workspaces` (array)
@@ -387,6 +403,7 @@ One layer: type, default style, enabled.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `name` (string, required) - pattern `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,62})?$`
 * Response `data`:
   - `name` (string, required)
@@ -406,6 +423,7 @@ Layer preview: WMS GetMap proxied from the server (PNG/JPEG, max 2048 px).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `layers` (string, required) - maxLength `400`
   - `bbox` (string, required) - maxLength `120`
   - `width` (integer, required) - min `16`; max `2048`
@@ -425,6 +443,7 @@ Reload GeoServer's catalog and configuration from disk.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `reloaded` (boolean)
 * Errors: 400, 401, 403, 404, 502
@@ -438,6 +457,7 @@ Configuration findings: empty workspaces, datastores without layers ....
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`: an array
 * Errors: 400, 401, 403, 404, 502
 
@@ -450,6 +470,7 @@ Create a workspace.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `name` (string, required) - pattern `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}$`
 * Response `data`:
   - `name` (string, required)
@@ -464,6 +485,7 @@ Delete a workspace; recurse=true also deletes everything in it and needs confirm
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `name` (string, required) - pattern `^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}$`
   - `recurse` (boolean)
   - `confirm` (boolean)
@@ -510,6 +532,7 @@ Cache size, tile count and tiles per level for every cache.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `available` (boolean, required)
   - `cache_dir` (string)
@@ -529,6 +552,7 @@ Delete a cache's tiles (or only tiles older than N days). Dry run by default; re
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `cache` (string, required) - pattern `^[A-Za-z0-9_]{1,60}$`
   - `older_than_days` (integer) - min `1`; max `36500`
   - `dry_run` (boolean)
@@ -552,6 +576,7 @@ The live configuration summarised: layers, caches, sources (credentials hidden),
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `services` (array)
   - `layers` (array, required)
@@ -572,6 +597,7 @@ Configuration backups made automatically before every change (newest first).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`: an array
 * Errors: 400, 401, 403, 404, 409, 502
 
@@ -584,6 +610,7 @@ Add/remove a layer or a grid: validated by MapProxy, backed up, installed atomic
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `op` (string, required) - one of `add_grid`, `add_layer`, `remove_grid`, `remove_layer`
   - `params` (object, required)
   - `dry_run` (boolean)
@@ -604,6 +631,7 @@ Put a configuration backup back (the current one is backed up first); confirm=tr
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `id` (string, required) - pattern `^\d{8}-\d{6}-[0-9a-f]{4}$`
   - `confirm` (boolean, required)
 * Response `data`:
@@ -620,6 +648,7 @@ Service, HTTP, cache directory, disk, configuration validity, advertised layers.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `ok` (boolean, required)
   - `findings` (array, required)
@@ -639,6 +668,7 @@ Estimate (default) or run seeding of caches (job): a dry run always comes first,
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `caches` (array, required)
   - `grids` (array)
   - `level_from` (integer) - min `0`; max `20`
@@ -661,6 +691,7 @@ Preview ONE tile through the running MapProxy (PNG/JPEG; a missing tile is fetch
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `layer` (string, required) - pattern `^[A-Za-z][A-Za-z0-9_]{0,40}$`
   - `grid` (string, required) - pattern `^[A-Za-z][A-Za-z0-9_]{0,60}$`
   - `z` (integer, required) - min `0`; max `24`
@@ -678,6 +709,7 @@ Validate the live configuration (and seed.yaml) with MapProxy itself, strictly.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `ok` (boolean, required)
   - `errors` (array, required)
@@ -770,6 +802,7 @@ Take one real sample now, store it, evaluate alerts (and notify).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `snapshot` (object)
   - `notifications` (array)
@@ -798,6 +831,7 @@ Start / stop / restart / enable / disable programs (job).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `action` (string, required) - one of `start`, `stop`, `restart`, `enable`, `disable`
   - `components` (array|null)
 * Response `data`: `{"job": "<id>"}` (a background job)
@@ -813,6 +847,7 @@ Read or follow a program's log (job; cancel it to stop following).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `component` (string, required) - one of `postgis`, `tomcat`, `geoserver`, `qgis_server`, `mapproxy`, `caddy`, `webmap`, `qgis`
   - `lines` (integer) - min `1`; max `5000`
   - `follow` (boolean)
@@ -829,6 +864,7 @@ Can the machine take the selected stack? (OS, memory, disk, network, clock).
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
 * Response `data`:
   - `ok` (boolean, required)
   - `target` (string)
@@ -846,6 +882,7 @@ Live state of every program.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `components` (array)
 * Errors: 400, 401, 403, 502
 
@@ -882,6 +919,7 @@ Create or refresh the least-privilege read-only role (idempotent); its password 
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `statement_timeout` (integer) - min `1`; max `60`
 * Response `data`:
   - `role` (string, required)
@@ -898,6 +936,7 @@ Open a write elevation for this caller, project and machine (max 15 minutes); co
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `minutes` (integer) - min `1`; max `15`
   - `confirm` (boolean, required)
 * Response `data`:
@@ -915,6 +954,7 @@ End a write elevation now.
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `elevation` (string, required)
 * Response `data`:
   - `revoked` (boolean)
@@ -929,6 +969,7 @@ Run ONE statement that may change data (needs a valid elevation and confirm=true
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `sql` (string, required) - maxLength `100000`
   - `elevation` (string, required)
   - `confirm` (boolean, required)
@@ -954,6 +995,7 @@ Findings over the inventory: connections, cache, geometry columns without index,
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `database` (string) - pattern `^[A-Za-z_][A-Za-z0-9_]{0,62}$`
 * Response `data`:
   - `ok` (boolean, required)
@@ -970,6 +1012,7 @@ Databases, schemas, tables, spatial columns (SRID, type, index), extensions, con
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `database` (string) - pattern `^[A-Za-z_][A-Za-z0-9_]{0,62}$`
 * Response `data`:
   - `database` (string, required)
@@ -994,6 +1037,7 @@ Run ONE statement read-only (dedicated role, read-only transaction, timeout, row
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `sql` (string, required) - maxLength `100000`
   - `limit` (integer) - min `1`; max `5000`
   - `offset` (integer) - min `0`
@@ -1021,12 +1065,134 @@ Change the PostgreSQL role / GeoServer admin password on a native server (verifi
   - `config` (object)
   - `mode` (string, required) - one of `local`, `ssh`
   - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `what` (string, required) - one of `postgres`, `geoserver`
 * Response `data`:
   - `what` (string)
   - `target` (string)
   - `stored` (boolean)
 * Errors: 400, 401, 403, 502
+
+## servers
+
+### `GET /api/v1/servers`
+
+Saved server profiles (no key material is ever stored or returned).
+
+* Scope: **read**
+* Response `data`: an array
+* Errors: 400, 401, 403
+
+### `POST /api/v1/servers/compare`
+
+Compare 2-6 servers: OS, versions, service states and configuration hashes; `differs` marks drift.
+
+* Scope: **read**
+* Request body (JSON):
+  - `ids` (array, required)
+* Response `data`:
+  - `servers` (array, required)
+  - `rows` (array, required)
+  - `drift` (integer, required)
+  - `complete` (boolean, required)
+* Errors: 400, 401, 403, 404
+
+### `DELETE /api/v1/servers/{id}`
+
+Delete a profile and its pinned host key (the server itself is not touched).
+
+* Scope: **admin**
+* Path parameter `id` (string, required) - server id
+* Response `data`:
+  - `deleted` (string, required)
+* Errors: 401, 403, 404
+
+### `PUT /api/v1/servers/{id}`
+
+Create or update a server profile; changing host/port drops the pinned host key.
+
+* Scope: **admin**
+* Path parameter `id` (string, required) - server id
+* Request body (JSON):
+  - `name` (string)
+  - `env` (string) - one of `production`, `development`, `testing`
+  - `host` (string, required)
+  - `port` (integer)
+  - `user` (string)
+  - `key` (string)
+  - `notes` (string)
+* Response `data`:
+  - `id` (string, required)
+  - `name` (string)
+  - `env` (string) - one of `production`, `development`, `testing`
+  - `host` (string)
+  - `port` (integer)
+  - `user` (string)
+  - `key` (string)
+  - `notes` (string)
+  - `pinned` (boolean, required)
+  - `fingerprints` (array)
+  - `created` (integer)
+  - `updated` (integer)
+* Errors: 400, 401, 403
+
+### `GET /api/v1/servers/{id}/history`
+
+Operations (deploy, service control, edits ...) the journal recorded against this server.
+
+* Scope: **read**
+* Path parameter `id` (string, required) - server id
+* Response `data`: an array
+* Errors: 401, 403, 404
+
+### `POST /api/v1/servers/{id}/hostkey/pin`
+
+Pin the host key whose fingerprint equals `fingerprint` (compare it with the server console first); replacing a pin needs replace=true.
+
+* Scope: **admin**
+* Path parameter `id` (string, required) - server id
+* Request body (JSON):
+  - `fingerprint` (string, required) - pattern `^SHA256:[A-Za-z0-9+/]{43}$`
+  - `replace` (boolean)
+* Response `data`:
+  - `id` (string, required)
+  - `name` (string)
+  - `env` (string) - one of `production`, `development`, `testing`
+  - `host` (string)
+  - `port` (integer)
+  - `user` (string)
+  - `key` (string)
+  - `notes` (string)
+  - `pinned` (boolean, required)
+  - `fingerprints` (array)
+  - `created` (integer)
+  - `updated` (integer)
+* Errors: 400, 401, 403, 404, 502
+
+### `POST /api/v1/servers/{id}/hostkey/scan`
+
+Show the host keys the server presents (SHA256 fingerprints) without trusting them.
+
+* Scope: **admin**
+* Path parameter `id` (string, required) - server id
+* Response `data`:
+  - `keys` (array, required)
+  - `pinned` (array)
+* Errors: 401, 403, 404, 502
+
+### `POST /api/v1/servers/{id}/probe`
+
+Connect with the profile's own credentials and pinned key; reports reachability, OS, sudo, load and free disk.
+
+* Scope: **read**
+* Path parameter `id` (string, required) - server id
+* Response `data`:
+  - `id` (string, required)
+  - `reachable` (boolean, required)
+  - `error` (string)
+  - `seconds` (number)
+  - `facts` (object)
+* Errors: 400, 401, 403, 404
 
 ## settings
 

@@ -54,6 +54,9 @@
       "name": "security"
     },
     {
+      "name": "servers"
+    },
+    {
       "name": "settings"
     },
     {
@@ -283,6 +286,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "components": {
                     "type": "array",
                     "items": {
@@ -492,6 +500,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -712,6 +725,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "id": {
                     "type": "string",
                     "pattern": "^(pre-)?\\d{8}-\\d{6}-[0-9a-f]{8}$"
@@ -905,6 +923,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "keep": {
                     "type": "integer",
@@ -1114,6 +1137,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "id": {
                     "type": "string",
@@ -1337,6 +1365,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "id": {
                     "type": "string",
@@ -1935,6 +1968,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "components": {
                     "type": [
                       "array",
@@ -2159,6 +2197,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "save": {
                     "type": "boolean"
@@ -2523,6 +2566,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "what": {
                     "type": "string",
                     "enum": [
@@ -2844,6 +2892,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -3153,6 +3206,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "skip_preflight": {
                     "type": "boolean"
                   }
@@ -3373,6 +3431,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "components": {
                     "type": "array",
                     "minItems": 1,
@@ -3582,6 +3645,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "plan": {
                     "type": "object"
                   },
@@ -3783,6 +3851,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -3963,6 +4036,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "service": {
                     "type": "string",
@@ -4205,6 +4283,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -4431,6 +4514,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -4697,6 +4785,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "name": {
                     "type": "string",
                     "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,62})?$"
@@ -4933,6 +5026,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "layers": {
                     "type": "string",
                     "maxLength": 400
@@ -5155,6 +5253,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -5365,6 +5468,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -5591,6 +5699,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "name": {
                     "type": "string",
                     "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}$"
@@ -5808,6 +5921,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "name": {
                     "type": "string",
@@ -6678,6 +6796,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -6943,6 +7066,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "cache": {
                     "type": "string",
@@ -7221,6 +7349,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -7484,6 +7617,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -7734,6 +7872,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "op": {
                     "type": "string",
@@ -8004,6 +8147,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "id": {
                     "type": "string",
                     "pattern": "^\\d{8}-\\d{6}-[0-9a-f]{4}$"
@@ -8253,6 +8401,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -8517,6 +8670,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "caches": {
                     "type": "array",
@@ -8816,6 +8974,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "layer": {
                     "type": "string",
                     "pattern": "^[A-Za-z][A-Za-z0-9_]{0,40}$"
@@ -9052,6 +9215,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -9873,6 +10041,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -10176,6 +10349,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "action": {
                     "type": "string",
                     "enum": [
@@ -10395,6 +10573,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "component": {
                     "type": "string",
                     "enum": [
@@ -10605,6 +10788,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   }
                 }
               }
@@ -10832,6 +11020,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "components": {
                     "type": "array",
@@ -11176,6 +11369,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "statement_timeout": {
                     "type": "integer",
                     "minimum": 1,
@@ -11427,6 +11625,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "minutes": {
                     "type": "integer",
@@ -11684,6 +11887,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "elevation": {
                     "type": "string"
                   }
@@ -11925,6 +12133,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "sql": {
                     "type": "string",
@@ -12208,6 +12421,11 @@
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
                   },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
                   "database": {
                     "type": "string",
                     "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$"
@@ -12457,6 +12675,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "database": {
                     "type": "string",
@@ -12738,6 +12961,11 @@
                   },
                   "ssh": {
                     "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
                   },
                   "sql": {
                     "type": "string",
@@ -13389,6 +13617,1501 @@
           },
           "400": {
             "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/servers": {
+      "get": {
+        "operationId": "get_servers",
+        "summary": "Saved server profiles (no key material is ever stored or returned)",
+        "tags": [
+          "servers"
+        ],
+        "x-required-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "pinned"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "env": {
+                            "type": "string",
+                            "enum": [
+                              "production",
+                              "development",
+                              "testing"
+                            ]
+                          },
+                          "host": {
+                            "type": "string"
+                          },
+                          "port": {
+                            "type": "integer"
+                          },
+                          "user": {
+                            "type": "string"
+                          },
+                          "key": {
+                            "type": "string"
+                          },
+                          "notes": {
+                            "type": "string"
+                          },
+                          "pinned": {
+                            "type": "boolean"
+                          },
+                          "fingerprints": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "created": {
+                            "type": "integer"
+                          },
+                          "updated": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'read'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/servers/compare": {
+      "post": {
+        "operationId": "post_servers_compare",
+        "summary": "Compare 2-6 servers: OS, versions, service states and configuration hashes; `differs` marks drift",
+        "tags": [
+          "servers"
+        ],
+        "x-required-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "ids"
+                ],
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_-]{0,30}$"
+                    },
+                    "minItems": 2,
+                    "maxItems": 6
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "servers",
+                        "rows",
+                        "drift",
+                        "complete"
+                      ],
+                      "properties": {
+                        "servers": {
+                          "type": "array"
+                        },
+                        "rows": {
+                          "type": "array"
+                        },
+                        "drift": {
+                          "type": "integer"
+                        },
+                        "complete": {
+                          "type": "boolean"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'read'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/servers/{id}": {
+      "delete": {
+        "operationId": "delete_servers_id",
+        "summary": "Delete a profile and its pinned host key (the server itself is not touched)",
+        "tags": [
+          "servers"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "server id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "deleted"
+                      ],
+                      "properties": {
+                        "deleted": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_servers_id",
+        "summary": "Create or update a server profile; changing host/port drops the pinned host key",
+        "tags": [
+          "servers"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "server id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "host"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "env": {
+                    "type": "string",
+                    "enum": [
+                      "production",
+                      "development",
+                      "testing"
+                    ]
+                  },
+                  "host": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "integer"
+                  },
+                  "user": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "pinned"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "env": {
+                          "type": "string",
+                          "enum": [
+                            "production",
+                            "development",
+                            "testing"
+                          ]
+                        },
+                        "host": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "type": "integer"
+                        },
+                        "user": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        },
+                        "notes": {
+                          "type": "string"
+                        },
+                        "pinned": {
+                          "type": "boolean"
+                        },
+                        "fingerprints": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "created": {
+                          "type": "integer"
+                        },
+                        "updated": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/servers/{id}/history": {
+      "get": {
+        "operationId": "get_servers_id_history",
+        "summary": "Operations (deploy, service control, edits ...) the journal recorded against this server",
+        "tags": [
+          "servers"
+        ],
+        "x-required-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "server id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'read'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/servers/{id}/hostkey/pin": {
+      "post": {
+        "operationId": "post_servers_id_hostkey_pin",
+        "summary": "Pin the host key whose fingerprint equals `fingerprint` (compare it with the server console first); replacing a pin needs replace=true",
+        "tags": [
+          "servers"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "server id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "fingerprint"
+                ],
+                "properties": {
+                  "fingerprint": {
+                    "type": "string",
+                    "pattern": "^SHA256:[A-Za-z0-9+/]{43}$"
+                  },
+                  "replace": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "pinned"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "env": {
+                          "type": "string",
+                          "enum": [
+                            "production",
+                            "development",
+                            "testing"
+                          ]
+                        },
+                        "host": {
+                          "type": "string"
+                        },
+                        "port": {
+                          "type": "integer"
+                        },
+                        "user": {
+                          "type": "string"
+                        },
+                        "key": {
+                          "type": "string"
+                        },
+                        "notes": {
+                          "type": "string"
+                        },
+                        "pinned": {
+                          "type": "boolean"
+                        },
+                        "fingerprints": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "created": {
+                          "type": "integer"
+                        },
+                        "updated": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "transport",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/servers/{id}/hostkey/scan": {
+      "post": {
+        "operationId": "post_servers_id_hostkey_scan",
+        "summary": "Show the host keys the server presents (SHA256 fingerprints) without trusting them",
+        "tags": [
+          "servers"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "server id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "keys"
+                      ],
+                      "properties": {
+                        "keys": {
+                          "type": "array"
+                        },
+                        "pinned": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "transport",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/servers/{id}/probe": {
+      "post": {
+        "operationId": "post_servers_id_probe",
+        "summary": "Connect with the profile's own credentials and pinned key; reports reachability, OS, sudo, load and free disk",
+        "tags": [
+          "servers"
+        ],
+        "x-required-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "server id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "reachable"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "reachable": {
+                          "type": "boolean"
+                        },
+                        "error": {
+                          "type": "string"
+                        },
+                        "seconds": {
+                          "type": "number"
+                        },
+                        "facts": {
+                          "type": "object"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'read'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "config",
             "content": {
               "application/json": {
                 "schema": {
