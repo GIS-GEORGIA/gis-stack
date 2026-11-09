@@ -1,7 +1,7 @@
 # MapProxy manager (Phase 6, feature flag `mapproxy_manager`)
 
 `GISSTACK_FEATURES=mapproxy_manager gisstack web` -> dashboard page **MapProxy manager** (`/dashboard#/mapproxy`) and `POST /api/v1/mapproxy/*`.
-Native target only for now (Compose/Kubernetes give a clear error).
+All targets: native, Compose and Kubernetes (see "Targets" below).
 
 ## What you get
 * **Health:** service state, WMTS capabilities over HTTP, cache directory writable by the `mapproxy` user, free disk, strict configuration check, layers
@@ -38,3 +38,18 @@ Every change is journalled and audited (principal, scope, what changed, backup i
 construction (no content in command lines), API scopes and audit - and **the real shell scripts against a real MapProxy** (its own validator, a real WSGI
 app serving tiles from a local source, real `mapproxy-seed` runs incl. cancel, real cache files): estimate vs. seed vs. skip-existing vs. refresh, backups and
 restore, age-based cleanup, symlink and busy protection. Skipped where MapProxy is not installed (MapProxy needs Python 3.10+).
+
+## Targets (native, Compose, Kubernetes)
+
+The manager works on all three targets; the target comes from the configuration (`deploy_target`) like everywhere else. Native: scripts run on the
+server as before. Compose and Kubernetes: the same scripts reach the program *inside* its container/pod (`docker exec -i` / `kubectl exec -i`, see
+`gisstack/targets.py`) with the operator's own docker / kubectl rights (no `sudo`); secrets and payloads still travel on stdin. Compose containers are found
+through Compose's own labels (project + service), pods as `TYPE/NAME` in the namespace from `k8s.namespace`; a missing container or workload is a clear error
+before anything runs. `kubectl exec` cannot choose the OS user or pass environment variables, so on Kubernetes the pod's own user is used.
+
+MapProxy specifics: validation (MapProxy's own strict loader), seeding, cache statistics/cleanup, tile preview and health run **inside the MapProxy container** (the generated image has no
+`curl`/`pgrep`; small stand-ins are used). A cancelled seeding run is killed inside the container (stopping the docker/kubectl client alone would not).
+* **Compose:** the configuration is the read-only bind mount `<project dir>/mapproxy`; edits and restores are written to that host directory (backups in `<project dir>/mapproxy-backups`)
+  and MapProxy's reloader picks them up. `gisstack deploy/apply` regenerates those files from the project configuration.
+* **Kubernetes:** the configuration is a ConfigMap owned by the generated manifests, so it can be read and validated but **not edited from here** (an edit says so and nothing changes):
+  change the project configuration and re-apply. Seeding and cache cleanup work on the cache volume.

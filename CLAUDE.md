@@ -169,3 +169,11 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - ტესტებში GNUPGHOME ხანმოკლე გზაზე (`/tmp/gn…`: agent-ის socket-ს სიგრძის ლიმიტი აქვს) და `gpgconf --kill all` cleanup-ში.
 - OpenSSH 9.8+ drops connections from a source that connected without authenticating (ssh-keyscan) - "Connection reset"; throw-away test sshd must set PerSourcePenalties no. Check against a newer sshd: docker run debian:trixie (OpenSSH 10).
 - release.yml installs cosign itself (pinned sha256, curl retries); sigstore/cosign-installer failed repeatedly with curl exit 22 during a GitHub release-download outage (504).
+
+## მენეჯერები Compose/K8s-ზე
+- `gisstack/targets.py`: `Place.prelude()` განსაზღვრავს `gs_in USER CMD...` ბაშ ფუნქციას (Compose: `docker exec -i -u USER -e PG...`, container ლეიბლებით; K8s: `kubectl exec -i TYPE/NAME --`, USER და env **იგნორირებულია**). კონტეინერის არარსებობა → exit 98 + ნათელი შეტყობინება.
+- PostGIS `ScriptGateway(place)`: კონტეინერში superuser = `cfg.postgres.user` (`gs_in postgres env PGUSER=...`), ro-პაროლის ფაილი `$HOME/.gisstack/postgis-ro-<project>.pw`, `root=False` (sudo-ს root-ის ცარიელი kubeconfig/docker ექნებოდა); K8s-ზე `PGCONNECT_TIMEOUT`/`PGOPTIONS` გადაეცემა `env`-ით pod-ის შიგნით.
+- GeoServer `CurlGateway(place)`: მთელი curl სკრიპტი `gs_in '' bash -c <quoted>`-ით კონტეინერის შიგნით (127.0.0.1:8080), კონფიგი stdin-ზე.
+- MapProxy `PlaceGateway`: `_sh` = კონტეინერის შიგნით (`INNER_PRELUDE`: GS_MP_* გადაწერა, `pgrep` ჩანაცვლება — `$$` და `$BASHPID` გამოირიცხება, curl-ის ნაცვლად python); Compose-ზე კონფიგი/ასლები ჰოსტზე `$WD/mapproxy` (`com.docker.compose.project.working_dir` ლეიბლი); K8s-ზე რედაქტირება უარყოფილია (ConfigMap). გაუქმებული seed კონტეინერში უნდა მოიკლას (docker/kubectl კლიენტის მოკვლა საკმარისი არ არის).
+- ტესტები: `tests/test_targets.py` (ყალბი docker/kubectl), `tests/integration/test_compose_managers.py` (რეალური Compose + kubectl shim). pgrep-ის ტესტში ყოველთვის `[m]approxy-seed` ფორმა, თორემ საკუთარ ბრძანებას მოძებნის.
+- tests/integration/test_compose_managers.py: GISSTACK_TEST_INTEGRATION=1 (NOT the GISSTACK_TEST_DOCKER that the ordinary tests job sets); it needs host ports 8080/8081 free.

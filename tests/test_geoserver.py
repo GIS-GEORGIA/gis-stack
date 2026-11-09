@@ -243,10 +243,13 @@ class GatewayScriptTests(unittest.TestCase):
             self.assertNotIn("secretpw", str(cm.exception))
 
     def test_config_requirements(self):
-        base = {"deploy_target": "native", "tomcat": {"port": 8081}, "geoserver": {"admin_user": "admin", "admin_password": "x"}}
+        base = {"deploy_target": "native", "project": "p", "tomcat": {"port": 8081}, "k8s": {"namespace": "ns"}, "geoserver": {"admin_user": "admin", "admin_password": "x"}}
         self.assertEqual(gw_mod.for_config(base, "local", None).port, 8081)
+        for target in ("compose", "k8s"):                       # every target is supported; inside a container GeoServer always listens on 8080
+            gw = gw_mod.for_config({**base, "deploy_target": target}, "local", None)
+            self.assertEqual((gw.port, gw.place.kind), (8080, target))
         with self.assertRaises(DeployError):
-            gw_mod.for_config({**base, "deploy_target": "compose"}, "local", None)
+            gw_mod.for_config({**base, "deploy_target": "mainframe"}, "local", None)
         with self.assertRaises(DeployError):
             gw_mod.for_config({**base, "geoserver": {"admin_user": "admin", "admin_password": ""}}, "local", None)
 
@@ -395,12 +398,14 @@ class ApiTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"GISSTACK_FEATURES": ""}):
             self.assertEqual(self.post("/inventory").get_json()["error"]["code"], "feature_disabled")
 
-    def test_unsupported_target_and_missing_password(self):
+    def test_a_missing_admin_password_is_a_clear_error_on_every_target(self):
         with mock.patch("gisstack.api.routes_geoserver.for_config", gw_mod.for_config):
-            r = self.c.post("/api/v1/geoserver/health", json={"mode": "local", "config": {"deploy_target": "compose", "targets": ["compose"]}}, headers={"Authorization": "Bearer tok"})
-            self.addCleanup(r.close)
-            self.assertEqual(r.status_code, 400)
-            self.assertIn("native", r.get_json()["error"]["message"])
+            for target in ("native", "compose", "k8s"):
+                r = self.c.post("/api/v1/geoserver/health", json={"mode": "local", "config": {"deploy_target": target, "targets": [target], "geoserver": {"admin_password": ""}}},
+                                headers={"Authorization": "Bearer tok"})
+                self.addCleanup(r.close)
+                self.assertEqual(r.status_code, 400, target)
+                self.assertIn("admin_password", r.get_json()["error"]["message"])
 
 
 # --------------------------------------------------------------------------- real GeoServer (opt-in)

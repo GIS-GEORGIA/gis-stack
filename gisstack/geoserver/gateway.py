@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import base64
 import re
+import shlex
 import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from .. import transport
+from .. import targets, transport
 from ..core.errors import DeployError
 
 MAX_BODY = 8 * 1024 * 1024
@@ -39,8 +40,9 @@ def _q(s: str) -> str:
 
 
 class CurlGateway(Gateway):
-    def __init__(self, mode: str, ssh: Optional[dict[str, Any]], port: int, user: str, password: str) -> None:
+    def __init__(self, mode: str, ssh: Optional[dict[str, Any]], port: int, user: str, password: str, place: Optional[targets.Place] = None) -> None:
         self.mode, self.ssh, self.port, self.user, self.password = mode, ssh, int(port), user, password
+        self.place = place or targets.Place("native", "geoserver")
 
     def request(self, method: str, path: str, *, query: Optional[dict[str, str]] = None, body: Optional[bytes] = None,
                 content_type: str = "", accept: str = "", timeout: int = 30) -> Response:
@@ -57,6 +59,10 @@ class CurlGateway(Gateway):
                   f"curl -K - --max-filesize {MAX_BODY} -D \"$t/h\" -o \"$t/b\" -w '%{{http_code}}'  >\"$t/s\" 2>\"$t/e\"; rc=$?; "
                   "echo \"RC $rc\"; echo \"STATUS $(cat \"$t/s\")\"; sed -n 's/\\r$//; s/^\\([A-Za-z-]*\\): \\(.*\\)$/HDR \\1: \\2/p' \"$t/h\"; "
                   "echo \"ERR $(head -c 300 \"$t/e\" | tr '\\n' ' ')\"; echo \"BODY $(base64 -w0 \"$t/b\" 2>/dev/null)\"")
+        if not self.place.native:
+            # Compose / Kubernetes: the whole script (curl, temp files, base64) runs INSIDE the GeoServer container, where 127.0.0.1:8080 is GeoServer;
+            # the curl config with the password still travels on stdin through `exec -i`, never on a command line
+            script = self.place.prelude() + "gs_in '' bash -c " + shlex.quote(script)
         out = transport.run(self.mode, self.ssh, script, timeout=timeout + 15, input_text="\n".join(cfg) + "\n")
         return parse_output(out, self.password)
 
@@ -90,12 +96,12 @@ def local_port(cfg: dict[str, Any]) -> int:
 
 
 def for_config(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]]) -> CurlGateway:
-    if cfg.get("deploy_target") != "native":
-        raise DeployError("GeoServer-ის მენეჯერი ჯერ მხოლოდ native სამიზნეზეა")
+    place = targets.place_of(cfg, "geoserver")
     gs = cfg["geoserver"]
     if not gs.get("admin_password"):
         raise DeployError("geoserver.admin_password ცარიელია")
-    return CurlGateway(mode, ssh, local_port(cfg), gs["admin_user"], gs["admin_password"])
+    port = local_port(cfg) if place.native else place.internal_port       # inside a container GeoServer always listens on 8080
+    return CurlGateway(mode, ssh, port, gs["admin_user"], gs["admin_password"], place)
 
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,62}$")

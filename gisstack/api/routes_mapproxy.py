@@ -6,9 +6,9 @@ from typing import Any
 
 from flask import Response, make_response
 
-from .. import journal, transport
+from .. import journal, targets, transport
 from ..mapproxy import manager as mpm
-from ..mapproxy.server import ScriptGateway
+from ..mapproxy.server import PlaceGateway, ScriptGateway
 from .mount import Req
 from .registry import ApiError, registry
 from .routes import BOOL, INT, OBJ, STR, body, machine, remote, start_job
@@ -21,10 +21,10 @@ BBOX: Schema = {"type": "array", "items": {"type": "number"}, "minItems": 4, "ma
 
 
 def gateway(req: Req) -> tuple[ScriptGateway, dict[str, Any], str]:
-    cfg, mode, ssh, target = machine(req)
-    if target != "native":
-        raise ApiError(400, "config", "MapProxy manager currently supports the native target only")
-    return ScriptGateway(mode, ssh), cfg, transport.host_label(mode, ssh)
+    cfg, mode, ssh, _ = machine(req)
+    place = targets.place_of(cfg, "mapproxy")
+    gw: ScriptGateway = ScriptGateway(mode, ssh) if place.native else PlaceGateway(place, mode, ssh)
+    return gw, cfg, transport.host_label(mode, ssh)
 
 
 def audit(req: Req, event: str, **fields: Any) -> None:

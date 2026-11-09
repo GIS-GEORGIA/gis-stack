@@ -13,7 +13,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Iterator, Optional
 
-from .. import transport
+from .. import targets, transport
 from ..core.errors import DeployError
 
 MAX_FILE = 1024 * 1024
@@ -293,22 +293,7 @@ echo "RC $rc"; echo "STATUS $code"
 sed -n 's/\\r$//; s/^[Cc]ontent-[Tt]ype: \\(.*\\)$/CT \\1/p' "$t/h" | head -1
 echo "BODY $(base64 -w0 "$t/b" 2>/dev/null)"
 """, timeout=45)
-        rc, status, ctype, body = 0, 0, "", b""
-        for line in out.splitlines():
-            if line.startswith("RC "):
-                rc = int(line[3:] or 0)
-            elif line.startswith("STATUS "):
-                status = int(line[7:]) if line[7:].strip().isdigit() else 0
-            elif line.startswith("CT "):
-                ctype = line[3:].split(";")[0].strip().lower()
-            elif line.startswith("BODY "):
-                try:
-                    body = base64.b64decode(line[5:], validate=False)
-                except ValueError:
-                    body = b""
-        if rc != 0 or status == 0:
-            raise DeployError({7: "mapproxy: connection refused (is the service running?)", 28: "mapproxy: tile request timed out"}.get(rc, f"mapproxy: tile request failed (curl {rc})"))
-        return Tile(status, ctype, body)
+        return parse_tile(out)
 
     def probe(self) -> dict[str, Any]:
         out = self._sh(r"""cd /tmp
@@ -324,31 +309,236 @@ if [ -d "$CACHE" ]; then
 else echo "WRITABLE missing"; fi
 [ -x "$VENV/bin/mapproxy"-seed ] && echo "INSTALLED yes" || echo "INSTALLED no"
 """, timeout=60)
-        res: dict[str, Any] = {"unit": "unknown", "http": 0, "caps": b"", "seeding": 0, "writable": "unknown", "disk_total_kb": None, "disk_free_kb": None, "installed": False, "seeding_known": True}
+        return parse_probe(out)
+
+
+# --------------------------------------------------------------------------- Compose / Kubernetes
+# Inside the MapProxy container (python:3.12-slim image of the generated bundles): MapProxy and its tools are in /usr/local, the configuration is mounted at
+# /etc/mapproxy and the tile cache lives on the volume at /var/lib/mapproxy; the container's own user (mapproxy) runs everything, curl and pgrep are not there.
+INNER_PRELUDE = r"""export GS_MP_DIR=/etc/mapproxy GS_MP_CACHE=/var/lib/mapproxy/cache_data GS_MP_BACKUPS=/tmp/gisstack-unused GS_MP_VENV=/usr/local GS_MP_PORT=8081 GS_MP_RUNAS=
+pgrep() {   # minimal pgrep -f for images without procps: matches the full command lines in /proc, never this shell
+  local pat="${@: -1}" p rc=1
+  for p in /proc/[0-9]*; do
+    [ "${p#/proc/}" = "$$" ] || [ "${p#/proc/}" = "$BASHPID" ] && continue      # never this shell or its command-substitution subshell (same command line)
+    if tr '\0' ' ' < "$p/cmdline" 2>/dev/null | grep -q -- "$pat"; then echo "${p#/proc/}"; rc=0; fi
+  done
+  return $rc
+}
+"""
+HTTP_PY = r"""import base64, sys, urllib.request, urllib.error
+url, maxb = sys.argv[1], int(sys.argv[2])
+rc, status, ct, body = 0, 0, "", b""
+try:
+    with urllib.request.urlopen(url, timeout=30) as r:
+        status, ct, body = r.status, r.headers.get("Content-Type", ""), r.read(maxb + 1)
+except urllib.error.HTTPError as e:
+    status, ct, body = e.code, e.headers.get("Content-Type", ""), e.read(maxb + 1)
+except Exception as e:
+    m = str(e).lower()
+    rc = 7 if "refused" in m else 28 if "timed out" in m else 1
+print("RC", rc)
+print("STATUS", status)
+print("CT", ct)
+print("BODY", base64.b64encode(body[:maxb]).decode())
+"""
+
+
+class PlaceGateway(ScriptGateway):
+    """MapProxy in a Compose container or a Kubernetes pod.
+
+    Everything that touches MapProxy, its cache or its processes (validation, seeding, cache statistics and cleanup, tile preview, health) runs INSIDE the
+    container through `gs_in` (see targets.Place).  The configuration is different: in Compose it is a read-only bind mount of `<project dir>/mapproxy`,
+    so edits are written to that host directory (backups next to it) and MapProxy's own reloader picks them up; in Kubernetes it is a ConfigMap owned by the
+    generated manifests, so it can be read but not edited from here."""
+
+    def __init__(self, place: targets.Place, mode: str, ssh: Optional[dict[str, Any]]) -> None:
+        super().__init__(mode, ssh)
+        self.place = place
+
+    # -- running things
+    def _wrap(self, script: str) -> str:
+        return self.place.prelude() + "gs_in '' bash -c " + shlex.quote(INNER_PRELUDE + PRELUDE + script)
+
+    def _sh(self, script: str, stdin: str = "", timeout: int = 60) -> str:
+        return transport.run(self.mode, self.ssh, self._wrap(script), root=False, timeout=timeout, input_text=stdin or None)
+
+    def _host(self, script: str, stdin: str = "", timeout: int = 60) -> str:
+        """A script on the machine that runs docker (Compose only): the project directory is in $WD."""
+        pre = self.place.prelude() + 'WD="$(' + shlex.quote(self.place.runtime) + ' inspect -f \'{{ index .Config.Labels "com.docker.compose.project.working_dir" }}\' "$GS_CTR")"\n' \
+              '[ -d "$WD/mapproxy" ] || { echo "the project directory $WD has no mapproxy/ folder" >&2; exit 97; }\nMP_DIR="$WD/mapproxy"; BK="$WD/mapproxy-backups"\n'
+        return transport.run(self.mode, self.ssh, pre + script, root=False, timeout=timeout, input_text=stdin or None)
+
+    # -- configuration
+    def read_backup(self, backup_id: str) -> dict[str, Optional[str]]:
+        if self.place.kind != "compose":
+            raise DeployError("mapproxy: configuration backups exist for Compose only (Kubernetes keeps the configuration in a ConfigMap)")
+        if not BACKUP_RE.match(backup_id or ""):
+            raise DeployError("mapproxy: invalid backup id")
+        out = self._host(rf"""B="$BK/{backup_id}"
+[ -d "$B" ] || {{ echo "@@missing"; exit 0; }}
+for f in mapproxy.yaml seed.yaml; do
+  echo "@@$f"
+  if [ -f "$B/$f" ]; then head -c {MAX_FILE} "$B/$f" | base64 -w0; echo; else echo "-"; fi
+done
+""")
+        if "@@missing" in out:
+            raise DeployError("mapproxy: no such backup")
+        return _files(out)
+
+    def backups(self) -> list[dict[str, Any]]:
+        if self.place.kind != "compose":
+            return []
+        out = self._host(r"""[ -d "$BK" ] || exit 0
+for d in "$BK"/*/; do
+  [ -d "$d" ] || continue
+  id="$(basename "$d")"
+  echo "B $id $(stat -c %Y "$d" 2>/dev/null || echo 0) $(du -sb "$d" 2>/dev/null | cut -f1)"
+done
+""")
+        res = []
         for line in out.splitlines():
-            k, _, v = line.partition(" ")
-            if k == "UNIT":
-                res["unit"] = v.strip() or "unknown"
-            elif k == "HTTP":
-                res["http"] = int(v) if v.strip().isdigit() else 0
-            elif k == "CAPS":
-                with contextlib.suppress(ValueError):
-                    res["caps"] = base64.b64decode(v, validate=False)
-            elif k == "SEEDING":
-                res["seeding"] = int(v) if v.strip().isdigit() else 0
-                res["seeding_known"] = v.strip().isdigit()
-            elif k == "WRITABLE":
-                res["writable"] = v.strip()
-            elif k == "DISK":
-                p = v.split()
-                if len(p) == 2 and all(x.isdigit() for x in p):
-                    res["disk_total_kb"], res["disk_free_kb"] = int(p[0]), int(p[1])
-            elif k == "INSTALLED":
-                res["installed"] = v.strip() == "yes"
-        return res
+            p = line.split()
+            if len(p) == 4 and p[0] == "B" and BACKUP_RE.match(p[1]):
+                res.append({"id": p[1], "created": int(p[2]), "bytes": int(p[3] or 0)})
+        return sorted(res, key=lambda b: str(b["id"]), reverse=True)
+
+    def apply(self, config: str, seed: Optional[str], dry_run: bool) -> Check:
+        if len(config) > MAX_FILE or (seed is not None and len(seed) > MAX_FILE):
+            raise DeployError("mapproxy: configuration too large")
+        stdin = b64(config) + "\n" + (b64(seed) if seed is not None else "-") + "\n"
+        checked = _check(self._sh(_validate_script(True), stdin=stdin, timeout=90))          # MapProxy itself, inside the container, strictly
+        if dry_run or not checked.ok:
+            return checked
+        if self.place.kind != "compose":
+            raise DeployError("mapproxy: on Kubernetes the configuration is a ConfigMap generated from the project - change the project configuration and re-apply it")
+        out = self._host(r"""IFS= read -r CB; IFS= read -r SB
+t="$(mktemp -d)" || exit 1; trap 'rm -rf "$t"' EXIT
+printf %s "$CB" | base64 -d > "$t/mapproxy.yaml" || { echo "BAD"; exit 0; }
+SEEDARG=""; [ "$SB" != "-" ] && { printf %s "$SB" | base64 -d > "$t/seed.yaml" || { echo "BAD"; exit 0; }; SEEDARG=1; }
+id="$(date +%Y%m%d-%H%M%S)-$(head -c2 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+install -d -m 700 "$BK/$id"
+for f in mapproxy.yaml seed.yaml; do if [ -f "$MP_DIR/$f" ]; then cp -p "$MP_DIR/$f" "$BK/$id/$f"; fi; done
+install -m 644 "$t/mapproxy.yaml" "$MP_DIR/.mapproxy.yaml.new" && mv -f "$MP_DIR/.mapproxy.yaml.new" "$MP_DIR/mapproxy.yaml"
+if [ -n "$SEEDARG" ]; then install -m 644 "$t/seed.yaml" "$MP_DIR/.seed.yaml.new" && mv -f "$MP_DIR/.seed.yaml.new" "$MP_DIR/seed.yaml"; fi
+echo "BACKUP $id"
+ls -1 "$BK" 2>/dev/null | sort | head -n -30 | while read -r old; do rm -rf -- "${BK:?}/$old"; done
+""", stdin=stdin, timeout=60)
+        if "BACKUP " not in out:
+            raise DeployError("mapproxy: the configuration could not be written to the project directory")
+        checked.backup = next((ln[7:].strip() for ln in out.splitlines() if ln.startswith("BACKUP ")), "")
+        return checked
+
+    # -- seeding: the seeder runs in the container, and a cancelled run must be killed THERE (killing the docker/kubectl client does not)
+    def seed(self, seed: str, concurrency: int, dry_run: bool, stop: Optional[threading.Event]) -> Iterator[str]:
+        if not 1 <= int(concurrency) <= 4:
+            raise DeployError("mapproxy: concurrency must be 1..4")
+        flags = "--dry-run" if dry_run else ""
+        inner = INNER_PRELUDE + PRELUDE + f"""t="$(mktemp -d)" || exit 1; trap 'rm -rf "$t"' EXIT
+printf %s {shlex.quote(b64(seed))} | base64 -d > "$t/seed.yaml"
+[ -x "$VENV/bin/mapproxy"-seed ] || {{ echo "MapProxy is not installed in the container" >&2; exit 4; }}
+cd /tmp
+nice -n 10 "$VENV/bin/mapproxy-seed" -f "$MP_DIR/mapproxy.yaml" -s "$t/seed.yaml" -c {int(concurrency)} {flags} 2>&1
+"""
+        script = self.place.prelude() + "gs_in '' bash -c " + shlex.quote(inner)
+        try:
+            yield from transport.stream(self.mode, self.ssh, script, root=False, stop=stop, deadline=SEED_DEADLINE)
+        finally:
+            if stop is not None and stop.is_set():
+                with contextlib.suppress(DeployError):
+                    self._sh(r"""for p in $(pgrep -f '[m]approxy-seed -f' 2>/dev/null); do kill "$p" 2>/dev/null; done
+for _ in 1 2 3 4 5; do pgrep -f '[m]approxy-seed -f' >/dev/null 2>&1 || exit 0; sleep 1; done
+for p in $(pgrep -f '[m]approxy-seed -f' 2>/dev/null); do kill -9 "$p" 2>/dev/null; done; exit 0""", timeout=30)
+
+    # -- HTTP checks without curl
+    def tile(self, layer: str, grid: str, z: int, x: int, y: int, ext: str) -> Tile:
+        _name("layer", layer)
+        _name("grid", grid)
+        if ext not in ("png", "jpeg"):
+            raise DeployError("mapproxy: tile format must be png or jpeg")
+        z, x, y = int(z), int(x), int(y)
+        url = f"http://127.0.0.1:8081/wmts/{layer}/{grid}/{z}/{x}/{y}.{ext}"
+        return parse_tile(self._sh(f"""python - {shlex.quote(url)} 2097152 <<'PY'\n{HTTP_PY}PY\n""", timeout=45))
+
+    def probe(self) -> dict[str, Any]:
+        out = self._sh(rf"""cd /tmp
+echo "UNIT unknown"
+python - "http://127.0.0.1:$PORT/wmts/1.0.0/WMTSCapabilities.xml" 2097152 > /tmp/.gs-probe 2>/dev/null <<'PY'
+{HTTP_PY}PY
+echo "HTTP $(sed -n 's/^STATUS //p' /tmp/.gs-probe)"; echo "CAPS $(sed -n 's/^BODY //p' /tmp/.gs-probe)"; rm -f /tmp/.gs-probe
+echo "SEEDING $(pgrep -f '[m]approxy-seed' 2>/dev/null | wc -l)"
+if [ -d "$CACHE" ]; then
+  w=$([ -w "$CACHE" ] && echo yes || echo no); echo "WRITABLE $w"; echo "DISK $(df -Pk "$CACHE" 2>/dev/null | awk 'NR==2 {{print $2, $4}}')"
+else echo "WRITABLE missing"; fi
+[ -x "$VENV/bin/mapproxy"-seed ] && echo "INSTALLED yes" || echo "INSTALLED no"
+""", timeout=60)
+        return parse_probe(out)
+
+
+def _validate_script(dry: bool) -> str:
+    """The validation half of ScriptGateway.apply (reads two base64 lines on stdin; runs MapProxy's own strict loader)."""
+    return f"""DRY={'1' if dry else '0'}
+IFS= read -r CB; IFS= read -r SB
+fail() {{ echo "RESULT {{\\"ok\\": false, \\"errors\\": [\\"$1\\"], \\"warnings\\": []}}"; exit 0; }}
+[ -x "$VENV/bin/python" ] || fail "MapProxy is not installed in the container"
+t="$(mktemp -d)" || exit 1; trap 'rm -rf "$t"' EXIT
+printf %s "$CB" | base64 -d > "$t/mapproxy.yaml" || fail "bad payload"
+SEEDARG=""
+if [ "$SB" != "-" ]; then printf %s "$SB" | base64 -d > "$t/seed.yaml" || fail "bad payload"; SEEDARG="$t/seed.yaml"; fi
+cat > "$t/validate.py" <<'PY'
+{VALIDATOR}
+PY
+cd /tmp
+"$VENV/bin/python" "$t/validate.py" "$t/mapproxy.yaml" $SEEDARG 2>"$t/err" | grep '^RESULT ' > "$t/res"
+[ -s "$t/res" ] || fail "validator crashed: $(head -c 200 "$t/err" | tr -d '"\\\\' | tr '\\n' ' ')"
+cat "$t/res"
+"""
 
 
 # --------------------------------------------------------------------------- parsers
+def parse_tile(out: str) -> Tile:
+    rc, status, ctype, body = 0, 0, "", b""
+    for line in out.splitlines():
+        if line.startswith("RC "):
+            rc = int(line[3:] or 0)
+        elif line.startswith("STATUS "):
+            status = int(line[7:]) if line[7:].strip().isdigit() else 0
+        elif line.startswith("CT "):
+            ctype = line[3:].split(";")[0].strip().lower()
+        elif line.startswith("BODY "):
+            try:
+                body = base64.b64decode(line[5:], validate=False)
+            except ValueError:
+                body = b""
+    if rc != 0 or status == 0:
+        raise DeployError({7: "mapproxy: connection refused (is the service running?)", 28: "mapproxy: tile request timed out"}.get(rc, f"mapproxy: tile request failed (curl {rc})"))
+    return Tile(status, ctype, body)
+
+
+def parse_probe(out: str) -> dict[str, Any]:
+    res: dict[str, Any] = {"unit": "unknown", "http": 0, "caps": b"", "seeding": 0, "writable": "unknown", "disk_total_kb": None, "disk_free_kb": None, "installed": False, "seeding_known": True}
+    for line in out.splitlines():
+        k, _, v = line.partition(" ")
+        if k == "UNIT":
+            res["unit"] = v.strip() or "unknown"
+        elif k == "HTTP":
+            res["http"] = int(v) if v.strip().isdigit() else 0
+        elif k == "CAPS":
+            with contextlib.suppress(ValueError):
+                res["caps"] = base64.b64decode(v, validate=False)
+        elif k == "SEEDING":
+            res["seeding"] = int(v) if v.strip().isdigit() else 0
+            res["seeding_known"] = v.strip().isdigit()
+        elif k == "WRITABLE":
+            res["writable"] = v.strip()
+        elif k == "DISK":
+            p = v.split()
+            if len(p) == 2 and all(x.isdigit() for x in p):
+                res["disk_total_kb"], res["disk_free_kb"] = int(p[0]), int(p[1])
+        elif k == "INSTALLED":
+            res["installed"] = v.strip() == "yes"
+    return res
+
+
 def _files(out: str) -> dict[str, Optional[str]]:
     files: dict[str, Optional[str]] = {}
     name = None

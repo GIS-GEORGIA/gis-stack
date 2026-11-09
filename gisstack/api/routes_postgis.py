@@ -8,7 +8,7 @@ from .. import journal, transport
 from ..postgis import manager as pgm
 from ..postgis.server import ScriptGateway
 from .mount import Req
-from .registry import ApiError, registry
+from .registry import registry
 from .routes import BOOL, INT, OBJ, STR, body, machine, remote
 from .schema import Schema
 
@@ -22,9 +22,7 @@ RESULT: Schema = {"type": "object", "required": ["columns", "rows"], "properties
 
 
 def gateway(req: Req) -> tuple[Any, dict[str, Any], str]:
-    cfg, mode, ssh, target = machine(req)
-    if target != "native":
-        raise ApiError(400, "config", "PostGIS manager currently supports the native target only")
+    cfg, mode, ssh, _ = machine(req)                     # native, Compose or Kubernetes: ScriptGateway picks the right way in
     return ScriptGateway(cfg, mode, ssh), cfg, transport.host_label(mode, ssh)
 
 

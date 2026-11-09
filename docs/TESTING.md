@@ -18,6 +18,7 @@ These install real software in throw-away containers, so they are opt-in and run
 | `tests/integration/test_packages.py` | same | the `.deb` / `.rpm` install with apt / dnf, `gisstack --version`, `generate`, the web unit, removal (a format whose builder `dpkg-deb`/`rpmbuild` is missing is skipped) |
 | `tests/integration/test_compose.py` | `GISSTACK_TEST_DOCKER=1` | a real Compose PostGIS stack: up, healthy, status, restart through gis-stack's control script, down |
 | `tests/e2e/test_browser.py` | `GISSTACK_TEST_E2E=1`, `pip install playwright && playwright install chromium` | real `gisstack web` + Chromium: token authentication, configure, preview, bundle download, dashboard pages, language switch |
+| `tests/integration/test_compose_managers.py` | `GISSTACK_TEST_INTEGRATION=1` | PostGIS, GeoServer and MapProxy managers against real Compose stacks (MapProxy image is built from the generated Dockerfile: needs network once); the same managers through a **`kubectl` shim** that forwards to those containers (proves the `kubectl exec` commands we build are well-formed; not a real cluster) |
 | CI job `kubernetes` | CI only | PostGIS manifests applied to a kind cluster |
 
 Containers are privileged and use the host cgroup namespace (needed by systemd); images are cached as `gisstack-it-<distro>:1`.

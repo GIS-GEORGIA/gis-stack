@@ -16,7 +16,7 @@ import shlex
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from .. import transport
+from .. import targets, transport
 from ..core.errors import DeployError
 
 RO_ROLE = "gisstack_ro"
@@ -62,15 +62,26 @@ class ScriptGateway(Gateway):
     def __init__(self, cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]]) -> None:
         self.cfg, self.mode, self.ssh = cfg, mode, ssh
         pg = cfg["postgres"]
-        self.port, self.owner, self.password = int(pg["port"]), str(pg["user"]), str(pg["password"])
+        self.owner, self.password = str(pg["user"]), str(pg["password"])
+        self.place = targets.place_of(cfg, "postgis")
+        _check_names(owner=self.owner)
+        # native: the published/host port; Compose/Kubernetes: psql runs INSIDE the container, so it is always the container's own port
+        self.port = int(pg["port"]) if self.place.native else self.place.internal_port
+        # who runs psql: native = OS users `postgres` / `nobody` (runuser); containers = `gs_in USER` (see targets.Place)
+        # in a container the database superuser is the stack's own role (POSTGRES_USER), not a role called postgres: pass it as PGUSER
+        self.pgrun = _PGRUN if self.place.native else f"gs_in postgres env PGUSER={self.owner}"
+        self.pgrun_low = _PGRUN_LOW if self.place.native else "gs_in nobody"
+        # the read-only role's password file lives on the machine that runs the script; native keeps it root-only under /var/lib/gisstack
+        self.pwfile = _PWFILE if self.place.native else f"${{GS_PG_PWFILE:-$HOME/.gisstack/postgis-ro-{cfg['project']}.pw}}"
 
     def _sh(self, script: str, stdin: str = "", timeout: int = 40) -> str:
-        return transport.run(self.mode, self.ssh, script, root=True, timeout=timeout, input_text=stdin or None)
+        # containers are reached with the operator's own docker / kubectl rights: sudo would use root's (empty) kubeconfig
+        return transport.run(self.mode, self.ssh, self.place.prelude() + script, root=self.place.native, timeout=timeout, input_text=stdin or None)
 
     # ------------------------------------------------------------------ catalog (superuser, fixed SQL)
     def sections(self, db: str, queries: dict[str, str]) -> dict[str, tuple[int, str]]:
         _check_names(database=db)
-        lines = ["set -u", "cd /tmp", f"PGRUN=\"{_PGRUN}\"",
+        lines = ["set -u", "cd /tmp", f"PGRUN=\"{self.pgrun}\"",
                  'sec() { local out rc; out="$($PGRUN psql -X -q --csv -v ON_ERROR_STOP=1 -d ' + shlex.quote(db) + ' -c "$2" 2>&1)"; rc=$?; echo "@@$1 $rc"; printf \'%s\\n\' "$out"; }']
         for name, sql in queries.items():
             _check_names(section=name)
@@ -82,7 +93,7 @@ class ScriptGateway(Gateway):
         _check_names(database=db, owner=owner)
         secs = int(statement_timeout_s)
         script = rf"""set -eu
-PGRUN="{_PGRUN}"; F="{_PWFILE}"
+PGRUN="{self.pgrun}"; F="{self.pwfile}"
 install -d -m 700 "$(dirname "$F")"
 if [ ! -s "$F" ]; then ( umask 077; head -c 36 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32 > "$F" ); fi
 chmod 600 "$F"
@@ -126,11 +137,13 @@ echo setup-ok
         prefix = "SET application_name = 'gisstack'; " if write else "SET TRANSACTION READ ONLY; "
         encoded = base64.b64encode((prefix + sql).encode("utf-8")).decode()
         if role == "ro":
-            get_pw = f'F="{_PWFILE}"; [ -s "$F" ] || {{ echo "@@rc 96"; exit 0; }}; PW="$(cat "$F")"; IFS= read -r B64'
+            get_pw = f'F="{self.pwfile}"; [ -s "$F" ] || {{ echo "@@rc 96"; exit 0; }}; PW="$(cat "$F")"; IFS= read -r B64'
             stdin, options = encoded + "\n", ""
         else:
             get_pw = "IFS= read -r PW; IFS= read -r B64"
             stdin, options = self.password + "\n" + encoded + "\n", " PGOPTIONS='-c statement_timeout=60000'"
+        # kubectl exec cannot forward environment variables: hand the (non-secret) client settings to psql through env(1) inside the pod
+        inside = "" if self.place.can_pass_env else " env PGCONNECT_TIMEOUT=5" + (" 'PGOPTIONS=-c statement_timeout=60000'" if role == "rw" else "")
         flags = "-X --csv" + ("" if write else " -q") + " -P " + shlex.quote("null=" + NULL_TOKEN)
         script = f"""set -u
 cd /tmp
@@ -138,7 +151,7 @@ cd /tmp
 SQL="$(printf %s "$B64" | base64 -d)" || {{ echo "@@rc 97"; exit 0; }}
 t="$(mktemp -d)"; trap 'rm -rf "$t"' EXIT
 export PGPASSWORD="$PW" PGCONNECT_TIMEOUT=5{options}
-{_PGRUN_LOW} psql {flags} -h 127.0.0.1 -p {self.port} -U {user} -d {db} -c "$SQL" 2>"$t/e" | head -c {int(max_bytes)} >"$t/o"
+{self.pgrun_low}{inside} psql {flags} -h 127.0.0.1 -p {self.port} -U {user} -d {db} -c "$SQL" 2>"$t/e" | head -c {int(max_bytes)} >"$t/o"
 rc=${{PIPESTATUS[0]}}
 echo "@@rc $rc"; echo "@@err"; head -c 1500 "$t/e"; echo "@@out"; cat "$t/o"
 """

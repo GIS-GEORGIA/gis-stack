@@ -1,7 +1,7 @@
 # PostGIS manager (Phase 5, feature flag `postgis_manager`)
 
 `GISSTACK_FEATURES=postgis_manager gisstack web` -> dashboard page **PostGIS manager** (`/dashboard#/postgis`) and `POST /api/v1/postgis/*`.
-Native target only for now (Compose/Kubernetes give a clear error).
+All targets: native, Compose and Kubernetes (see "Targets" below).
 
 ## What you get
 * **Inventory and health:** databases and sizes, schemas, tables (size, row estimate), spatial columns (type, SRID, dimensions, **spatial index present?**),
@@ -41,3 +41,16 @@ read: `inventory`, `health` - operate: `query` - admin: `editor/setup`, `elevate
 `tests/test_postgis.py`: splitter, inventory/health logic, paging/limits, error mapping, elevation binding and expiry, script construction (no secrets in
 command lines), API scopes and audit; and **the real shell scripts against a real PostGIS 17 container** (`GISSTACK_TEST_DOCKER=1` pulls the image; CI does
 on one matrix entry): read/paging/byte cap, 25 write/escape attempts, shell-escape attempts, statement timeout, wrong passwords, elevated writes.
+
+## Targets (native, Compose, Kubernetes)
+
+The manager works on all three targets; the target comes from the configuration (`deploy_target`) like everywhere else. Native: scripts run on the
+server as before. Compose and Kubernetes: the same scripts reach the program *inside* its container/pod (`docker exec -i` / `kubectl exec -i`, see
+`gisstack/targets.py`) with the operator's own docker / kubectl rights (no `sudo`); secrets and payloads still travel on stdin. Compose containers are found
+through Compose's own labels (project + service), pods as `TYPE/NAME` in the namespace from `k8s.namespace`; a missing container or workload is a clear error
+before anything runs. `kubectl exec` cannot choose the OS user or pass environment variables, so on Kubernetes the pod's own user is used.
+
+PostGIS specifics: in a container the database superuser is the stack's own role (`POSTGRES_USER`), so inventory and role setup run as `psql` with `PGUSER=<that role>`; the
+read-only editor's password file is kept on the machine that runs docker/kubectl (`$HOME/.gisstack/postgis-ro-<project>.pw`, mode 600), not in the container; `psql` for the editor
+runs as `nobody` in Compose (as the pod user on Kubernetes - the fixed `SET ...;` prefix, the read-only role and the read-only transaction are the boundary there, and loopback
+inside the official image trusts local connections, so no password is passed on Kubernetes).

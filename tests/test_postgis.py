@@ -377,9 +377,8 @@ class ScriptTests(unittest.TestCase):
             gw.setup("gis", "o; id", 15)
         with self.assertRaises(DeployError):
             gw.run("select 1", role="postgres", db="gis", write=False)
-        bad = ScriptGateway({**CFG, "postgres": {**CFG["postgres"], "user": "bad user"}}, "local", None)
-        with self.assertRaises(DeployError):
-            bad.run("select 1", role="rw", db="gis", write=True)
+        with self.assertRaises(DeployError):                     # a hostile role name is refused when the gateway is built, before any script exists
+            ScriptGateway({**CFG, "postgres": {**CFG["postgres"], "user": "bad user"}}, "local", None)
 
     def test_setup_script_keeps_the_password_off_the_command_line(self):
         gw = ScriptGateway(CFG, "local", None)
@@ -540,9 +539,10 @@ class ApiTests(unittest.TestCase):
         self.assertTrue([e for e in self.audit() if e.get("event") == "postgis.setup"])
         self.assertEqual(self.post("/editor/setup", {"statement_timeout": 0}).status_code, 400)
 
-    def test_native_only_and_feature_flag(self):
-        r = self.post("/inventory", config={"deploy_target": "compose", "targets": ["compose"], "project": "pg"})
-        self.assertEqual(r.status_code, 400)
+    def test_every_target_is_accepted_and_the_feature_flag_still_applies(self):
+        for target in ("compose", "k8s"):
+            r = self.post("/inventory", config={"deploy_target": target, "targets": [target], "project": "pg"})
+            self.assertEqual(r.status_code, 200, (target, r.get_json()))
         with mock.patch.dict(os.environ, {"GISSTACK_FEATURES": ""}):
             self.assertEqual(self.post("/inventory").get_json()["error"]["code"], "feature_disabled")
 

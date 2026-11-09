@@ -7,7 +7,7 @@
 curl's stdin, so they are not in a process list, a log, an API request or an answer, and never reach the browser. GeoServer's own security decides what is
 allowed: its 401/403 answers become `403 forbidden` ("check geoserver.admin_user / admin_password").
 
-**Scope of this release:** native target only (Compose/Kubernetes: a clear error). Read: health, inventory (workspaces, datastores, layers, layer groups,
+**Scope of this release:** all targets (see below). Read: health, inventory (workspaces, datastores, layers, layer groups,
 styles), layer detail, WMS/WFS/WMTS capabilities, validation findings, layer preview (WMS GetMap proxied; PNG/JPEG, 16-2048 px, the answer must really
 be an image). Change: create workspace (`admin`), delete workspace (`admin`; recursive delete needs `confirm=true`, the dashboard asks you to type the
 name), reload catalog (`operate`). Not yet: creating datastores/layers/styles/layer groups, security-rule editing, a visual layer browser with endpoint
@@ -28,3 +28,13 @@ entities is refused; one failing listing never hides the others; the preview nev
 HTTP server (credentials, binary bodies, special characters, failures), API scopes/contracts, and **a real GeoServer container**
 (`docker.osgeo.org/geoserver:2.28.6`; runs when the image is present, `GISSTACK_TEST_DOCKER=1` pulls it - CI does on one matrix entry).
 GeoServer 3.0 is not covered by an automated test yet.
+
+## Targets (native, Compose, Kubernetes)
+
+The manager works on all three targets; the target comes from the configuration (`deploy_target`) like everywhere else. Native: scripts run on the
+server as before. Compose and Kubernetes: the same scripts reach the program *inside* its container/pod (`docker exec -i` / `kubectl exec -i`, see
+`gisstack/targets.py`) with the operator's own docker / kubectl rights (no `sudo`); secrets and payloads still travel on stdin. Compose containers are found
+through Compose's own labels (project + service), pods as `TYPE/NAME` in the namespace from `k8s.namespace`; a missing container or workload is a clear error
+before anything runs. `kubectl exec` cannot choose the OS user or pass environment variables, so on Kubernetes the pod's own user is used.
+
+GeoServer is called from inside its own container on `127.0.0.1:8080`; the curl configuration with the admin password goes to `exec -i` on stdin.
