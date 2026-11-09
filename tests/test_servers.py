@@ -234,6 +234,10 @@ class RealSshTests(Home):
         cfg = d / "sshd_config"
         cfg.write_text(f"Port {port}\nListenAddress 127.0.0.1\nHostKey {hk}\nAuthorizedKeysFile {auth}\nPidFile {d}/pid\nPasswordAuthentication no\n"
                        f"KbdInteractiveAuthentication no\nUsePAM no\nStrictModes no\nPubkeyAuthentication yes\nMaxStartups 100:30:200\nLoginGraceTime 30\n")
+        # OpenSSH 9.8+ penalises a source that connects without authenticating (ssh-keyscan does exactly that) and then drops its next connections
+        # for seconds ("Connection reset"): switch that off for this throw-away server; older sshd does not know the option.
+        if "persourcepenalties" in subprocess.run([SSHD, "-T", "-f", str(cfg)], capture_output=True, text=True).stdout.lower():
+            cfg.write_text(cfg.read_text() + "PerSourcePenalties no\n")
         log = open(d / "sshd.log", "wb")  # noqa: SIM115 - lives as long as the sshd process; closed by addCleanup
         self.addCleanup(log.close)
         p = subprocess.Popen([SSHD, "-D", "-e", "-f", str(cfg)], stdout=subprocess.DEVNULL, stderr=log)
