@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "GIS Stack API",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "description": "Versioned HTTP API of the GIS Stack installer and operator. Every JSON answer is {data, error, meta}; errors carry a stable `code`."
   },
   "servers": [
