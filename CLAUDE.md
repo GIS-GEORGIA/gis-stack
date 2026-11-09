@@ -177,3 +177,10 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - MapProxy `PlaceGateway`: `_sh` = კონტეინერის შიგნით (`INNER_PRELUDE`: GS_MP_* გადაწერა, `pgrep` ჩანაცვლება — `$$` და `$BASHPID` გამოირიცხება, curl-ის ნაცვლად python); Compose-ზე კონფიგი/ასლები ჰოსტზე `$WD/mapproxy` (`com.docker.compose.project.working_dir` ლეიბლი); K8s-ზე რედაქტირება უარყოფილია (ConfigMap). გაუქმებული seed კონტეინერში უნდა მოიკლას (docker/kubectl კლიენტის მოკვლა საკმარისი არ არის).
 - ტესტები: `tests/integration/test_k8s_managers.py` (რეალური kind კლასტერი, `GISSTACK_TEST_K8S=1`; ლოკალურად kind+kubectl ბინარები ჩამოიტვირთება GitHub-იდან, node image `kindest/node`; `kind load docker-image` ხშირად ჩავარდება multi-arch-ზე — pod-ები თავად ჩამოტვირთავენ image-ებს), `tests/test_targets.py` (ყალბი docker/kubectl), `tests/integration/test_compose_managers.py` (რეალური Compose + kubectl shim). pgrep-ის ტესტში ყოველთვის `[m]approxy-seed` ფორმა, თორემ საკუთარ ბრძანებას მოძებნის.
 - tests/integration/test_compose_managers.py: GISSTACK_TEST_INTEGRATION=1 (NOT the GISSTACK_TEST_DOCKER that the ordinary tests job sets); it needs host ports 8080/8081 free.
+
+## უსაფრთხოების გვერდი და აუდიტი 2026-11
+- `gisstack/security_report.py` (წმინდა: `posture()`, `audit_events()`), `api/routes_security.py` (`admin`), `views/security.js`. ახალი შემოწმება = ახალი ჩანაწერი `posture()`-ში + ტესტი `tests/test_security_report.py`-ში. არარსებული ფაილი არ ბეჭდება (არაფერი გამოგონილი); symlink არ მიჰყვება.
+- დაფის JS-ში დინამიურ ტექსტს `t()`-ით **ნუ** გაატარებ: გვერდს თავად თარგმნის `MutationObserver`; `t()` ტექსტს ინგლისურად ამოყინავს და ენის გადართვისას უკან ვეღარ ბრუნდება.
+- ლოკალური გაშვებისთვის flask-იანი venv გჭირდება: `python3` ფლასკის გარეშე API ტესტებს (ApiBase) გამოტოვებს; მხოლოდ venv-ით გაშვებული 759 ტესტი სრულად მოწმდება. `node --test tests/js` დირექტორიით ვერ მუშაობს — `node --test tests/js/*.mjs`.
+- აუდიტის გეგმა და მდგომარეობა: `docs/AUDIT-2026-11.md`.
+

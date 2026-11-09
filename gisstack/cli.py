@@ -200,7 +200,7 @@ def _token(a: argparse.Namespace) -> int:
 
 def _api(a: argparse.Namespace) -> int:
     try:
-        from .api import docs, routes, routes_geoserver, routes_mapproxy, routes_monitor, routes_postgis, routes_servers  # noqa: F401 - importing registers the routes
+        from .api import docs, routes, routes_geoserver, routes_mapproxy, routes_monitor, routes_postgis, routes_security, routes_servers  # noqa: F401 - importing registers the routes
         from .api.registry import registry
     except ImportError as e:
         print(f"ERROR: the API needs Flask ({e}): pip install flask", file=sys.stderr)

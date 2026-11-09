@@ -13654,6 +13654,283 @@
         }
       }
     },
+    "/security/audit": {
+      "get": {
+        "operationId": "get_security_audit",
+        "summary": "Newest administrative events from the audit log (optionally only those starting with a prefix such as postgis.)",
+        "tags": [
+          "security"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "event",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/security/posture": {
+      "get": {
+        "operationId": "get_security_posture",
+        "summary": "Permissions and policy checks for the machine that runs gis-stack (read-only)",
+        "tags": [
+          "security"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "label",
+                          "status",
+                          "detail"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": [
+                              "ok",
+                              "warn",
+                              "fail",
+                              "info"
+                            ]
+                          },
+                          "detail": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/servers": {
       "get": {
         "operationId": "get_servers",

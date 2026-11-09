@@ -1074,6 +1074,24 @@ Change the PostgreSQL role / GeoServer admin password on a native server (verifi
   - `stored` (boolean)
 * Errors: 400, 401, 403, 502
 
+### `GET /api/v1/security/audit`
+
+Newest administrative events from the audit log (optionally only those starting with a prefix such as postgis.).
+
+* Scope: **admin**
+* Query parameter `limit` (integer)
+* Query parameter `event` (string)
+* Response `data`: an array
+* Errors: 400, 401, 403
+
+### `GET /api/v1/security/posture`
+
+Permissions and policy checks for the machine that runs gis-stack (read-only).
+
+* Scope: **admin**
+* Response `data`: an array
+* Errors: 401, 403
+
 ## servers
 
 ### `GET /api/v1/servers`
