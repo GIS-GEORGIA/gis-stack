@@ -5,6 +5,7 @@ host key checking and a changed host key are exercised against OpenSSH itself, n
 from __future__ import annotations
 
 import base64
+import getpass
 import json
 import os
 import shutil
@@ -29,7 +30,7 @@ from gisstack.servers import hostkey, service, store
 
 SSHD = shutil.which("sshd") or ("/usr/sbin/sshd" if os.path.exists("/usr/sbin/sshd") else None)
 HAVE_SSH = bool(SSHD and shutil.which("ssh") and shutil.which("ssh-keygen") and shutil.which("ssh-keyscan"))
-USER = os.environ.get("USER") or "k"
+USER = getpass.getuser()                      # from the password database: $USER is not set on every CI runner
 
 
 class Home(unittest.TestCase):
@@ -214,8 +215,6 @@ class RealSshTests(Home):
                 p.wait(5)
             except subprocess.TimeoutExpired:
                 p.kill()
-            if p.stderr:
-                p.stderr.close()
 
     def start_sshd(self, name, regen=False):
         d = self.dir / name
@@ -235,11 +234,13 @@ class RealSshTests(Home):
         cfg = d / "sshd_config"
         cfg.write_text(f"Port {port}\nListenAddress 127.0.0.1\nHostKey {hk}\nAuthorizedKeysFile {auth}\nPidFile {d}/pid\nPasswordAuthentication no\n"
                        f"KbdInteractiveAuthentication no\nUsePAM no\nStrictModes no\nPubkeyAuthentication yes\nMaxStartups 100:30:200\nLoginGraceTime 30\n")
-        p = subprocess.Popen([SSHD, "-D", "-e", "-f", str(cfg)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        log = open(d / "sshd.log", "wb")  # noqa: SIM115 - lives as long as the sshd process; closed by addCleanup
+        self.addCleanup(log.close)
+        p = subprocess.Popen([SSHD, "-D", "-e", "-f", str(cfg)], stdout=subprocess.DEVNULL, stderr=log)
         self.procs.append(p)
         for _ in range(60):
             if p.poll() is not None:
-                self.skipTest("sshd cannot run unprivileged here: " + (p.stderr.read() or b"").decode()[:200])
+                self.skipTest("sshd cannot run unprivileged here: " + (d / "sshd.log").read_text(errors="replace")[-300:])
             with socket.socket() as s:
                 s.settimeout(0.2)
                 if s.connect_ex(("127.0.0.1", port)) == 0:
@@ -254,7 +255,8 @@ class RealSshTests(Home):
             if r["reachable"]:
                 return r
             time.sleep(0.5)
-        self.fail(f"{sid} not reachable after {tries} tries: {r}")
+        logs = "\n".join(f"--- {f.parent.name}/sshd.log\n{f.read_text(errors='replace')[-600:]}" for f in sorted(self.dir.glob("*/sshd.log")))
+        self.fail(f"{sid} not reachable after {tries} tries: {r}\n{logs}")
 
     def profile(self, sid, port, env="testing"):
         return store.save({"id": sid, "env": env, "host": "127.0.0.1", "port": port, "user": USER, "key": str(self.client_key)})
