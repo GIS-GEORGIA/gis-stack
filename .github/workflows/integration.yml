@@ -67,6 +67,7 @@ jobs:
           GISSTACK_TEST_DOCKER: "1"
         run: |
           python -m unittest discover -s tests -p 'test_compose.py' -v
+          python -m unittest discover -s tests -p 'test_deploy_rollback.py' -v
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_compose_managers.py' -v
 
   browser:
@@ -104,3 +105,7 @@ jobs:
         env:
           GISSTACK_TEST_K8S: "1"
         run: python -m unittest discover -s tests -p 'test_k8s_managers.py' -v
+      - name: Deploy, failed upgrade and rollback against the kind cluster
+        env:
+          GISSTACK_TEST_K8S: "1"
+        run: python -m unittest discover -s tests -p 'test_deploy_rollback_k8s.py' -v

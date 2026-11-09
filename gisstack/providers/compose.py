@@ -76,6 +76,9 @@ def rows(cfg: dict[str, Any], ids: list[str], parsed: dict[str, Any], checks: li
             r["state"], r["detail"] = "missing", "container not created"
         else:
             st, health = str(it.get("State", "")), str(it.get("Health", ""))
+            text = str(it.get("Status", ""))
+            if not health:                                  # right after `up` the Health field is empty but Status already says "(health: starting)"
+                health = "starting" if "(health: starting)" in text else "unhealthy" if "(unhealthy)" in text else ""
             r["state"] = {"running": "running", "exited": "stopped", "created": "stopped", "dead": "failed",
                           "restarting": "starting", "paused": "stopped"}.get(st, "unknown")
             if st == "running" and health == "starting":

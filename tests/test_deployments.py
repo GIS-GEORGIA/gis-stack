@@ -63,7 +63,7 @@ class VerifyTests(unittest.TestCase):
             calls.append(1)
             return rows(len(calls) >= 3)
         slept = []
-        self.assertEqual(deployments.verify(cfg, warming, timeout=30, interval=5, sleep=slept.append)["state"], "healthy")
+        self.assertEqual(deployments.verify(cfg, warming, timeout=30, interval=5, sleep=slept.append, settle=0)["state"], "healthy")
         self.assertEqual(slept, [5, 5])
         self.assertEqual(deployments.verify(cfg, lambda: rows(False), timeout=10, interval=5, sleep=lambda s: None)["state"], "unhealthy")
 
@@ -73,6 +73,40 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(r["state"], "unknown")                                       # an unreachable machine is never a pass
         self.assertNotIn("pg-secret-value-1", r["error"])
         self.assertEqual(deployments.verify(cfg, lambda: [], timeout=0)["state"], "unknown")
+
+
+class SettleTests(unittest.TestCase):
+    """Regression: a failed upgrade that is "up" for a second and then crash-loops was reported healthy by the first reading
+    (found by tests/integration/test_deploy_rollback.py on real Docker Compose)."""
+
+    def test_flapping_service_is_not_healthy(self):
+        cfg = cfg_for()
+        seq = iter([True, False, True, False, True, False] * 20)
+        r = deployments.verify(cfg, lambda: rows(next(seq)), timeout=60, interval=2, settle=10, sleep=lambda s: None)
+        self.assertEqual(r["state"], "unhealthy")
+
+    def test_must_stay_healthy_for_the_settle_period(self):
+        cfg = cfg_for()
+        slept = []
+        r = deployments.verify(cfg, lambda: rows(True), timeout=60, interval=2, settle=10, sleep=slept.append)
+        self.assertEqual(r["state"], "healthy")
+        self.assertEqual(sum(slept), 10)                                       # not accepted on the first reading
+        slept.clear()
+        r = deployments.verify(cfg, lambda: rows(True), timeout=0, interval=2, settle=10, sleep=slept.append)
+        self.assertEqual((r["state"], slept), ("healthy", []))                 # timeout 0 = one final reading
+
+    def test_settle_longer_than_timeout_still_fits(self):
+        r = deployments.verify(cfg_for(), lambda: rows(True), timeout=3, interval=2, settle=10, sleep=lambda s: None)
+        self.assertEqual(r["state"], "healthy")
+
+    def test_goes_unhealthy_late_after_a_good_start(self):
+        calls = []
+
+        def st():
+            calls.append(1)
+            return rows(len(calls) <= 3)
+        r = deployments.verify(cfg_for(), st, timeout=40, interval=2, settle=10, sleep=lambda s: None)
+        self.assertEqual(r["state"], "unhealthy")
 
 
 class RecordTests(Env):

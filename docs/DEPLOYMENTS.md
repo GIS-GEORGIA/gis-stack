@@ -12,7 +12,7 @@ Every deployment (`gisstack deploy`, the dashboard, the Tk GUI and the API) writ
 
 The record holds **no secrets**. The configuration that was applied is kept in a separate 0600 file (`<id>.config`) for the last 20 deployments; it is used only by a rollback and is never returned by the API. At most 200 records are kept; only records and snapshots are ever pruned - never data or backups.
 
-After the installer finishes, gis-stack waits up to `GISSTACK_VERIFY_TIMEOUT` seconds (default 60) for every program to be `running` with all its checks passing. A deployment that ran but is not healthy is **reported** (`!!` lines, outcome `unhealthy`), not turned into an error: the script itself succeeded.
+After the installer finishes, gis-stack waits up to `GISSTACK_VERIFY_TIMEOUT` seconds (default 60) for every program to be `running` with all its checks passing, and to **stay** that way for `GISSTACK_VERIFY_SETTLE` seconds (default 10) - a failed upgrade that is up for a second and then crash-loops is not reported healthy. A deployment that ran but is not healthy is **reported** (`!!` lines, outcome `unhealthy`), not turned into an error: the script itself succeeded.
 
 ## What "rollback" is - and is not
 gis-stack cannot un-install packages or undo a database migration. The recovery path it can verify is: **re-apply the configuration of an earlier deployment that was healthy afterwards**, using the same idempotent deploy as always.
@@ -33,4 +33,4 @@ gis-stack cannot un-install packages or undo a database migration. The recovery 
 Dashboard: *Operations -> Deployments and rollback* (plan, typed confirmation `ROLLBACK`, live log). API: `GET /api/v1/deployments/history` (read), `POST /api/v1/deployments/rollback/plan` (operate), `POST /api/v1/deployments/rollback` (admin, `confirm: true`, a job). Audit events: `deploy.start`, `deploy.rollback` (refusals and starts).
 
 ## Verification status
-Unit tested with fake installers/status (all three targets, failures, refusals, idempotency, secrets, permissions). **Not yet verified on a real server**: no rollback has been run against a real native host, Compose project or cluster.
+Unit tested with fake installers/status (all three targets, failures, refusals, idempotency, secrets, permissions). **Real-environment tests** (`tests/integration/test_deploy_rollback.py` on Docker Compose, `test_deploy_rollback_k8s.py` on kind): fresh deploy verified healthy, a failed PostgreSQL upgrade detected, rollback restores the earlier version with data and password intact, repeating it is a no-op. **Not verified**: a real native host and Podman. On Kubernetes, `apply.sh` deletes a StatefulSet pod that never became ready on an outdated revision so that a corrected template can roll out (the volume is kept).

@@ -16,7 +16,10 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+import threading
 import zipfile
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 try:
@@ -40,7 +43,7 @@ class BrowserTests(unittest.TestCase):
     def setUpClass(cls):
         cls.home = tempfile.mkdtemp()
         cls.port = _free_port()
-        env = {**os.environ, "GISSTACK_HOME": cls.home, "GISSTACK_FEATURES": "dashboard", "PYTHONPATH": str(ROOT)}
+        env = {**os.environ, "GISSTACK_HOME": cls.home, "GISSTACK_FEATURES": "dashboard,monitoring", "PYTHONPATH": str(ROOT)}
         cls.proc = subprocess.Popen([sys.executable, "-m", "gisstack", "web", "--port", str(cls.port)], cwd=ROOT, env=env,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         cls.url = ""
@@ -84,6 +87,14 @@ class BrowserTests(unittest.TestCase):
         self.addCleanup(ctx.close)
         return ctx.new_page()
 
+    def watched(self):
+        """A page whose console errors and uncaught exceptions are collected (a clean page has none)."""
+        page = self.page()
+        self.errors = []
+        page.on("console", lambda m: self.errors.append(m.text) if m.type == "error" else None)
+        page.on("pageerror", lambda e: self.errors.append(str(e)))
+        return page
+
     def dashboard(self, page, route):
         """Open a dashboard page; the first visit asks where to look (this computer is the default): accept it."""
         page.goto(self.base + "/dashboard#/" + route)
@@ -92,6 +103,8 @@ class BrowserTests(unittest.TestCase):
         page.wait_for_selector("#dlg:not([open])", state="attached")
         page.wait_for_load_state("networkidle")
         page.wait_for_selector("h1")
+        page.click("button[data-lang='en']")                  # the language is stored on the server: never depend on what an earlier test chose
+        page.wait_for_timeout(400)
 
     def test_1_authentication(self):
         page = self.page()
@@ -141,6 +154,143 @@ class BrowserTests(unittest.TestCase):
         page.click("button[data-lang='ka']")
         page.wait_for_selector("h1:not(:has-text('Settings'))")
         self.assertRegex(page.locator("h1").first.inner_text(), r"[\u10A0-\u10FF]")
+
+
+    def test_5_security_page(self):
+        page = self.watched()
+        page.goto(self.url)
+        page.wait_for_selector("#project")
+        self.dashboard(page, "security")
+        self.assertEqual(page.locator("h1").first.inner_text().strip(), "Security")
+        page.wait_for_selector("table tbody tr")
+        text = page.inner_text("#main")
+        self.assertIn("gis-stack data directory", text)
+        self.assertIn("In order", text)                                   # the temp GISSTACK_HOME is owner-only
+        self.assertNotIn("PRIVATE KEY", text)
+        page.select_option("#sec-filter", "servers.")                    # the filter reloads the audit table without errors
+        page.wait_for_load_state("networkidle")
+        page.click("button[data-lang='ka']")
+        page.wait_for_selector("h1:not(:has-text('Security'))")
+        self.assertRegex(page.locator("h1").first.inner_text(), r"[\u10A0-\u10FF]")
+        self.assertEqual(self.errors, [])
+
+    def rules_row(self, page, rid):
+        return page.locator("#main tbody tr", has_text=rid)
+
+    def dialog_save(self, page):
+        page.click("#dlg button:has-text('Save')")
+
+    def test_6_alert_rules_manager(self):
+        page = self.watched()
+        page.goto(self.url)
+        page.wait_for_selector("#project")
+        self.dashboard(page, "rules")
+        self.assertEqual(page.locator("h1").first.inner_text().strip(), "Alert rules")
+        page.wait_for_selector("#main tbody tr")
+        self.assertGreaterEqual(self.rules_row(page, "cpu_high").count(), 1)       # built-in rules are listed
+        self.assertEqual(self.rules_row(page, "cpu_high").locator("button:has-text('Delete')").count(), 0)   # ...and cannot be deleted
+
+        # create: a refused rule keeps the dialog open with the reason, a valid one appears in the table
+        page.click("button:has-text('New rule')")
+        page.fill("#rl-id", "e2e_cpu")
+        page.fill("#rl-th", "55")
+        page.fill("#rl-text", "{value.__class__}")
+        self.dialog_save(page)
+        page.wait_for_selector("#dlg .error-box")
+        self.assertIn("text may use only", page.inner_text("#dlg .error-box"))
+        page.fill("#rl-text", "cpu {value:.0f}% on {subject}")
+        self.dialog_save(page)
+        page.wait_for_selector("#main tbody tr:has-text('e2e_cpu')")
+        row = self.rules_row(page, "e2e_cpu")
+        self.assertIn("Custom", row.inner_text())
+        self.assertIn("55", row.inner_text())
+        self.assertIn("Enabled", row.inner_text())
+
+        # disable / enable
+        row.locator("button:has-text('Disable')").click()
+        page.wait_for_selector("#main tbody tr:has-text('e2e_cpu') >> text=Disabled")
+        self.rules_row(page, "e2e_cpu").locator("button:has-text('Enable')").click()
+        page.wait_for_selector("#main tbody tr:has-text('e2e_cpu') >> text=Enabled")
+
+        # edit a built-in rule, then reset it to the default
+        self.rules_row(page, "cpu_high").locator("button:has-text('Edit')").click()
+        page.fill("#rl-th", "70")
+        self.dialog_save(page)
+        page.wait_for_selector("#main tbody tr:has-text('cpu_high') >> text=Changed")
+        self.assertIn("70", self.rules_row(page, "cpu_high").inner_text())
+        self.rules_row(page, "cpu_high").locator("button:has-text('Default')").click()
+        page.click("#dlg button:has-text('Roll back'), #dlg button.primary")
+        page.wait_for_selector("#main tbody tr:has-text('cpu_high') >> text=Default", state="attached")
+        self.assertNotIn("Changed", self.rules_row(page, "cpu_high").inner_text())
+
+        # language switch keeps the page working
+        page.click("button[data-lang='ka']")
+        page.wait_for_selector("h1:not(:has-text('Alert rules'))")
+        self.assertRegex(page.locator("h1").first.inner_text(), r"[\u10A0-\u10FF]")
+        page.click("button[data-lang='en']")
+        page.wait_for_selector("h1:has-text('Alert rules')")
+
+        # responsive: no horizontal page scroll on a phone-sized viewport
+        page.set_viewport_size({"width": 375, "height": 812})
+        page.wait_for_timeout(300)
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), 376)
+        page.set_viewport_size({"width": 1280, "height": 800})
+
+        # delete needs a confirmation: Cancel keeps the rule, Delete removes it
+        self.rules_row(page, "e2e_cpu").locator("button:has-text('Delete')").click()
+        page.click("#dlg button:has-text('Cancel')")
+        self.assertEqual(self.rules_row(page, "e2e_cpu").count(), 1)
+        self.rules_row(page, "e2e_cpu").locator("button:has-text('Delete')").click()
+        page.click("#dlg button.danger")
+        page.wait_for_selector("#main tbody tr:has-text('e2e_cpu')", state="detached")
+        refused = [e for e in self.errors if "status of 400" in e]                # the one deliberately invalid rule above, logged by the browser
+        self.assertEqual(len(refused), 1, self.errors)
+        self.assertEqual([e for e in self.errors if e not in refused], [])
+
+
+    def serve_webmap(self):
+        """The generated web map, served as a static site (tiles come from MapProxy/GeoServer, which are not running: tile requests 404)."""
+        from gisstack import config, generate
+        home = tempfile.mkdtemp()
+        out = Path(home) / "bundle"
+        cfg = config.resolve({"project": "e2emap", "targets": ["compose"], "deploy_target": "compose"}, persist_secrets=False, generate_secrets=True)
+        generate.generate_bundle(cfg, out)
+        class Quiet(SimpleHTTPRequestHandler):
+            def log_message(self, *a, **k):
+                pass
+        handler = partial(Quiet, directory=str(out / "webmap"))
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (srv.shutdown(), srv.server_close(), shutil.rmtree(home, ignore_errors=True)))
+        return f"http://127.0.0.1:{srv.server_address[1]}/"
+
+    def test_7_web_map(self):
+        url = self.serve_webmap()
+        page = self.watched()
+        page.goto(url)
+        page.wait_for_selector(".leaflet-container")
+        self.assertEqual(page.locator(".leaflet-control-scale").count(), 1)               # scale bar
+        self.assertEqual(page.locator(".leaflet-control-layers").count(), 1)              # base map / layer control
+        self.assertEqual(page.locator(".leaflet-control-zoom").count(), 1)
+        self.assertEqual(page.locator(".leaflet-control-reset").count(), 1)
+        self.assertEqual(page.locator("#map .leaflet-tile-pane").count(), 1)
+        box = page.locator("#map").bounding_box()
+        page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)        # coordinates follow the pointer
+        page.wait_for_timeout(200)
+        self.assertRegex(page.inner_text("#coords"), r"-?\d+\.\d{5}, -?\d+\.\d{5}")
+        page.click("#lang button[data-lang='en']")                                         # language switch relabels the page and the layer control
+        page.wait_for_timeout(200)
+        self.assertEqual(page.evaluate("document.documentElement.lang"), "en")
+        page.hover(".leaflet-control-layers")
+        self.assertIn("Base map", page.inner_text(".leaflet-control-layers"))      # the control is relabelled in English
+        page.click("#lang button[data-lang='ka']")
+        page.wait_for_timeout(200)
+        self.assertEqual(page.evaluate("document.documentElement.lang"), "ka")
+        page.set_viewport_size({"width": 375, "height": 812})
+        page.wait_for_timeout(300)
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), 376)
+        # only failed tile loads (nothing serves /mapproxy here) may be logged; no script error
+        self.assertEqual([e for e in self.errors if "Failed to load resource" not in e], [])
 
 
 if __name__ == "__main__":

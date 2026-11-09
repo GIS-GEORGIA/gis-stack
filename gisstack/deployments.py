@@ -150,22 +150,36 @@ def snapshot(rid: str) -> dict[str, Any]:
 
 
 def verify(cfg: dict[str, Any], status: Callable[[], list[dict[str, Any]]], *, timeout: Optional[float] = None, interval: float = 5.0,
-           sleep: Callable[[float], None] = time.sleep) -> dict[str, Any]:
-    """Wait (up to `timeout` seconds, default $GISSTACK_VERIFY_TIMEOUT or 60) for every program to be running with all checks passing.
+           sleep: Callable[[float], None] = time.sleep, settle: Optional[float] = None) -> dict[str, Any]:
+    """Wait (up to `timeout` seconds, default $GISSTACK_VERIFY_TIMEOUT or 60) for every program to be running with all checks passing,
+    and to *stay* that way for `settle` seconds (default $GISSTACK_VERIFY_SETTLE or 10).  Without the settle period a program that is
+    "up" for a second and then crashes - a failed upgrade restarting in a loop - would be reported healthy (found by the real Compose test).
 
+    With timeout 0 the first reading is final (unit tests, GISSTACK_VERIFY_TIMEOUT=0).
     Returns {state: healthy|unhealthy|unknown, rows: summary, error?}.  `unknown` means the machine could not be asked - never a pass."""
     if timeout is None:
         timeout = float(os.environ.get("GISSTACK_VERIFY_TIMEOUT", "60"))
+    if settle is None:
+        settle = float(os.environ.get("GISSTACK_VERIFY_SETTLE", "10"))
+    if timeout <= 0:
+        settle = 0.0
+    limit = 0.0 if timeout <= 0 else max(timeout, settle + interval)      # the settle period always fits
     mask = runner.redactor(runner.secrets_of(cfg))
     waited = 0.0
+    healthy_since: Optional[float] = None
     while True:
         try:
             rows = summarize(status())
         except Exception as e:  # noqa: BLE001 - an unanswerable status is "unknown", never a pass and never a crash
             return {"state": "unknown", "rows": [], "error": mask(f"{type(e).__name__}: {e}")[:300]}
         if rows and all(r["ok"] for r in rows):
-            return {"state": "healthy", "rows": rows}
-        if waited >= timeout:
+            if healthy_since is None:
+                healthy_since = waited
+            if waited - healthy_since >= settle:
+                return {"state": "healthy", "rows": rows}
+        else:
+            healthy_since = None
+        if waited >= limit:
             return {"state": "unhealthy" if rows else "unknown", "rows": rows}
         sleep(interval)
         waited += interval

@@ -92,3 +92,28 @@ class InterfaceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ComposeHealthTextTests(unittest.TestCase):
+    """Regression: right after `docker compose up` the Health field is empty while Status already says "(health: starting)"; the row was
+    reported running/ok and a crash-looping failed upgrade looked healthy (found on real Docker Compose)."""
+
+    def row(self, status, health="", state="running"):
+        from gisstack import config
+        from gisstack.providers import compose
+        cfg = config.resolve({"project": "demo", "targets": ["compose"], "deploy_target": "compose"}, persist_secrets=False, generate_secrets=False)
+        parsed = {"items": [{"Service": "postgis", "State": state, "Health": health, "Status": status}], "ips": {}, "http": {}}
+        return compose.rows(cfg, ["postgis"], parsed, [])[0]
+
+    def test_empty_health_with_starting_status_is_starting_not_ok(self):
+        r = self.row("Up Less than a second (health: starting)")
+        self.assertEqual((r["state"], r["ok"]), ("starting", False))
+
+    def test_unhealthy_in_status_text(self):
+        r = self.row("Up 2 minutes (unhealthy)")
+        self.assertEqual((r["state"], r["ok"]), ("failed", False))
+
+    def test_healthy_and_plain_running_are_still_ok(self):
+        self.assertTrue(self.row("Up 2 minutes (healthy)")["ok"])
+        self.assertTrue(self.row("Up 2 minutes", health="healthy")["ok"])
+        self.assertEqual(self.row("Restarting (1) 3 seconds ago", state="restarting")["state"], "starting")

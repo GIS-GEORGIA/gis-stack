@@ -15,7 +15,7 @@
  "compose/webmap/config.js": "1a850ec519b5c6bacbffa666e5470427f384e7fdb920ada7d5382c943c6aaac2",
  "compose/webmap/index.html": "da3fb701cd74c3dfa4f87545c3e8b7cc6ed02a53866ea79b0e5fa8fd81a8413d",
  "compose/webmap/style.css": "2ffbfd3968e4a9e0c46b56d43450b3c48e8b0ba5bca7c7730e0c1593963aacec",
- "k8s/apply.sh": "96e0d3fa76130ed722eecf0cf23825cce29ba4c47b1ee73f1901d175d0ebb98b",
+ "k8s/apply.sh": "c620f6f969dde1a03650710eb64579be586c248b8833fc2680f6c15ed1ac368d",
  "k8s/caddy.yaml": "ee3e80d491a7bb1514e902993c5a5a6c8977a184018e9822d582c7216d51b51c",
  "k8s/files/Caddyfile": "679e1118358dd60e643820fe662464d795eba63f7ff3c0b0a18582b39c63718e",
  "k8s/files/app.py": "1f89e33887929dbfdfbbd49825e961916c4b24cc79b3aa0886843409f9a2e2c4",
