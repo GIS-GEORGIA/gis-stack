@@ -31,8 +31,8 @@
 workflow ხელს აწერს `SHA256SUMS`-ს **გასაღების გარეშე** (cosign keyless: GitHub Actions-ის საკუთარი იდენტობით) და აქვეყნებს
 `SHA256SUMS.sigstore.json`-ს; გამოქვეყნებამდე თავადვე ამოწმებს ხელმოწერას. არაფრის დამატება არ გჭირდება (secret, გასაღები),
 workflow-ს უკვე აქვს `id-token: write`. `gisstack update` ამოწმებს ხელმოწერას, თუ მანქანაზე `cosign` დგას
-(`GISSTACK_REQUIRE_SIGNATURE=1` მის გარეშე უარს ამბობს). **პირველი ხელმოწერილი გამოშვება ჯერ არ გამოშვებულა:** tag-ის
-გაგზავნის შემდეგ შეამოწმე, რომ Actions-ში ნაბიჯი „Sign SHA256SUMS" გავიდა და Release-ში არის `SHA256SUMS.sigstore.json`.
+(`GISSTACK_REQUIRE_SIGNATURE=1` მის გარეშე უარს ამბობს). **პირველი ხელმოწერილი გამოშვება v0.1.5-ია** (ხელმოწერა რეალური cosign-ით გადამოწმდა იგივე იდენტობის შაბლონით). ყოველი ახალი tag-ის შემდეგ
+შეამოწმე, რომ Actions-ში ნაბიჯი „Sign SHA256SUMS" გავიდა და Release-ში არის `SHA256SUMS.sigstore.json`.
 ხელით შემოწმება: `docs/guides/ka/UPGRADE.md`.
 
 ## რას ეძებს განახლების შემოწმება

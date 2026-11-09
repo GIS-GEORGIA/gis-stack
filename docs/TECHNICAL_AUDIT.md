@@ -23,7 +23,7 @@
 | A-03 | Partly fixed | `services.py` holds the deploy rules shared by CLI, web and Tk (pre-flight, conflicts, existing-programs flow). The UIs still render separately; the versioned API is Phase 10. |
 | A-07, A-08 | Open | Shell logic is still in Jinja; the config is still `dict[str, Any]` (typed model planned). mypy is now strict for the new modules (`disallow_untyped_defs`). |
 | S-07 | Partly fixed (Phase 3) | The new dashboard runs under a CSP without `unsafe-inline` (no inline script/style, no `innerHTML`); the classic page `/` still needs `unsafe-inline` until it is retired. |
-| S-09 | **Fixed (Phase 12)**, first signed release pending | Keyless Sigstore signature of `SHA256SUMS` made and self-verified by `release.yml`; `gisstack update` verifies it with cosign (`GISSTACK_REQUIRE_SIGNATURE=1` to insist). Takes effect with the first release tagged after this change. |
+| S-09 | **Fixed (Phase 12)**, signed since v0.1.5 | Keyless Sigstore signature of `SHA256SUMS` made and self-verified by `release.yml`; `gisstack update` verifies it with cosign (`GISSTACK_REQUIRE_SIGNATURE=1` to insist). Verified on v0.1.5 with real cosign. |
 | S-11, S-12, R-06, R-07 | Open | see the findings table. |
 
 ## 1. Method

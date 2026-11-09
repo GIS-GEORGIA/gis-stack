@@ -110,8 +110,7 @@ contain secrets (`credentials.txt`, role password hashes): they are not encrypte
 is no private key to steal) and attaches `SHA256SUMS.sigstore.json`; the workflow verifies the signature itself before publishing. `gisstack update`
 checks the signature (needs the `cosign` program; the accepted identity is only this repository's `release.yml` run for a version tag), then the
 file's SHA-256. Without cosign, or for releases that predate signing, it warns and relies on the checksum; `GISSTACK_REQUIRE_SIGNATURE=1` makes that a
-refusal. A signature that is present and wrong always refuses. The signing step has only run in CI once a tag is pushed - see `docs/guides/en/UPGRADE.md`
-for manual verification.
+refusal. A signature that is present and wrong always refuses. Release v0.1.5 is the first signed one; its signature was verified with the real `cosign` (v2.4.1) using the same identity pattern as the updater, and a wrong identity was rejected. See `docs/guides/en/UPGRADE.md` for manual verification.
 
 ## Threat model
 
