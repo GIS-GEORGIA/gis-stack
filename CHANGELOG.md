@@ -5,6 +5,8 @@
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-09
+
 ### დაშიფრული ბექაფის ასლები
 - `gisstack backup download ID --passphrase-file F | --encrypt | --encrypt-to KEY` (და `backup create --download` იგივე პარამეტრებით): გადამოწმებული ასლი ადგილზე იშიფრება `gpg`-ით (AES-256 პაროლით ან OpenPGP საჯარო გასაღებით, ავთენტიფიცირებული), დაუშიფრავი ფაილი იშლება; პაროლით დაშიფრული ასლი ერთხელ იშიფრება და მოწმდება. `backup decrypt FILE.gpg`; `backup upload FILE.gpg` ადგილზე შიფრავს. API `/backups/offsite` იღებს `encrypt_to`-ს. პაროლი არასოდეს ხვდება ბრძანების სტრიქონში; სერვერი პაროლს/გასაღებს არ ხედავს და `gisstack-backup` უცვლელია. სერვერზე შენახული ბექაფები დაშიფრული არ არის. ტესტები რეალური `gpg`-ით. იხ. `docs/guides/*/BACKUP.md`, `docs/RECOVERY.md`.
 
