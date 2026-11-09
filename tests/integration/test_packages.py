@@ -41,7 +41,7 @@ class PackageTests(unittest.TestCase):
                 if family == "deb":
                     box.sh("apt-get update -qq && apt-get install -y -qq /root/pkg.deb >/dev/null", timeout=900)
                 else:
-                    box.sh("dnf -y -q install /root/pkg.rpm >/dev/null", timeout=900)
+                    box.sh("dnf -y -q install epel-release >/dev/null && dnf -y -q install /root/pkg.rpm >/dev/null", timeout=900)      # python3-flask comes from EPEL
                 self.assertIn(VERSION, box.sh("gisstack --version").stdout, distro)
                 box.sh("gisstack generate -o /tmp/gen && test -f /tmp/gen/native/install.sh && bash -n /tmp/gen/native/install.sh")
                 self.assertEqual(box.sh("systemctl cat gisstack-web.service >/dev/null && echo yes").stdout.strip(), "yes", distro)

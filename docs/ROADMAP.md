@@ -79,16 +79,16 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - **Infrastructure:** version, installation type, state, autostart, health, listen address/port, start/stop/restart, enable/disable, logs — a re-skin of the current diagnostics on the service layer.
 - **Exit criteria:** every current web workflow is reachable in the new UI before the old page is retired.
 
-### Phase 4 — GeoServer manager · **L** (flag `geoserver_manager`) — ✅ first release (native target; health, inventory, capabilities, preview, validation, workspace create/delete, reload). Left: datastore/layer/style/layer-group editing, security rules, Compose/Kubernetes, GeoServer 3.0 container test; see `docs/GEOSERVER.md`
+### Phase 4 — GeoServer manager · **L** (flag `geoserver_manager`) — ✅ first release (native, Compose and Kubernetes; health, inventory, capabilities, preview, validation, workspace create/delete, reload). Left: datastore/layer/style/layer-group editing, security rules; see `docs/GEOSERVER.md`
 - Official REST API only (`/rest`), server-side credentials (never sent to the browser), honour GeoServer roles; workspaces, datastores, layers, layer groups, styles, WMS/WFS/WMTS capabilities, layer preview (WMS GetMap proxied), health checks, configuration validation, visual layer browser with endpoints.
 - **Tests:** against a real GeoServer container; error mapping; permission handling.
 
-### Phase 5 — PostGIS manager · **L** (flag `postgis_manager`) — ✅ first release (native target; inventory, health, read-only SQL editor with dedicated role, time-boxed write mode with audit). Left: Compose/Kubernetes, query history/saved queries, EXPLAIN visualisation, data import/export; see `docs/POSTGIS.md`
+### Phase 5 — PostGIS manager · **L** (flag `postgis_manager`) — ✅ first release (native, Compose and Kubernetes; inventory, health, read-only SQL editor with dedicated role, time-boxed write mode with audit). Left: query history/saved queries, EXPLAIN visualisation, data import/export; see `docs/POSTGIS.md`
 - Inventory: databases, schemas, tables, spatial columns, geometry types, SRIDs, spatial indexes, sizes, connections, `pg_stat_statements` overview, extension availability, health.
 - **SQL editor:** read-only transaction by default (`SET TRANSACTION READ ONLY`), statement timeout, row/size limits with pagination, dedicated least-privilege role, writes only after an explicit per-session elevation with confirmation and audit log; server-side parsing is *not* trusted as a security boundary — the database role and read-only transaction are.
 - **Tests:** attempts to write in read-only mode, long queries, large results, permission failures — against a real PostGIS container.
 
-### Phase 6 — MapProxy manager · **M** (flag `mapproxy_manager`) — ✅ first release (native target; health, config view, cache stats, tile preview, validated edits with backups/restore, seeding with estimate and limits, cleanup). Left: Compose/Kubernetes, tile-store types other than file for age-based cleanup, scheduled seeding; see `docs/MAPPROXY.md`
+### Phase 6 — MapProxy manager · **M** (flag `mapproxy_manager`) — ✅ first release (native, Compose and Kubernetes (Kubernetes config is read-only: ConfigMap); health, config view, cache stats, tile preview, validated edits with backups/restore, seeding with estimate and limits, cleanup). Left: editing the Kubernetes ConfigMap, tile-store types other than file for age-based cleanup, scheduled seeding; see `docs/MAPPROXY.md`
 - Cache statistics and size, grid and layer management (validated config edits with automatic backup), seed management and progress, cache cleanup with prominent destructive-operation warnings, tile preview, configuration validation, health checks.
 - **Tests:** real MapProxy 7 in CI (the repository already tests config loading against it).
 

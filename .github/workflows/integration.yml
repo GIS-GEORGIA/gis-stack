@@ -100,18 +100,6 @@ jobs:
           python-version: "3.12"
       - run: pip install flask jinja2 pyyaml
       - uses: helm/kind-action@v1
-      - name: PostGIS manifests applied to a kind cluster
-        run: |
-          python - <<'PY'
-          from gisstack import config, generate
-          cfg = config.resolve({"project": "kit", "targets": ["k8s"], "deploy_target": "k8s",
-                                "components": {"postgis": True, "geoserver": False, "tomcat": False, "qgis_server": False, "mapproxy": False, "caddy": False, "webmap": False}},
-                               generate_secrets=True)
-          generate.generate_bundle(cfg, "/tmp/bundle")
-          PY
-          kubectl apply -f /tmp/bundle/k8s/namespace.yaml -f /tmp/bundle/k8s/secret.yaml -f /tmp/bundle/k8s/postgis.yaml
-          kubectl -n gisstack rollout status statefulset/postgis --timeout=300s || kubectl -n gisstack rollout status deployment/postgis --timeout=300s
-          kubectl -n gisstack get pods
       - name: PostGIS, GeoServer and MapProxy managers against the kind cluster (real kubectl exec)
         env:
           GISSTACK_TEST_K8S: "1"
