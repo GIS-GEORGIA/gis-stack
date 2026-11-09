@@ -96,7 +96,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 - Server profiles with environment tags (production/development/testing); credentials stored outside project files (OS keyring or `0600` secrets file; SSH keys referenced by path/agent only, never embedded); pinned host keys; remote health, deployment and service management through the existing runner/providers; deployment history per server (journal); server comparison (config drift, versions, health).
 - **Exit criteria:** two servers can be operated from one UI with independent credentials; no key material in any config file.
 
-### Phase 11b — Integration and end-to-end tests · **L**
+### Phase 11b — Integration and end-to-end tests · **L** — ✅ first release (installer in 5 distro containers, deb/rpm packages, real Compose, Playwright browser flow, nightly/label workflow; kind job and rpm package test run only in CI; see `docs/TESTING.md`)
 - Containerised integration suites (PostgreSQL/PostGIS, GeoServer, MapProxy, Compose, kind), installer tests in distro containers (Ubuntu 22.04/24.04, Debian 12, Rocky/Alma 9) using systemd-enabled images, deb/rpm install tests, browser E2E (Playwright) for authentication → configure → preview → deploy (dry-run/container) → manage services → backup/restore. Ordinary CI never touches production infrastructure; privileged/long jobs run nightly or on label.
 
 ### Phase 12 — Documentation and release quality · **M**

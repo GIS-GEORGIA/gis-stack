@@ -1,0 +1,112 @@
+# Integration and end-to-end tests (roadmap Phase 11b).  They install real software inside throw-away containers, so they run nightly, on demand,
+# and on pull requests that carry the label `integration` - never on every push.  Nothing here touches production infrastructure.
+name: integration
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-24.04
+    outputs:
+      run: ${{ steps.g.outputs.run }}
+    steps:
+      - id: g
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ] || [ "${{ contains(github.event.pull_request.labels.*.name, 'integration') }}" = "true" ]; then echo run=true >> "$GITHUB_OUTPUT"; else echo run=false >> "$GITHUB_OUTPUT"; fi
+
+  installer:
+    name: installer (${{ matrix.distro }})
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [ubuntu-22.04, ubuntu-24.04, debian-12, rocky-9, alma-9]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install flask jinja2 pyyaml
+      - name: Native installer in a systemd container (PostGIS, status, manager, idempotence, uninstall/purge)
+        env:
+          GISSTACK_TEST_INSTALLER: "1"
+          GISSTACK_TEST_DISTROS: ${{ matrix.distro }}
+        run: python -m unittest discover -s tests -p 'test_installer.py' -v
+      - name: deb / rpm packages installed with apt / dnf
+        env:
+          GISSTACK_TEST_INSTALLER: "1"
+          GISSTACK_TEST_DISTROS: ${{ matrix.distro }}
+        run: |
+          sudo apt-get install -y rpm
+          python -m unittest discover -s tests -p 'test_packages.py' -v
+
+  compose:
+    name: compose (real Docker)
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install flask jinja2 pyyaml
+      - env:
+          GISSTACK_TEST_DOCKER: "1"
+        run: python -m unittest discover -s tests -p 'test_compose.py' -v
+
+  browser:
+    name: browser end-to-end (Playwright)
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          pip install flask jinja2 pyyaml playwright
+          playwright install --with-deps chromium
+      - env:
+          GISSTACK_TEST_E2E: "1"
+        run: python -m unittest discover -s tests -p 'test_browser.py' -v
+
+  kubernetes:
+    name: kubernetes (kind)
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install flask jinja2 pyyaml
+      - uses: helm/kind-action@v1
+      - name: PostGIS manifests applied to a kind cluster
+        run: |
+          python - <<'PY'
+          from gisstack import config, generate
+          cfg = config.resolve({"project": "kit", "targets": ["k8s"], "deploy_target": "k8s",
+                                "components": {"postgis": True, "geoserver": False, "tomcat": False, "qgis_server": False, "mapproxy": False, "caddy": False, "webmap": False}},
+                               generate_secrets=True)
+          generate.generate_bundle(cfg, "/tmp/bundle")
+          PY
+          kubectl apply -f /tmp/bundle/k8s/namespace.yaml -f /tmp/bundle/k8s/secret.yaml -f /tmp/bundle/k8s/postgis.yaml
+          kubectl -n gisstack rollout status statefulset/postgis --timeout=300s || kubectl -n gisstack rollout status deployment/postgis --timeout=300s
+          kubectl -n gisstack get pods

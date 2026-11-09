@@ -149,3 +149,10 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - host key-ის დაფიქსირება: scan არაფერს ენდობა; pin ითხოვს ანაბეჭდს (`SHA256:...`), რომელსაც ოპერატორი სერვერის კონსოლიდან ადარებს; არსებულის ჩანაცვლებას `replace=true` (UI: აკრიფე REPLACE) სჭირდება.
 - ისტორია იკითხება ჟურნალიდან `host`-ის მიხედვით (ერთი მისამართის ორი პროფილი ერთსა და იმავე ისტორიას ხედავს).
 - ტესტებში რეალური `sshd` უნდა გაეშვას 127.0.0.1-ზე უპრივილეგიოდ (`-D -e -f`), `StrictModes no`, `UsePAM no`; თუ ვერ ეშვება, ტესტი skip-დება.
+
+## ინტეგრაციული ტესტები (Phase 11b)
+- `tests/integration/{sysd,test_installer,test_packages,test_compose}.py`, `tests/e2e/test_browser.py`, `.github/workflows/integration.yml`, `docs/TESTING.md`. ყველა opt-in (`GISSTACK_TEST_INSTALLER/DOCKER/E2E=1`), ჩვეულებრივ გაშვებაზე skip-დება.
+- gis-stack-ის საკუთარ კოდს კონტეინერზე ვუშვებთ `transport.argv`-ის patch-ით (`Box.argv`): `mock.patch.object(transport, "argv", lambda mode, ssh, script, *, root: box.argv(script))`.
+- RPM-ზე `pg_isready` PATH-ში არ არის: PostgreSQL-ის მუშაობას ვამოწმებთ `runuser -u postgres -- psql -X -Atqc "select 1"`-ით. PGDG repo-ს `$releasever_major.$releasever_minor` install.sh-ში `$releasever_major`-ზე იცვლება.
+- Playwright: dashboard-ზე პირველი ვიზიტი „კავშირი“ დიალოგს ხსნის (დახურე `#dlg button.primary`-ით); CSP-ის გამო `wait_for_function` (eval) არ მუშაობს, გამოიყენე სელექტორები.
+- ახალი golden ფაილები: `UPDATE_GOLDEN=1 python -m unittest tests.test_golden`.

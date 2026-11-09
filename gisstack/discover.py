@@ -50,7 +50,7 @@ echo "bin=$(command -v mapproxy-util 2>/dev/null || true)"
 echo "@@qgis"
 echo "fcgi=$(find /usr/lib /usr/lib64 /usr/libexec -name qgis_mapserv.fcgi 2>/dev/null | head -1)"
 echo "@@pg"
-if command -v psql >/dev/null 2>&1 && (cd /tmp && runuser -u postgres -- pg_isready -q) 2>/dev/null; then
+if command -v psql >/dev/null 2>&1 && (cd /tmp && runuser -u postgres -- psql -X -Atqc "select 1" >/dev/null) 2>/dev/null; then
   # one statement per line on stdin: psql before v15 prints only the last result of a multi-statement -c string
   (cd /tmp && runuser -u postgres -- psql -X -Atq -F '|' 2>&1 <<'SQL'
 select 'ver|'||current_setting('server_version');

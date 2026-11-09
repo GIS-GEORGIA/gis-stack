@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### ინტეგრაციული და end-to-end ტესტები (Phase 11b)
+- `tests/integration`: რეალური `install.sh` systemd-კონტეინერებში (Ubuntu 22.04/24.04, Debian 12, Rocky 9, Alma 9): PostGIS-ის დაყენება, gis-stack-ის საკუთარი სტატუსი და PostGIS მენეჯერი ამ ინსტალაციაზე, განმეორებით გაშვება, წაშლა მონაცემების შენარჩუნებით და `--purge`; deb/rpm პაკეტები apt/dnf-ით; რეალური Compose; Playwright ბრაუზერის ტესტი (`tests/e2e`). ჩართვა: `GISSTACK_TEST_INSTALLER=1`, `GISSTACK_TEST_DOCKER=1`, `GISSTACK_TEST_E2E=1`; CI: `.github/workflows/integration.yml` (ღამით, ხელით, ან PR-ზე ლეიბლით `integration`). იხ. `docs/TESTING.md`.
+- **შესწორება (RPM სისტემები):** `pg_isready` RHEL-ზე PATH-ში არ არის, ამიტომ `uninstall.sh --purge` ბაზას ჩუმად არ შლიდა (Alma), `--adopt-postgres` და აღმოჩენა ვერ ხედავდა მუშა PostgreSQL-ს; ახლა მოწმდება `psql`-ით.
+- **შესწორება:** Rocky/Alma, რომლის minor ვერსიაც PGDG-ს არ აქვს გამოქვეყნებული, 404-ს იღებდა; PGDG-ის repo ახლა მხოლოდ major ვერსიის გზას იყენებს.
+
 ### მრავალი სერვერი (Phase 9, flag `multi_server`)
 - დაფის გვერდი „სერვერები" და `/api/v1/servers/*`: სერვერის პროფილები გარემოს ნიშნით (production/development/testing), SSH გასაღების **მხოლოდ გზა** (ან ssh-agent), **დაფიქსირებული host key** თითო სერვერზე (`StrictHostKeyChecking=yes`, საკუთარი `known_hosts`; შეცვლილი გასაღები ჩერდება და ხელით ჩანაცვლებას ითხოვს), შემოწმება (OS, sudo, დატვირთვა, დისკი), სერვერების **შედარება** (OS, ვერსიები, სერვისების მდგომარეობა, კონფიგურაციის ჰეშები), ოპერაციების ისტორია სერვერის მიხედვით.
 - ყველა არსებული მანქანის მარშრუტი იღებს `"server": "<id>"`: გამოიყენება ამ პროფილის საკუთარი მონაცემები და host key. გასაღების შიგთავსი, პაროლი ან passphrase არსად ინახება; გასაღების ჩასმა უარყოფილია.

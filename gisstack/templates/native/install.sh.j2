@@ -143,6 +143,11 @@ step_postgis() {
     [ "$ID" = fedora ] || pkg_install epel-release dnf-plugins-core
     [ "$ID" = fedora ] || dnf config-manager --set-enabled crb 2>/dev/null || dnf config-manager --set-enabled powertools 2>/dev/null || true
     pkg_install "https://download.postgresql.org/pub/repos/yum/reporpms/${REPO}-${ARCH}/pgdg-redhat-repo-latest.noarch.rpm" || true
+    # PGDG's "common" and "extras" repositories are addressed by major.minor ($releasever_major.$releasever_minor) and only exist for the
+    # minor releases PGDG has published; a Rocky/Alma that reports another minor gets a 404.  The major-only path always exists.
+    if [ "$ID" != fedora ] && [ -f /etc/yum.repos.d/pgdg-redhat-all.repo ]; then
+      sed -i 's/\$releasever_major\.\$releasever_minor/$releasever_major/g' /etc/yum.repos.d/pgdg-redhat-all.repo
+    fi
     dnf -qy module disable postgresql 2>/dev/null || true
     [ "$ADOPT_PG" = 1 ] || pkg_install "postgresql${V}-server" "postgresql${V}-contrib"
     local PGIS; PGIS="$(latest_pkg "postgis3*_${V}")"
@@ -161,7 +166,7 @@ step_postgis() {
     fi
   fi
   if [ "$ADOPT_PG" = 1 ]; then
-    runuser -u postgres -- pg_isready -q || die "--adopt-postgres: no running PostgreSQL found"
+    runuser -u postgres -- psql -X -Atqc "select 1" >/dev/null || die "--adopt-postgres: no running PostgreSQL found"
     log "using the existing PostgreSQL (no tuning, no restart, autostart untouched)"
   else
   systemctl enable --now "$SVC"
@@ -182,7 +187,7 @@ step_postgis() {
     grep -q '# gisstack' "$HBA" || echo "host  $DB_NAME  $DB_USER  $PG_ALLOWED_CIDR  scram-sha-256  # gisstack" >> "$HBA"
   fi
   systemctl restart "$SVC"
-  for _ in $(seq 1 30); do runuser -u postgres -- pg_isready -q && break; sleep 1; done
+  for _ in $(seq 1 30); do runuser -u postgres -- psql -X -Atqc "select 1" >/dev/null && break; sleep 1; done
   fi
 
   log "database $DB_NAME, role $DB_USER, extensions"

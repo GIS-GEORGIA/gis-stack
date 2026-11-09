@@ -116,7 +116,7 @@ fi
 if has postgis; then
   if [ "$PURGE" = 1 ]; then
     log "PostgreSQL: dropping database $DB_NAME and role $DB_USER"
-    if (cd /tmp && runuser -u postgres -- pg_isready -q) 2>/dev/null; then
+    if (cd /tmp && runuser -u postgres -- psql -X -Atqc "select 1" >/dev/null) 2>/dev/null; then
       (cd /tmp && runuser -u postgres -- psql -X -q \
          -c "DROP DATABASE IF EXISTS \"$DB_NAME\" WITH (FORCE)" \
          -c "DROP ROLE IF EXISTS \"$DB_USER\"") || echo "WARN: could not drop the database/role" >&2
@@ -125,7 +125,7 @@ if has postgis; then
     fi
     if [ "$RMPG" = 1 ]; then
       others=""
-      if (cd /tmp && runuser -u postgres -- pg_isready -q) 2>/dev/null; then
+      if (cd /tmp && runuser -u postgres -- psql -X -Atqc "select 1" >/dev/null) 2>/dev/null; then
         others="$(cd /tmp && runuser -u postgres -- psql -X -Atq -c \
           "SELECT string_agg(datname, ', ') FROM pg_database WHERE datname NOT IN ('postgres','template0','template1')")" || true
       fi

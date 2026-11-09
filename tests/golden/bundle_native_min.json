@@ -4,8 +4,8 @@
  "native/config/init-extensions.sql": "45262192416174d4ecd9c150105c39f8b3819ebf525b263d3b435bfe1c5446f1",
  "native/config/pins.sha256": "c27706d7569ff3631e5e61e7de0b98ec36c7fae76d5bfe28ea9ac57d2fb3d718",
  "native/gisstack-backup": "7c149639b2b87545d6f8f63cd59ce31971bf0c4c391717215fef94c718d3d41f",
- "native/install.sh": "5d4a973dcb854f5749a77ba8931a826bc64f396ff76572e88cb61d9ea08a8a35",
+ "native/install.sh": "cfa75f8dab15d94775ce8d68c8014d842e460dc16b41f8d54db1675684d9c296",
  "native/stack.env": "c3b1c053593778d62f20113db94fb494ad78203c603702a756126121e5d8851f",
- "native/uninstall.sh": "7f5148d7f8549a487aaf7927e89fd22735b1db6cf1698179ebb5110f64c7cb30",
+ "native/uninstall.sh": "afdd8bf2b114f3342e8897f6174db25f2ed0bbad8aa6f4de29e4d8eb46a90e6a",
  "stack.json": "73b8f3395e23c72b04c17d0fced4e1d073bbe64a405eebe610beaa8dc26090ae"
 }
