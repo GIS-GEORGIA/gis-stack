@@ -44,7 +44,9 @@ class ManagersOnRealKubernetes(unittest.TestCase):
                                  generate_secrets=True)
         cls.out = Path(tempfile.mkdtemp())
         cls.home = tempfile.mkdtemp()
-        cls.p = mock.patch.dict(os.environ, {"HOME": cls.home})                 # the read-only role's password file goes to $HOME/.gisstack
+        # the read-only role's password file goes to $HOME/.gisstack, so HOME is replaced - kubectl must keep finding its kubeconfig
+        kubeconfig = os.environ.get("KUBECONFIG") or str(Path.home() / ".kube" / "config")
+        cls.p = mock.patch.dict(os.environ, {"HOME": cls.home, "KUBECONFIG": kubeconfig})
         cls.p.start()
         generate.generate_bundle(cls.cfg, cls.out)
         r = kubectl("apply", "-k", str(cls.out / "k8s"))
