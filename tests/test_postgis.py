@@ -582,12 +582,15 @@ class RealPostgisTests(unittest.TestCase):
         cls.tmp = Path(tempfile.mkdtemp())
         subprocess.run(["docker", "run", "-d", "--rm", "--name", cls.name, "-e", "POSTGRES_PASSWORD=pw", "-e", "POSTGRES_USER=gis", "-e", "POSTGRES_DB=gis", IMAGE],
                        check=True, capture_output=True)
-        for _ in range(60):
+        # pg_isready is already true while the image's TEMPORARY init server runs (before its init scripts create the postgis extension):
+        # wait until the database really has the geometry type, and stays up for a moment (the init server is then replaced by the real one)
+        ok = 0
+        for _ in range(90):
             time.sleep(2)
-            if subprocess.run(["docker", "exec", cls.name, "pg_isready", "-q", "-U", "gis", "-d", "gis"], capture_output=True).returncode == 0:
-                time.sleep(2)
-                if subprocess.run(["docker", "exec", cls.name, "pg_isready", "-q", "-U", "gis", "-d", "gis"], capture_output=True).returncode == 0:
-                    break
+            r = subprocess.run(["docker", "exec", cls.name, "psql", "-X", "-U", "gis", "-d", "gis", "-Atc", "select to_regtype('geometry') is not null"], capture_output=True, text=True)
+            ok = ok + 1 if r.stdout.strip() == "t" else 0
+            if ok >= 2:
+                break
         cls.sql(f"""create role gis_app login password '{cls.APP_PW}' nosuperuser;
                     alter database gis owner to gis_app;
                     create table public.pts(id serial primary key, g geometry(Point,4326), note text);
