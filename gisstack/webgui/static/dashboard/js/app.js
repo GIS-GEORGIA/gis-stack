@@ -18,6 +18,7 @@ import postgis from "./views/postgis.js";
 import mapproxy from "./views/mapproxy.js";
 import servers from "./views/servers.js";
 import security from "./views/security.js";
+import rules from "./views/rules.js";
 
 
 const NAV = [
@@ -34,6 +35,7 @@ const NAV = [
   { route: "servers", ico: "⌘", label: "სერვერები", feature: "multi_server" },
   { route: "deployments", ico: "↻", label: "ოპერაციები" },
   { route: "monitoring", ico: "∿", label: "მონიტორინგი", feature: "monitoring" },
+  { route: "rules", ico: "⚑", label: "ალერტების ზღვრები", feature: "monitoring" },
   { route: "backups", ico: "⛁", label: "ბექაფები" },
   { route: "logs", ico: "≣", label: "ლოგები" },
   { route: "security", ico: "⛨", label: "უსაფრთხოება" },
@@ -164,7 +166,7 @@ async function boot() {
   observe();
   applySettings();
   initAutoRefresh();
-  for (const [name, view] of Object.entries({ overview, infra, service, monitoring, backups, deployments, logs, settings, geoserver, postgis, mapproxy, servers, security })) router.register(name, view);
+  for (const [name, view] of Object.entries({ overview, infra, service, monitoring, backups, deployments, logs, settings, geoserver, postgis, mapproxy, servers, security, rules })) router.register(name, view);
   try { await state.loadConfig(); } catch (e) { toast(e.message, "bad"); }
   state.onConn(updateChip);
   updateChip();

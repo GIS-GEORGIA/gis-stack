@@ -6,7 +6,7 @@ from typing import Any
 from .. import journal, ops, transport
 from ..core import features, paths
 from ..core.errors import DeployError
-from ..monitoring import service
+from ..monitoring import alerts as alerts_mod, rulestore, service
 from ..monitoring.store import Store, StoreError
 from .mount import Req
 from .registry import ApiError, registry
@@ -92,6 +92,66 @@ def alerts(req: Req) -> dict[str, Any]:
         return {"alerts": st.alert_state(), "events": st.events(limit=100)}
     finally:
         st.close()
+
+
+RULE: Schema = {"type": "object", "required": ["id", "builtin", "metric", "op", "threshold", "for", "level", "enabled", "text", "modified"], "properties": {
+    "id": STR, "builtin": {"type": "boolean"}, "metric": STR, "op": STR, "text": STR, "description": STR, "threshold": {"type": "number"}, "for": INT,
+    "level": {"type": "string", "enum": ["warn", "crit"]}, "enabled": {"type": "boolean"}, "renotify": {"type": "number"}, "default": OBJ, "modified": {"type": "boolean"}}}
+RULES: Schema = {"type": "object", "required": ["revision", "rules"], "properties": {"revision": STR, "modified": {"type": ["number", "null"]}, "metrics": STRLIST, "rules": {"type": "array", "items": RULE}}}
+RID: Schema = {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,40}$"}
+REV: Schema = {"type": "string", "pattern": "^[0-9a-f]{1,64}$"}
+RULE_FIELDS: dict[str, Schema] = {
+    "metric": {"type": "string", "enum": list(alerts_mod.KNOWN_METRICS)}, "op": {"type": "string", "enum": list(alerts_mod.OPS)}, "threshold": {"type": "number"},
+    "for": {"type": "integer", "minimum": 1, "maximum": 1000}, "level": {"type": "string", "enum": ["warn", "crit"]}, "text": {"type": "string", "maxLength": 200},
+    "description": {"type": "string", "maxLength": 200}, "enabled": {"type": "boolean"}, "renotify": {"type": "number", "minimum": 0, "maximum": alerts_mod.MAX_RENOTIFY}}
+RULE_ERRORS = ("rules", "conflict", "not_found")
+
+
+def rules_call(req: Req, event: str, fn: Any, *args: Any) -> dict[str, Any]:
+    """Run one rules change, translate its errors, and audit it (the audit line names the rule and the fields, never a notifier secret)."""
+    try:
+        res = fn(*args)
+    except (alerts_mod.RulesError, rulestore.RulesConflict, rulestore.RulesNotFound) as e:
+        req.app.config["AUDIT"].write(event=event, principal=req.principal.id, scope=req.principal.scope, rule=req.path.get("id") or req.body.get("id"), ok=False, error=e.code)
+        raise ApiError.from_exc(e) from e
+    req.app.config["AUDIT"].write(event=event, principal=req.principal.id, scope=req.principal.scope, rule=req.path.get("id") or req.body.get("id"), ok=True,
+                                  fields=sorted(k for k in req.body if k not in ("revision", "id")), revision=res["revision"])
+    return res
+
+
+@R("GET", "/monitor/rules", "Alert rules (built-in and custom) with effective values, the current revision and last modification time", "read", tags=("monitoring",),
+   feature="monitoring", errors=("rules",), response=RULES)
+def rules_get(req: Req) -> dict[str, Any]:
+    try:
+        return rulestore.view()
+    except alerts_mod.RulesError as e:
+        raise ApiError.from_exc(e) from e
+
+
+@R("POST", "/monitor/rules", "Create a custom alert rule (id must be new; `revision` is the one read from GET)", "admin", tags=("monitoring",), feature="monitoring",
+   errors=RULE_ERRORS, body={"type": "object", "additionalProperties": False, "required": ["revision", "id", "metric", "op", "threshold", "for", "level", "text"],
+                             "properties": {"revision": REV, "id": RID, **RULE_FIELDS}}, response=RULES)
+def rules_create(req: Req) -> dict[str, Any]:
+    rule = {k: v for k, v in req.body.items() if k not in ("revision", "id")}
+    return rules_call(req, "monitor.rule.create", lambda: rulestore.create(req.body["id"], rule, req.body["revision"]))
+
+
+@R("PUT", "/monitor/rules/{id}", "Change a rule. Built-in: threshold, for, level, enabled, renotify (or reset=true to restore the defaults). Custom: any field",
+   "admin", tags=("monitoring",), feature="monitoring", errors=RULE_ERRORS, params={"id": "rule id"},
+   body={"type": "object", "additionalProperties": False, "required": ["revision"], "properties": {"revision": REV, "reset": {"type": "boolean"}, **RULE_FIELDS}},
+   response=RULES)
+def rules_update(req: Req) -> dict[str, Any]:
+    rid = req.path["id"]
+    fields = {k: v for k, v in req.body.items() if k not in ("revision", "reset")}
+    if req.body.get("reset"):
+        return rules_call(req, "monitor.rule.reset", lambda: rulestore.reset(rid, req.body["revision"]))
+    return rules_call(req, "monitor.rule.update", lambda: rulestore.update(rid, fields, req.body["revision"]))
+
+
+@R("DELETE", "/monitor/rules/{id}", "Delete a custom rule (built-in rules can only be disabled)", "admin", tags=("monitoring",), feature="monitoring", errors=RULE_ERRORS,
+   params={"id": "rule id"}, query={"type": "object", "additionalProperties": False, "required": ["revision"], "properties": {"revision": REV}}, response=RULES)
+def rules_delete(req: Req) -> dict[str, Any]:
+    return rules_call(req, "monitor.rule.delete", lambda: rulestore.delete(req.path["id"], req.query["revision"]))
 
 
 # --------------------------------------------------------------------------- dashboard

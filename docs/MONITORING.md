@@ -60,6 +60,23 @@ Override in `~/.gisstack/monitor/rules.json` (strictly validated - unknown rules
 {"rules": {"cpu_high": {"threshold": 80, "for": 3}, "swap_high": {"enabled": false}, "backup_old": {"threshold": 100000, "level": "crit", "renotify": 3600}}}
 ```
 
+### Alert rules manager (dashboard "Alert rules", API `/api/v1/monitor/rules`)
+
+Built-in rules always exist: tune (`threshold`, `for`, `level`, `renotify`), disable, or reset them - they cannot be deleted. **Custom rules**
+can be created, edited and deleted. A custom rule needs `id` (`a-z0-9_`, 3-41 characters, not a built-in id), `metric` (one of
+`alerts.KNOWN_METRICS` - metrics the collector really produces), `op`, `threshold`, `for` (1-1000 samples), `level` (`warn`/`crit`) and
+`text` (a template using only `{value}` and `{subject}`, e.g. `{value:.0f}`; attribute access and conversions are rejected); optional
+`description`, `enabled`, `renotify` (seconds, 0 = never repeat, at most 30 days). Notification *channels* (webhook / e-mail) stay in
+`notify.json` and are never returned by the API.
+
+* Reading needs `read`; create / update / reset / delete need `admin` and are written to the audit log (`monitor.rule.create|update|reset|delete`,
+  rule id, changed field names, revision, success or error code - never values of notifier secrets).
+* Every change carries the `revision` returned by `GET` (a hash of the file). A stale revision is `409 conflict`; changes are made under an
+  exclusive file lock and replace the file atomically (0600), so two administrators cannot overwrite each other and a crash cannot leave a half-written file.
+* The result is validated by the same strict loader the monitor uses before anything is written; a damaged `rules.json` is reported and never overwritten.
+* Values equal to a built-in default are not stored. The file keeps the original `{"rules": {...}}` shape and adds `"custom": {...}`; files written before this feature load unchanged.
+* A running `gisstack monitor watch` reads the rules at start: restart it after a change.
+
 ## Notifications
 
 `~/.gisstack/monitor/notify.json`:

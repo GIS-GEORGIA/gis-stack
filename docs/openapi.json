@@ -10233,6 +10233,1207 @@
         }
       }
     },
+    "/monitor/rules": {
+      "get": {
+        "operationId": "get_monitor_rules",
+        "summary": "Alert rules (built-in and custom) with effective values, the current revision and last modification time",
+        "tags": [
+          "monitoring"
+        ],
+        "x-required-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "revision",
+                        "rules"
+                      ],
+                      "properties": {
+                        "revision": {
+                          "type": "string"
+                        },
+                        "modified": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "metrics": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "rules": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "builtin",
+                              "metric",
+                              "op",
+                              "threshold",
+                              "for",
+                              "level",
+                              "enabled",
+                              "text",
+                              "modified"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "builtin": {
+                                "type": "boolean"
+                              },
+                              "metric": {
+                                "type": "string"
+                              },
+                              "op": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "threshold": {
+                                "type": "number"
+                              },
+                              "for": {
+                                "type": "integer"
+                              },
+                              "level": {
+                                "type": "string",
+                                "enum": [
+                                  "warn",
+                                  "crit"
+                                ]
+                              },
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "renotify": {
+                                "type": "number"
+                              },
+                              "default": {
+                                "type": "object"
+                              },
+                              "modified": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'read'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_monitor_rules",
+        "summary": "Create a custom alert rule (id must be new; `revision` is the one read from GET)",
+        "tags": [
+          "monitoring"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "revision",
+                  "id",
+                  "metric",
+                  "op",
+                  "threshold",
+                  "for",
+                  "level",
+                  "text"
+                ],
+                "properties": {
+                  "revision": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{1,64}$"
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{2,40}$"
+                  },
+                  "metric": {
+                    "type": "string",
+                    "enum": [
+                      "host_cpu_percent",
+                      "host_mem_used_percent",
+                      "host_swap_used_percent",
+                      "host_load1",
+                      "disk_used_percent",
+                      "service_up",
+                      "service_cpu_percent",
+                      "service_rss_bytes",
+                      "probe_up",
+                      "probe_seconds",
+                      "pg_up",
+                      "pg_connections_percent",
+                      "pg_longest_query_seconds",
+                      "pg_waiting_locks",
+                      "pg_database_size_bytes",
+                      "pg_cache_hit_ratio",
+                      "mapproxy_cache_bytes",
+                      "backup_last_age_seconds",
+                      "monitor_reachable",
+                      "collect_errors"
+                    ]
+                  },
+                  "op": {
+                    "type": "string",
+                    "enum": [
+                      ">",
+                      ">=",
+                      "<",
+                      "<=",
+                      "=="
+                    ]
+                  },
+                  "threshold": {
+                    "type": "number"
+                  },
+                  "for": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "level": {
+                    "type": "string",
+                    "enum": [
+                      "warn",
+                      "crit"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "renotify": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2592000.0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "revision",
+                        "rules"
+                      ],
+                      "properties": {
+                        "revision": {
+                          "type": "string"
+                        },
+                        "modified": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "metrics": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "rules": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "builtin",
+                              "metric",
+                              "op",
+                              "threshold",
+                              "for",
+                              "level",
+                              "enabled",
+                              "text",
+                              "modified"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "builtin": {
+                                "type": "boolean"
+                              },
+                              "metric": {
+                                "type": "string"
+                              },
+                              "op": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "threshold": {
+                                "type": "number"
+                              },
+                              "for": {
+                                "type": "integer"
+                              },
+                              "level": {
+                                "type": "string",
+                                "enum": [
+                                  "warn",
+                                  "crit"
+                                ]
+                              },
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "renotify": {
+                                "type": "number"
+                              },
+                              "default": {
+                                "type": "object"
+                              },
+                              "modified": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/monitor/rules/{id}": {
+      "delete": {
+        "operationId": "delete_monitor_rules_id",
+        "summary": "Delete a custom rule (built-in rules can only be disabled)",
+        "tags": [
+          "monitoring"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "rule id"
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "revision",
+                        "rules"
+                      ],
+                      "properties": {
+                        "revision": {
+                          "type": "string"
+                        },
+                        "modified": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "metrics": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "rules": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "builtin",
+                              "metric",
+                              "op",
+                              "threshold",
+                              "for",
+                              "level",
+                              "enabled",
+                              "text",
+                              "modified"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "builtin": {
+                                "type": "boolean"
+                              },
+                              "metric": {
+                                "type": "string"
+                              },
+                              "op": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "threshold": {
+                                "type": "number"
+                              },
+                              "for": {
+                                "type": "integer"
+                              },
+                              "level": {
+                                "type": "string",
+                                "enum": [
+                                  "warn",
+                                  "crit"
+                                ]
+                              },
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "renotify": {
+                                "type": "number"
+                              },
+                              "default": {
+                                "type": "object"
+                              },
+                              "modified": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_monitor_rules_id",
+        "summary": "Change a rule. Built-in: threshold, for, level, enabled, renotify (or reset=true to restore the defaults). Custom: any field",
+        "tags": [
+          "monitoring"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "rule id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "revision"
+                ],
+                "properties": {
+                  "revision": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{1,64}$"
+                  },
+                  "reset": {
+                    "type": "boolean"
+                  },
+                  "metric": {
+                    "type": "string",
+                    "enum": [
+                      "host_cpu_percent",
+                      "host_mem_used_percent",
+                      "host_swap_used_percent",
+                      "host_load1",
+                      "disk_used_percent",
+                      "service_up",
+                      "service_cpu_percent",
+                      "service_rss_bytes",
+                      "probe_up",
+                      "probe_seconds",
+                      "pg_up",
+                      "pg_connections_percent",
+                      "pg_longest_query_seconds",
+                      "pg_waiting_locks",
+                      "pg_database_size_bytes",
+                      "pg_cache_hit_ratio",
+                      "mapproxy_cache_bytes",
+                      "backup_last_age_seconds",
+                      "monitor_reachable",
+                      "collect_errors"
+                    ]
+                  },
+                  "op": {
+                    "type": "string",
+                    "enum": [
+                      ">",
+                      ">=",
+                      "<",
+                      "<=",
+                      "=="
+                    ]
+                  },
+                  "threshold": {
+                    "type": "number"
+                  },
+                  "for": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "level": {
+                    "type": "string",
+                    "enum": [
+                      "warn",
+                      "crit"
+                    ]
+                  },
+                  "text": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "description": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "renotify": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 2592000.0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "revision",
+                        "rules"
+                      ],
+                      "properties": {
+                        "revision": {
+                          "type": "string"
+                        },
+                        "modified": {
+                          "type": [
+                            "number",
+                            "null"
+                          ]
+                        },
+                        "metrics": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "rules": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "builtin",
+                              "metric",
+                              "op",
+                              "threshold",
+                              "for",
+                              "level",
+                              "enabled",
+                              "text",
+                              "modified"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "builtin": {
+                                "type": "boolean"
+                              },
+                              "metric": {
+                                "type": "string"
+                              },
+                              "op": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "description": {
+                                "type": "string"
+                              },
+                              "threshold": {
+                                "type": "number"
+                              },
+                              "for": {
+                                "type": "integer"
+                              },
+                              "level": {
+                                "type": "string",
+                                "enum": [
+                                  "warn",
+                                  "crit"
+                                ]
+                              },
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "renotify": {
+                                "type": "number"
+                              },
+                              "default": {
+                                "type": "object"
+                              },
+                              "modified": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/openapi.json": {
       "get": {
         "operationId": "get_openapi_json",

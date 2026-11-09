@@ -16,6 +16,7 @@ links to it), until the dashboard has taken over every one of them.
 | Monitoring | history charts for the chosen range (1 h - 7 d), availability, alerts and events, "take a sample now" |
 | Backups | list, create, verify, prune (preview first), restore wizard (plan -> typed `RESTORE` -> run, or "unpack next to live data") |
 | Logs | a program's log: last N lines or live follow, filter, save as a file; "Stop" cancels the remote tail |
+| Alert rules | all alert rules (built-in and custom) with metric, condition, severity, status, description, last modification time and revision; admins create, edit, enable/disable, reset and delete (with confirmation); read-only users only view |
 | Security | owner-only permission checks of this computer's gis-stack data (tokens, server profiles, pinned host keys, generated passwords, audit log), the update-signature policy, and the newest audit-log events with a filter; needs an `admin` token; never shows secret values |
 | Settings | language, theme, connection, feature flags |
 

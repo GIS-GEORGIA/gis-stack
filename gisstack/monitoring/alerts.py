@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import operator
+import re
+import string
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -35,6 +37,13 @@ DEFAULT_RULES: dict[str, dict[str, Any]] = {
     "host_unreachable": {"metric": "monitor_reachable", "op": "<", "threshold": 1.0, "for": 3, "level": "crit", "text": "the machine cannot be reached"},
     "collector_errors": {"metric": "collect_errors", "op": ">", "threshold": 0.0, "for": 3, "level": "warn", "text": "{value:.0f} metric source(s) unavailable"},
 }
+KNOWN_METRICS = ("host_cpu_percent", "host_mem_used_percent", "host_swap_used_percent", "host_load1", "disk_used_percent", "service_up", "service_cpu_percent",
+                 "service_rss_bytes", "probe_up", "probe_seconds", "pg_up", "pg_connections_percent", "pg_longest_query_seconds", "pg_waiting_locks",
+                 "pg_database_size_bytes", "pg_cache_hit_ratio", "mapproxy_cache_bytes", "backup_last_age_seconds", "monitor_reachable", "collect_errors")
+CUSTOM_ID = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
+CUSTOM_KEYS = {"metric", "op", "threshold", "for", "level", "text", "description", "enabled", "renotify"}
+MAX_RENOTIFY = 30 * 86400.0
+_SPEC = re.compile(r"^\.?[0-9]{0,2}[fg%]?$")
 _ALLOWED_OVERRIDE = {"threshold", "for", "level", "enabled", "op", "renotify"}
 DEFAULT_RENOTIFY = 6 * 3600.0
 
@@ -43,11 +52,10 @@ class RulesError(GisStackError):
     code = "rules"
 
 
-def load_rules(path: Optional[Path] = None) -> dict[str, dict[str, Any]]:
-    """Default rules with the user's overrides applied.  Unknown rule ids, unknown keys and out-of-range values are errors."""
-    rules = {k: dict(v, enabled=True) for k, v in DEFAULT_RULES.items()}
+def read_overrides(path: Optional[Path]) -> dict[str, dict[str, Any]]:
+    """The user's raw overrides from the rules file (no file = none).  Structure errors are RulesError."""
     if path is None or not Path(path).is_file():
-        return rules
+        return {}
     try:
         data = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
@@ -55,6 +63,59 @@ def load_rules(path: Optional[Path] = None) -> dict[str, dict[str, Any]]:
     over = data.get("rules") if isinstance(data, dict) else None
     if not isinstance(over, dict):
         raise RulesError(f'{path}: expected {{"rules": {{...}}}}')
+    return over
+
+
+def check_text(rid: str, text: Any, where: str) -> str:
+    """Alert text is a str.format template with only {value} and {subject} (plain format specs): no attribute access, no conversions."""
+    if not isinstance(text, str) or not 1 <= len(text) <= 200 or any(ord(c) < 32 for c in text):
+        raise RulesError(f"{where}: {rid}.text must be 1-200 characters without control characters")
+    try:
+        for _lit, name, spec, conv in string.Formatter().parse(text):
+            if name is None:
+                continue
+            if name not in ("value", "subject") or conv or (spec and not _SPEC.match(spec)):
+                raise ValueError(name)
+        text.format(value=1.5, subject="x")
+    except (ValueError, KeyError, IndexError):
+        raise RulesError(f"{where}: {rid}.text may use only {{value}} (e.g. {{value:.0f}}) and {{subject}}") from None
+    return text
+
+
+def custom_rule(rid: str, o: Any, where: str = "rules") -> dict[str, Any]:
+    """Validate one user-defined rule (all of metric/op/threshold/for/level/text are required) and return it with defaults filled in."""
+    if not CUSTOM_ID.match(rid or ""):
+        raise RulesError(f"{where}: rule id must be 3-41 characters: a-z, 0-9 and _, starting with a letter")
+    if rid in DEFAULT_RULES:
+        raise RulesError(f"{where}: {rid!r} is a built-in rule id")
+    if not isinstance(o, dict) or set(o) - CUSTOM_KEYS:
+        raise RulesError(f"{where}: rule {rid}: allowed keys are {sorted(CUSTOM_KEYS)}")
+    missing = [k for k in ("metric", "op", "threshold", "for", "level", "text") if k not in o]
+    if missing:
+        raise RulesError(f"{where}: rule {rid}: missing {', '.join(missing)}")
+    if o["metric"] not in KNOWN_METRICS:
+        raise RulesError(f"{where}: {rid}.metric must be one of {list(KNOWN_METRICS)}")
+    r = dict(o, enabled=o.get("enabled", True))
+    r.update({k: v for k, v in apply_overrides({}, where, scratch=(rid, {k: o[k] for k in ("threshold", "for", "level", "op", "enabled", "renotify") if k in o}))[rid].items()
+              if k in ("threshold", "for", "level", "op", "enabled", "renotify")})
+    r["text"] = check_text(rid, o["text"], where)
+    desc = o.get("description", "")
+    if not isinstance(desc, str) or len(desc) > 200 or any(ord(c) < 32 for c in desc):
+        raise RulesError(f"{where}: {rid}.description must be at most 200 characters without control characters")
+    r["description"] = desc
+    if "renotify" in r and r["renotify"] > MAX_RENOTIFY:
+        raise RulesError(f"{where}: {rid}.renotify must be at most {int(MAX_RENOTIFY)} seconds")
+    return r
+
+
+def apply_overrides(over: dict[str, Any], where: str = "rules", custom: Optional[dict[str, Any]] = None,
+                    scratch: Optional[tuple[str, dict[str, Any]]] = None) -> dict[str, dict[str, Any]]:
+    """Default rules with `over` applied.  Unknown rule ids, unknown keys and out-of-range values are errors."""
+    rules = {k: dict(v, enabled=True) for k, v in DEFAULT_RULES.items()}
+    if scratch is not None:                                  # validate a custom rule's overridable fields with the very same code
+        rules = {scratch[0]: dict(DEFAULT_RULES["cpu_high"], enabled=True)}
+        over = {scratch[0]: scratch[1]}
+    path = where
     for rid, o in over.items():
         if rid not in rules:
             raise RulesError(f"{path}: unknown rule {rid!r} (known: {', '.join(sorted(rules))})")
@@ -85,7 +146,27 @@ def load_rules(path: Optional[Path] = None) -> dict[str, dict[str, Any]]:
             if isinstance(o["renotify"], bool) or not isinstance(o["renotify"], (int, float)) or o["renotify"] < 0:
                 raise RulesError(f"{path}: {rid}.renotify must be seconds >= 0")
             r["renotify"] = float(o["renotify"])
+    for cid, c in (custom or {}).items():
+        rules[cid] = custom_rule(cid, c, where)
     return rules
+
+
+def read_custom(path: Optional[Path]) -> dict[str, Any]:
+    if path is None or not Path(path).is_file():
+        return {}
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}                                            # read_overrides reports the damage
+    c = data.get("custom", {}) if isinstance(data, dict) else {}
+    if not isinstance(c, dict):
+        raise RulesError(f'{path}: "custom" must be an object')
+    return c
+
+
+def load_rules(path: Optional[Path] = None) -> dict[str, dict[str, Any]]:
+    """Default rules with the user's overrides applied, plus user-defined ("custom") rules."""
+    return apply_overrides(read_overrides(path), str(path), read_custom(path))
 
 
 def subject_of(labels: Labels) -> str:

@@ -810,6 +810,81 @@ Take one real sample now, store it, evaluate alerts (and notify).
   - `errors` (array)
 * Errors: 400, 401, 403, 502
 
+### `GET /api/v1/monitor/rules`
+
+Alert rules (built-in and custom) with effective values, the current revision and last modification time.
+
+* Scope: **read**
+* Response `data`:
+  - `revision` (string, required)
+  - `modified` (number|null)
+  - `metrics` (array)
+  - `rules` (array, required)
+* Errors: 400, 401, 403
+
+### `POST /api/v1/monitor/rules`
+
+Create a custom alert rule (id must be new; `revision` is the one read from GET).
+
+* Scope: **admin**
+* Request body (JSON):
+  - `revision` (string, required) - pattern `^[0-9a-f]{1,64}$`
+  - `id` (string, required) - pattern `^[a-z][a-z0-9_]{2,40}$`
+  - `metric` (string, required) - one of `host_cpu_percent`, `host_mem_used_percent`, `host_swap_used_percent`, `host_load1`, `disk_used_percent`, `service_up`, `service_cpu_percent`, `service_rss_bytes`, `probe_up`, `probe_seconds`, `pg_up`, `pg_connections_percent`, `pg_longest_query_seconds`, `pg_waiting_locks`, `pg_database_size_bytes`, `pg_cache_hit_ratio`, `mapproxy_cache_bytes`, `backup_last_age_seconds`, `monitor_reachable`, `collect_errors`
+  - `op` (string, required) - one of `>`, `>=`, `<`, `<=`, `==`
+  - `threshold` (number, required)
+  - `for` (integer, required) - min `1`; max `1000`
+  - `level` (string, required) - one of `warn`, `crit`
+  - `text` (string, required) - maxLength `200`
+  - `description` (string) - maxLength `200`
+  - `enabled` (boolean)
+  - `renotify` (number) - min `0`; max `2592000.0`
+* Response `data`:
+  - `revision` (string, required)
+  - `modified` (number|null)
+  - `metrics` (array)
+  - `rules` (array, required)
+* Errors: 400, 401, 403, 404, 409
+
+### `DELETE /api/v1/monitor/rules/{id}`
+
+Delete a custom rule (built-in rules can only be disabled).
+
+* Scope: **admin**
+* Path parameter `id` (string, required) - rule id
+* Query parameter `revision` (string, required)
+* Response `data`:
+  - `revision` (string, required)
+  - `modified` (number|null)
+  - `metrics` (array)
+  - `rules` (array, required)
+* Errors: 400, 401, 403, 404, 409
+
+### `PUT /api/v1/monitor/rules/{id}`
+
+Change a rule. Built-in: threshold, for, level, enabled, renotify (or reset=true to restore the defaults). Custom: any field.
+
+* Scope: **admin**
+* Path parameter `id` (string, required) - rule id
+* Request body (JSON):
+  - `revision` (string, required) - pattern `^[0-9a-f]{1,64}$`
+  - `reset` (boolean)
+  - `metric` (string) - one of `host_cpu_percent`, `host_mem_used_percent`, `host_swap_used_percent`, `host_load1`, `disk_used_percent`, `service_up`, `service_cpu_percent`, `service_rss_bytes`, `probe_up`, `probe_seconds`, `pg_up`, `pg_connections_percent`, `pg_longest_query_seconds`, `pg_waiting_locks`, `pg_database_size_bytes`, `pg_cache_hit_ratio`, `mapproxy_cache_bytes`, `backup_last_age_seconds`, `monitor_reachable`, `collect_errors`
+  - `op` (string) - one of `>`, `>=`, `<`, `<=`, `==`
+  - `threshold` (number)
+  - `for` (integer) - min `1`; max `1000`
+  - `level` (string) - one of `warn`, `crit`
+  - `text` (string) - maxLength `200`
+  - `description` (string) - maxLength `200`
+  - `enabled` (boolean)
+  - `renotify` (number) - min `0`; max `2592000.0`
+* Response `data`:
+  - `revision` (string, required)
+  - `modified` (number|null)
+  - `metrics` (array)
+  - `rules` (array, required)
+* Errors: 400, 401, 403, 404, 409
+
 ## operate
 
 ### `GET /api/v1/journal`
