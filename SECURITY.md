@@ -106,6 +106,27 @@ to restore a damaged backup, takes a verified pre-restore backup first, replaces
 on failure. Restore refuses archives with `..`, absolute paths, escaping links or members outside the allowed directories. Backups
 contain secrets (`credentials.txt`, role password hashes): they are not encrypted yet - keep the directory and downloaded copies private.
 
-**Not covered yet (see `docs/ROADMAP.md`):** release artefacts are not signed (S-09, needs a decision on the signing tool), the CSP
+**Signed releases (S-09).** The release workflow signs `SHA256SUMS` keylessly with Sigstore (cosign, bound to the workflow's GitHub identity, so there
+is no private key to steal) and attaches `SHA256SUMS.sigstore.json`; the workflow verifies the signature itself before publishing. `gisstack update`
+checks the signature (needs the `cosign` program; the accepted identity is only this repository's `release.yml` run for a version tag), then the
+file's SHA-256. Without cosign, or for releases that predate signing, it warns and relies on the checksum; `GISSTACK_REQUIRE_SIGNATURE=1` makes that a
+refusal. A signature that is present and wrong always refuses. The signing step has only run in CI once a tag is pushed - see `docs/guides/en/UPGRADE.md`
+for manual verification.
+
+## Threat model
+
+| Asset | Who could attack it | How | What stops it | Residual risk |
+| --- | --- | --- | --- | --- |
+| Root on the target servers | A malicious configuration file; a malicious download; a man in the middle on SSH | injection into root scripts; tampered installer assets; a fake host | validated and quoted configuration (fuzz-tested); pinned SHA-256 for every download run as root; server profiles pin host keys (`StrictHostKeyChecking=yes`) | without a profile SSH is trust-on-first-use; distro repositories are trusted as the distro's own signing makes them |
+| The operator machine and `~/.gisstack` (secrets, projects, backups, tokens) | Other local users; a web page in the operator's browser | file reads; cross-site requests to the local GUI | `0700`/`0600`, atomic writes; token + CSRF header + Host allow-list; loopback only by default; scoped API tokens stored as SHA-256 only | anyone who is the operator's user, or root, on that machine |
+| Database content (PostGIS manager) | A user of the dashboard/API | arbitrary SQL | read-only role with limits, read-only transaction, statement timeout; write access needs a time-boxed, audited elevation | a user with `admin` scope can elevate by design |
+| GeoServer/MapProxy configuration and caches | A user of the dashboard/API; hostile XML/YAML | destructive edits; XML entity attacks | validation by the programs themselves, automatic backups, dry-run defaults, DTD/entity rejection, typed confirmations | `admin` scope can change configuration by design |
+| Releases and updates | A compromised download path or release asset | replaced files | HTTPS from this repository only, SHA-256, Sigstore signature of `SHA256SUMS` | a compromise of the GitHub repository or of its release workflow itself; unsigned old releases |
+| Backups | Anyone with the files | reading secrets inside | owner-only permissions, checksums | backups are not encrypted yet |
+| Plugins (flag `plugins`) | Third-party packages | arbitrary code in-process | off by default; contract checks, error isolation | a plugin runs with the program's privileges: install only what you trust |
+
+Out of scope: a compromised operator machine, a compromised root account on the target, and denial of service against the local GUI.
+
+**Not covered yet (see `docs/ROADMAP.md`):** the CSP
 still allows inline scripts (S-07), SSH host keys are trust-on-first-use unless you use a server profile with a pinned host key (S-08; `docs/SERVERS.md`, flag `multi_server`), rollback after a failed upgrade and a
-`restore` command (R-03, Phase 7), and the Tk desktop GUI is not part of the automated coverage figure.
+`restore` command (R-03, Phase 7; native backups are done), and the Tk desktop GUI is not part of the automated coverage figure.

@@ -194,15 +194,34 @@ flowchart TB
   end
   W -->|ssh BatchMode, key file path typed per run| S[Target server]
   S --> R[root scripts: install.sh, uninstall.sh, ops/existing scripts]
-  GH[GitHub Releases] -->|HTTPS + SHA256SUMS| W
+  GH[GitHub Releases] -->|HTTPS + SHA256SUMS + Sigstore signature| W
   PK[Distro / vendor / CDN downloads] -->|HTTPS, partly unverified| R
 ```
 
 Assumptions: the operator machine is trusted; the web GUI is reached only locally or through an SSH tunnel; configuration authored by the operator is trusted (this assumption is **not enforced** — see S-01); the target server is administered with root-equivalent privileges by design.
 
-## 8. Extension points today
+## 8. Extension points
 
-There is no plugin API. Practical extension is by editing: `catalog.py` (new component/extension/version), `generate._plan` + templates (new files), `ops` (status/control for a new service), `i18n.py` (strings). The roadmap's *Provider* and *Service* interfaces formalise these seams.
+Plugins (feature flag `plugins`, contract v1 in `gisstack/plugins`, `docs/PLUGINS.md`) can add service providers, monitoring/notification providers, backup targets, auth providers and data sources through entry-point groups `gisstack.*`; loading is isolated and conformance-tested. Editing remains the way to add core behaviour: `catalog.py` (component/extension/version), `generate._plan` + templates (files), `providers/*` (status/control per target), `i18n.py` (strings).
+
+### 8.1 Layers added after Phase 2
+
+```mermaid
+flowchart TD
+  UI[Dashboard JS, classic page, Tk, CLI] --> API[/api/v1 registry: scopes, schema, envelope, jobs/]
+  API --> MGR[Managers: geoserver, postgis, mapproxy]
+  API --> SRV[servers: profiles, pinned host keys, compare]
+  API --> MON[monitoring: collect, store, alerts]
+  API --> OPS[ops, deploy, backup, rotation]
+  MGR --> TR[transport: local or ssh]
+  SRV --> TR
+  OPS --> TR
+  TR --> RUN[runner: deadlines, cancel, redaction]
+  PL[plugins] -.-> API
+  PL -.-> OPS
+```
+
+Every route is declared once in `api/registry.py`; `docs/openapi.json` and `docs/API.md` are generated from it and a test fails on drift. Routes that talk to a machine take `mode`/`ssh`, or `server` (a profile with its own credentials and pinned host key), and all go through `routes.machine()`. The managers are native-only today, gated by feature flags, and run scripts on the server through `transport` with secrets on stdin.
 
 ## 9. Conventions
 

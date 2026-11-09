@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### დოკუმენტაცია და გამოშვების ხარისხი (Phase 12)
+- **ხელმოწერილი გამოშვებები (S-09):** release workflow ხელს აწერს `SHA256SUMS`-ს Sigstore-ით (cosign, გასაღების გარეშე) და თავადვე ამოწმებს; `gisstack update` ამოწმებს ხელმოწერას (საჭიროა `cosign`; მხოლოდ ამ რეპოს `release.yml` იდენტობა მიიღება), შემდეგ ფაილის SHA-256-ს. `cosign`-ის ან ხელმოწერის გარეშე გაფრთხილებაა; `GISSTACK_REQUIRE_SIGNATURE=1` უარყოფაა; არასწორი ხელმოწერა ყოველთვის უარყოფს. **ჯერ გამოუცდელია რეალურ გამოშვებაზე:** პირველი tag-ის შემდეგ იხ. `RELEASING.md`.
+- ახალი ინსტრუქციები ორ ენაზე (`docs/guides/{ka,en}`): დაყენება, განახლება, ბექაფი/აღდგენა, პრობლემების გადაჭრა; ტესტი ამოწმებს, რომ ორი ენის სტრუქტურა, ბრძანებები და ბმულები ერთნაირია.
+- `SECURITY.md`: საფრთხეთა მოდელი (აქტივი, თავდამსხმელი, დაცვა, დარჩენილი რისკი); `docs/ARCHITECTURE.md`: API/მენეჯერების/სერვერების/პლაგინების სქემა.
+
 ### ინტეგრაციული და end-to-end ტესტები (Phase 11b)
 - `tests/integration`: რეალური `install.sh` systemd-კონტეინერებში (Ubuntu 22.04/24.04, Debian 12, Rocky 9, Alma 9): PostGIS-ის დაყენება, gis-stack-ის საკუთარი სტატუსი და PostGIS მენეჯერი ამ ინსტალაციაზე, განმეორებით გაშვება, წაშლა მონაცემების შენარჩუნებით და `--purge`; deb/rpm პაკეტები apt/dnf-ით; რეალური Compose; Playwright ბრაუზერის ტესტი (`tests/e2e`). ჩართვა: `GISSTACK_TEST_INSTALLER=1`, `GISSTACK_TEST_DOCKER=1`, `GISSTACK_TEST_E2E=1`; CI: `.github/workflows/integration.yml` (ღამით, ხელით, ან PR-ზე ლეიბლით `integration`). იხ. `docs/TESTING.md`.
 - **შესწორება (RPM სისტემები):** `pg_isready` RHEL-ზე PATH-ში არ არის, ამიტომ `uninstall.sh --purge` ბაზას ჩუმად არ შლიდა (Alma), `--adopt-postgres` და აღმოჩენა ვერ ხედავდა მუშა PostgreSQL-ს; ახლა მოწმდება `psql`-ით.

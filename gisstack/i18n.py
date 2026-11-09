@@ -944,3 +944,17 @@ EN.update({
     "თითის ანაბეჭდი (fingerprint) არ ემთხვევა: სერვერმა სხვა host key აჩვენა - არაფერი დაფიქსირდა":
         "Fingerprint does not match: the server presented a different host key - nothing was pinned",
 })
+
+# Phase 12: release signatures
+EN.update({
+    "SHA256SUMS-ის ხელმოწერა არასწორია — ჩამოტვირთვა გაუქმდა:": "The signature of SHA256SUMS is invalid - download cancelled:",
+    "cosign არ არის დაყენებული, ხელმოწერა ვერ შემოწმდა (GISSTACK_REQUIRE_SIGNATURE=1) — ჩამოტვირთვა გაუქმდა":
+        "cosign is not installed, the signature could not be checked (GISSTACK_REQUIRE_SIGNATURE=1) - download cancelled",
+    "cosign ვერ გაეშვა:": "cosign could not be run:",
+    "ამ გამოშვებას ხელმოწერა არ აქვს (GISSTACK_REQUIRE_SIGNATURE=1) — ჩამოტვირთვა გაუქმდა":
+        "This release has no signature (GISSTACK_REQUIRE_SIGNATURE=1) - download cancelled",
+    "ხელმოწერა ✔ (Sigstore)": "Signature ✔ (Sigstore)",
+    "⚠ ამ გამოშვებას ხელმოწერა არ აქვს — შემოწმდა მხოლოდ SHA-256": "⚠ This release has no signature - only the SHA-256 was checked",
+    "⚠ ხელმოწერა არ შემოწმებულა (cosign არ არის დაყენებული) — შემოწმდა მხოლოდ SHA-256":
+        "⚠ The signature was not checked (cosign is not installed) - only the SHA-256 was checked",
+})

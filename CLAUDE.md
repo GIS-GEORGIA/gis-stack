@@ -156,3 +156,8 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - RPM-ზე `pg_isready` PATH-ში არ არის: PostgreSQL-ის მუშაობას ვამოწმებთ `runuser -u postgres -- psql -X -Atqc "select 1"`-ით. PGDG repo-ს `$releasever_major.$releasever_minor` install.sh-ში `$releasever_major`-ზე იცვლება.
 - Playwright: dashboard-ზე პირველი ვიზიტი „კავშირი“ დიალოგს ხსნის (დახურე `#dlg button.primary`-ით); CSP-ის გამო `wait_for_function` (eval) არ მუშაობს, გამოიყენე სელექტორები.
 - ახალი golden ფაილები: `UPDATE_GOLDEN=1 python -m unittest tests.test_golden`.
+
+## გამოშვების ხარისხი (Phase 12)
+- ხელმოწერა: `release.yml` → `cosign sign-blob --bundle SHA256SUMS.sigstore.json SHA256SUMS` (keyless, `id-token: write`) + იმავე workflow-ში verify. `updater.verify_signature` იძახებს `cosign verify-blob`-ს იდენტობით `SIGNER_IDENTITY` (მხოლოდ ამ რეპოს release.yml, ვერსიის tag). არასწორი ხელმოწერა ყოველთვის უარყოფს; არარსებობა/cosign-ის უქონლობა — გაფრთხილება, `GISSTACK_REQUIRE_SIGNATURE=1`-ზე უარყოფა. ტესტებში cosign ყალბია (`tests/test_signature.py`); რეალური ხელმოწერა მხოლოდ tag-ზე გადის.
+- ინსტრუქციები: `docs/guides/{en,ka}/*.md`; `tests/test_guides.py` ითხოვს ერთნაირ სათაურებს, **ერთნაირ კოდის ბლოკებს**, არსებულ ბმულებს და არსებულ CLI ბრძანებებს. ახალი ინსტრუქცია = ორივე ენა.
+- `updater.py` არის i18n ტესტის სკანირებაში: ახალი ქართული შეტყობინება → `EN` ჩანაწერი.

@@ -19,6 +19,8 @@ config files. Targets: native packages (apt / dnf), Docker / Podman Compose, Kub
 | ვებ რუკა | ორენოვანი (KA/EN) Leaflet, ოფლაინ-ბიბლიოთეკით, უკვე მიბმული შენს ფენებზე |
 | მობილური | React Native (Expo) და Flutter შაბლონები, მიბმული შენს სერვერზე |
 
+> **ინსტრუქციები / Guides:** [დაყენება](docs/guides/ka/INSTALL.md) · [განახლება](docs/guides/ka/UPGRADE.md) · [ბექაფი](docs/guides/ka/BACKUP.md) · [პრობლემები](docs/guides/ka/TROUBLESHOOTING.md) — [Install](docs/guides/en/INSTALL.md) · [Upgrade](docs/guides/en/UPGRADE.md) · [Backup](docs/guides/en/BACKUP.md) · [Troubleshooting](docs/guides/en/TROUBLESHOOTING.md)
+
 > **ახალი ხარ?** ნაბიჯ-ნაბიჯ ინსტრუქცია — [docs/USAGE.md](docs/USAGE.md): როგორ გაუშვა, როგორ აირჩიო პროგრამები და ვერსიები ვებ GUI-ში, როგორ აკონტროლო.
 
 ## დაყენება

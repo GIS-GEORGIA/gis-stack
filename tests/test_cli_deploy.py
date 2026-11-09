@@ -288,9 +288,10 @@ class CliOperationsTests(CliBase):
             self.assertIn("0.1.0", out)
         with mock.patch.object(updater, "check", return_value=info):
             self.assertEqual(self.run_cli("update", "--check")[0], 10)
-            with mock.patch.object(updater, "download", return_value=Path("/tmp/x.tar.gz")):
+            with mock.patch.object(updater, "download_verified", return_value=(Path("/tmp/x.tar.gz"), "unsigned")):
                 rc, out, _ = self.run_cli("update", "--download", str(self.tmp))
             self.assertEqual(rc, 0)
+            self.assertIn("SHA-256", out)                                  # the signature status line is printed
             with mock.patch.object(updater, "apply", return_value=iter(["upgraded"])):
                 rc, out, _ = self.run_cli("update", "-y")
             self.assertEqual(rc, 0)

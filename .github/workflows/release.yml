@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write        # keyless Sigstore signing: the signature is bound to this workflow's identity, no key to store
 
 jobs:
   release:
@@ -35,6 +36,15 @@ jobs:
           packaging/build.sh deb
           sudo apt-get install -y rpm >/dev/null && packaging/build.sh rpm || echo "rpm skipped"
           cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS
+
+      - uses: sigstore/cosign-installer@v3.7.0
+      - name: Sign SHA256SUMS (Sigstore, keyless) and verify the signature the way `gisstack update` will
+        run: |
+          cd dist
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+          cosign verify-blob --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@${GITHUB_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS
 
       - name: Release notes from CHANGELOG.md
         run: |

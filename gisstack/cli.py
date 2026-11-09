@@ -144,7 +144,8 @@ def _update(a: argparse.Namespace) -> int:
             asset = info["package"] or info["sdist"]
             if asset is None:
                 raise updater.UpdateError("ამ გამოშვებაში ჩამოსატვირთი ფაილი არ არის")
-            path = updater.download(asset, info["sums"], a.download)
+            path, sig = updater.download_verified(asset, info["sums"], a.download, sig_asset=info.get("signature"))
+            print(updater.signature_line(sig))
             print(f"ჩამოტვირთულია და SHA-256 გადამოწმებულია: {path}")
             print(f"დასაყენებლად: {updater.package_hint(path)}")
             return 0

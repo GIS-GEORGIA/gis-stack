@@ -99,7 +99,7 @@ Complexity is expressed as **S** (≤3 d), **M** (4–8 d), **L** (9–15 d), **
 ### Phase 11b — Integration and end-to-end tests · **L** — ✅ first release (installer in 5 distro containers, deb/rpm packages, real Compose, Playwright browser flow, nightly/label workflow; kind job and rpm package test run only in CI; see `docs/TESTING.md`)
 - Containerised integration suites (PostgreSQL/PostGIS, GeoServer, MapProxy, Compose, kind), installer tests in distro containers (Ubuntu 22.04/24.04, Debian 12, Rocky/Alma 9) using systemd-enabled images, deb/rpm install tests, browser E2E (Playwright) for authentication → configure → preview → deploy (dry-run/container) → manage services → backup/restore. Ordinary CI never touches production infrastructure; privileged/long jobs run nightly or on label.
 
-### Phase 12 — Documentation and release quality · **M**
+### Phase 12 — Documentation and release quality · **M** — ✅ implemented (bilingual install/upgrade/backup/troubleshooting guides with a sync test, threat model, architecture update, keyless Sigstore signing + verification in `gisstack update`; the signing step has not yet run on a real tag)
 - Installation, upgrade, backup/recovery, troubleshooting guides; API reference (generated); architecture diagrams kept in `docs/ARCHITECTURE.md`; threat model in `SECURITY.md`; synchronized Georgian/English versions of user-facing guides; signed releases (Sigstore/cosign or minisign) with verification in `gisstack update`.
 
 ## 4. Cross-cutting acceptance checklist (per phase)
