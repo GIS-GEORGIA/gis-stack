@@ -8,7 +8,7 @@
 ### მენეჯერები Compose-სა და Kubernetes-ზე
 - PostGIS, GeoServer და MapProxy მენეჯერები ახლა მუშაობს სამივე სამიზნეზე (`gisstack/targets.py`): იგივე სკრიპტები პროგრამამდე კონტეინერში/pod-ში მიდის (`docker exec -i` / `kubectl exec -i`), ოპერატორის საკუთარი უფლებებით (sudo-ს გარეშე); საიდუმლოებები ისევ stdin-ზეა. კონტეინერს Compose-ის ლეიბლებით ვპოულობთ, pod-ს — `TYPE/NAME`-ით namespace-ში.
 - PostGIS: კონტეინერში superuser არის სტეკის საკუთარი როლი (`PGUSER`); წაკითხვადი როლის პაროლის ფაილი ოპერატორის მანქანაზეა (`$HOME/.gisstack`, 600). GeoServer: curl კონტეინერის შიგნით. MapProxy: ვალიდაცია, seed, ქეში, ფილა, ჯანმრთელობა კონტეინერშია; Compose-ზე კონფიგურაციის რედაქტირება პროექტის საქაღალდეში იწერება (ასლებით, MapProxy თავად იტვირთავს), Kubernetes-ზე კონფიგურაცია ConfigMap-ია — იკითხება/მოწმდება, მაგრამ აქედან არ რედაქტირდება. გაუქმებული seed კონტეინერში ისპობა.
-- ტესტები: რეალური Compose სტეკი (PostGIS 17, GeoServer 2.28.6, MapProxy-ის გენერირებული image — რედაქტირება, ავტომატური გადატვირთვა, აღდგენა), Kubernetes — `kubectl` shim-ით იმავე კონტეინერებზე; **რეალურ Kubernetes კლასტერზე არ გატესტილა**. იხ. `docs/POSTGIS.md`, `docs/GEOSERVER.md`, `docs/MAPPROXY.md`.
+- ტესტები: რეალური Compose სტეკი (PostGIS 17, GeoServer 2.28.6, MapProxy-ის გენერირებული image — რედაქტირება, ავტომატური გადატვირთვა, აღდგენა), Kubernetes — რეალური kind კლასტერი (v1.37; PostGIS 17, GeoServer 3.0.2, MapProxy) და დამატებით `kubectl` shim-ი. CI-ში: `integration` workflow-ის `kubernetes` job. იხ. `docs/POSTGIS.md`, `docs/GEOSERVER.md`, `docs/MAPPROXY.md`.
 
 ## [0.1.6] - 2026-11-09
 
