@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional
 
-from . import deploy, discover, existing, preflight
+from . import deploy, deployments, discover, existing, preflight, transport
 from .core.errors import DeployError
 
 MODES = ("local", "ssh")
@@ -78,3 +78,38 @@ def deploy_steps(cfg: dict[str, Any], bundle: Path, target: str, mode: str, ssh:
         if rep:
             raise Conflict("საჭირო პორტები დაკავებულია — აირჩიე რა ვუყოთ არსებულ პროგრამებს", rep)
     yield from deploy.deploy(cfg, bundle, target, mode, ssh)
+
+
+class RollbackRefused(DeployError):
+    """There is no verified recovery path; `plan` says why."""
+    code = "not_ready"
+
+    def __init__(self, message: str, plan: dict[str, Any]) -> None:
+        super().__init__(message)
+        self.plan = plan
+
+
+class RollbackFailed(DeployError):
+    code = "rollback"
+
+
+def rollback_plan(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], target: str, record_id: str = "") -> dict[str, Any]:
+    """Whether (and to what) this machine can be rolled back.  Reads local records only; touches nothing."""
+    return deployments.plan_rollback(cfg["project"], target, mode, transport.host_label(mode, ssh), record_id)
+
+
+def rollback_config(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], target: str, record_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """(configuration to re-apply, plan).  Raises RollbackRefused unless the recovery path is verified.  Current secrets are kept."""
+    plan = rollback_plan(cfg, mode, ssh, target, record_id)
+    if not plan["eligible"]:
+        raise RollbackRefused(plan["reason"] or "rollback is not possible", plan)
+    return deployments.with_current_secrets(deployments.snapshot(plan["target"]["id"]), cfg), plan
+
+
+def rollback_steps(snap_cfg: dict[str, Any], bundle: Path, target: str, mode: str, ssh: Optional[dict[str, Any]], rollback_of: str) -> Iterator[str]:
+    """Re-apply the earlier configuration (idempotent deploy, nothing purged) and require the machine to be healthy afterwards."""
+    yield f"== rollback -> {rollback_of}"
+    yield from deploy.deploy(snap_cfg, bundle, target, mode, ssh, kind="rollback", rollback_of=rollback_of)
+    last = deployments.records(snap_cfg.get("project"), 1)
+    if not last or last[0].get("outcome") != "ok":
+        raise RollbackFailed("rollback finished, but the machine is not verified healthy - nothing further was changed; check the programs and the log")

@@ -44,6 +44,10 @@ def audit_log() -> Path:
     return _sub("audit.log")
 
 
+def deployments_dir() -> Path:
+    return _sub("deployments")
+
+
 def journal_file() -> Path:
     return _sub("journal.jsonl")
 

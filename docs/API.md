@@ -289,6 +289,51 @@ Deploy the stack (job). Runs the pre-flight and port-conflict checks first.
 * Response `data`: `{"job": "<id>"}` (a background job)
 * Errors: 400, 401, 403, 409, 502
 
+### `GET /api/v1/deployments/history`
+
+Recorded deployments and rollbacks: state before, outcome and health after (no secrets).
+
+* Scope: **read**
+* Query parameter `project` (string)
+* Query parameter `limit` (integer)
+* Response `data`: an array
+* Errors: 400, 401, 403
+
+### `POST /api/v1/deployments/rollback`
+
+Re-apply the configuration of an earlier healthy deployment (job). Never deletes data or backups; refused without a verified recovery point.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+  - `record` (string, required)
+  - `confirm` (boolean, required)
+* Response `data`: `{"job": "<id>"}` (a background job)
+* Errors: 400, 401, 403, 409
+
+### `POST /api/v1/deployments/rollback/plan`
+
+Is a verified recovery path available for this machine, and what would it re-apply? (reads local records only).
+
+* Scope: **operate**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+  - `record` (string)
+* Response `data`:
+  - `eligible` (boolean, required)
+  - `reason` (string, required)
+  - `current` (any)
+  - `target` (any)
+  - `changes` (array)
+  - `limitations` (array, required)
+* Errors: 400, 401, 403
+
 ## existing
 
 ### `POST /api/v1/existing/backup`

@@ -11,7 +11,7 @@ from typing import Any, Iterator, Optional
 
 from flask import Response, make_response
 
-from .. import (__version__, plugins, backup as backup_mod, backup_crypto, catalog, config, deploy, discover, existing, generate, i18n, journal, ops, preflight as preflight_mod,
+from .. import (__version__, plugins, backup as backup_mod, backup_crypto, catalog, config, deploy, deployments, discover, existing, generate, i18n, journal, ops, preflight as preflight_mod,
                 projects, rotation, services, settings, updater)
 from ..core import features, paths
 from ..servers import store as servers_store
@@ -325,7 +325,51 @@ def deploy_stack(req: Req) -> str:
     rep = services.find_conflicts(cfg, mode, ssh, target)
     if rep:
         raise ApiError(409, "conflict", "required ports are taken by other programs", rep)
+    req.app.config["AUDIT"].write(event="deploy.start", principal=req.principal.id, scope=req.principal.scope, project=cfg["project"], target=target, mode=mode)
     return start_job(req, lambda job, b: deploy.deploy(cfg, b, target, mode, ssh), cfg=cfg, make_bundle=True, cleanup_bundle=(mode == "ssh"))
+
+
+DEPLOYMENT: Schema = {"type": "object", "required": ["id", "ts", "kind", "project", "target", "mode", "host", "outcome"], "properties": {
+    "id": STR, "ts": INT, "n": INT, "kind": {"type": "string", "enum": ["deploy", "rollback"]}, "rollback_of": STR, "project": STR, "target": STR, "mode": STR, "host": STR,
+    "digest": STR, "before": {}, "after": {}, "outcome": {"type": "string", "enum": list(deployments.OUTCOMES)}, "error": STR, "seconds": {"type": ["number", "null"]},
+    "config_saved": BOOL}}
+ROLLBACK_PLAN: Schema = {"type": "object", "required": ["eligible", "reason", "limitations"], "properties": {
+    "eligible": BOOL, "reason": STR, "current": {}, "target": {}, "changes": STRLIST, "limitations": STRLIST}}
+
+
+@R("GET", "/deployments/history", "Recorded deployments and rollbacks: state before, outcome and health after (no secrets)", "read", tags=("deploy",),
+   query={"type": "object", "additionalProperties": False, "properties": {"project": STR, "limit": {"type": "integer", "minimum": 1, "maximum": 200}}},
+   response={"type": "array", "items": DEPLOYMENT})
+def deployments_history(req: Req) -> list[dict[str, Any]]:
+    return deployments.records(req.query.get("project"), int(req.query.get("limit", 50)))
+
+
+@R("POST", "/deployments/rollback/plan", "Is a verified recovery path available for this machine, and what would it re-apply? (reads local records only)", "operate",
+   tags=("deploy",), body=body({"record": STR}), response=ROLLBACK_PLAN)
+def rollback_plan(req: Req) -> dict[str, Any]:
+    cfg, mode, ssh, target = machine(req)
+    return services.rollback_plan(cfg, mode, ssh, target, req.body.get("record", ""))
+
+
+@R("POST", "/deployments/rollback", "Re-apply the configuration of an earlier healthy deployment (job). Never deletes data or backups; refused without a verified recovery point",
+   "admin", tags=("deploy",), job=True, errors=("not_ready", "busy", "preflight"), body=body({"record": STR, "confirm": BOOL}, required=("record", "confirm")))
+def rollback_stack(req: Req) -> str:
+    cfg, mode, ssh, target = machine(req)
+    audit = req.app.config["AUDIT"]
+    who = {"principal": req.principal.id, "scope": req.principal.scope, "project": cfg["project"], "target": target, "mode": mode, "record": req.body["record"]}
+    if req.body.get("confirm") is not True:
+        raise ApiError(400, "bad_request", "confirm must be true")
+    try:
+        snap, _plan = services.rollback_config(cfg, mode, ssh, target, req.body["record"])
+    except services.RollbackRefused as e:
+        audit.write(event="deploy.rollback", ok=False, error="refused", reason=str(e)[:200], **who)
+        raise ApiError(409, "not_ready", str(e), e.plan) from e
+    except GisStackError as e:
+        audit.write(event="deploy.rollback", ok=False, error=e.code, **who)
+        raise ApiError.from_exc(e) from e
+    local_problems(target, mode)
+    audit.write(event="deploy.rollback", ok=True, phase="start", **who)
+    return start_job(req, lambda job, b: services.rollback_steps(snap, b, target, mode, ssh, req.body["record"]), cfg=snap, make_bundle=True, cleanup_bundle=(mode == "ssh"))
 
 
 @R("POST", "/cleanups", "Remove the whole stack or some programs (job). Purge deletes data", "admin", tags=("deploy",), legacy=("/api/clean",), job=True, errors=("busy",),

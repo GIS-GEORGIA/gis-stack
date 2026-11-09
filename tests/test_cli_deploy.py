@@ -25,7 +25,7 @@ class CliBase(unittest.TestCase):
     def setUp(self):
         self.home = tempfile.TemporaryDirectory()
         self.addCleanup(self.home.cleanup)
-        patcher = mock.patch.dict(os.environ, {"GISSTACK_HOME": self.home.name, "GISSTACK_LANG": "en"})
+        patcher = mock.patch.dict(os.environ, {"GISSTACK_HOME": self.home.name, "GISSTACK_LANG": "en", "GISSTACK_VERIFY": "0"})
         patcher.start()
         self.addCleanup(patcher.stop)
         self.tmp = Path(self.home.name)
@@ -314,7 +314,7 @@ class RunnerTests(unittest.TestCase):
         self.bin = self.td / "bin"
         self.bin.mkdir()
         self.log = self.td / "calls.log"
-        env = mock.patch.dict(os.environ, {"PATH": f"{self.bin}:{os.environ['PATH']}", "GISSTACK_HOME": str(self.td / "home")})
+        env = mock.patch.dict(os.environ, {"PATH": f"{self.bin}:{os.environ['PATH']}", "GISSTACK_HOME": str(self.td / "home"), "GISSTACK_VERIFY_TIMEOUT": "0"})
         env.start()
         self.addCleanup(env.stop)
         for tool in ("docker", "podman", "kubectl"):       # preflight wants a container runtime; none is really used

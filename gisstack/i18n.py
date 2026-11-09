@@ -1074,3 +1074,33 @@ EN.update({
     "სტატუსი": "Status",
     "გაუქმება": "Cancel",
 })
+
+EN.update({
+    "არ შემოწმდა": "Not verified",
+    "განთავსება": "Deployment",
+    "განთავსება ამ პროექტისთვის ჯერ არ ჩაწერილა": "No deployment has been recorded for this project yet",
+    "განთავსებები და უკან დაბრუნება": "Deployments and rollback",
+    "განთავსებების ისტორია": "Deployment history",
+    "დაუსრულებელი": "Incomplete",
+    "პროგრამები": "Programs",
+    "უკან დაბრუნება": "Roll back",
+    "უკან დაბრუნება დასრულდა": "Rollback finished",
+    "უკან დაბრუნება ვერ დასრულდა — იხილე ლოგი": "The rollback did not finish - see the log",
+    "უკან დაბრუნება შეუძლებელია": "Rollback is not possible",
+    "უკან დაბრუნება…": "Roll back…",
+    "ყველა ოპერაცია": "All operations",
+    "ყოველი განთავსების შემდეგ მოწმდება, მუშაობს თუ არა პროგრამები. უკან დაბრუნება ხელახლა იყენებს წინა ჯანმრთელი განთავსების პარამეტრებს; მონაცემებსა და ბექაფებს არ შლის.": "After every deployment the programs are checked. A rollback re-applies the settings of the previous healthy deployment; it never deletes data or backups.",
+    "შეიცვლება:": "Will change:",
+    "ხელახლა გამოიყენება ჯანმრთელი განთავსების პარამეტრები (": "The settings of the healthy deployment will be applied again (",
+    "✔ ჯანმრთელია": "✔ Healthy",
+    "✖ არაჯანმრთელი": "✖ Unhealthy",
+    "✖ ჩავარდა": "✖ Failed",
+    "!! განთავსება დასრულდა, მაგრამ ყველაფერი ჯანმრთელი არ არის": "!! The deployment finished, but not everything is healthy",
+    "!! ჯანმრთელობა ვერ შემოწმდა:": "!! The health check could not run:",
+    "== ყველა პროგრამა მუშაობს და შემოწმებები გავიდა": "== All programs are running and their checks pass",
+    "== შემოწმება: პროგრამები გაშვებულია?": "== Checking: are the programs running?",
+})
+
+EN.update({
+    "!! განთავსების ჩანაწერი ვერ შეიქმნა:": "!! The deployment record could not be written:",
+})

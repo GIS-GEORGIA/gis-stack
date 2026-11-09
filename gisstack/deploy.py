@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, Iterator
 
-from . import journal, providers, runner, transport
+from . import deployments, journal, ops, providers, runner, transport
 from .core import paths
 from .core.errors import DeployError
 
@@ -156,11 +156,49 @@ def _check_bundle(bundle: Path, target: str, mode: str) -> None:
 
 
 def deploy(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,
-           ssh: dict[str, Any] | None = None, extra_args: list[str] | None = None) -> Iterator[str]:
-    """Yield log lines. Raises DeployError on failure.  extra_args go to the entry script (native: install.sh)."""
+           ssh: dict[str, Any] | None = None, extra_args: list[str] | None = None, *, kind: str = "deploy", rollback_of: str = "") -> Iterator[str]:
+    """Yield log lines. Raises DeployError on failure.  extra_args go to the entry script (native: install.sh).
+
+    The run is recorded (`deployments`): the state before, the outcome, and - unless GISSTACK_VERIFY=0 - the health of every program
+    afterwards.  A deployment that ran but is not healthy is *reported* (a warning line, outcome `unhealthy`), not turned into an exception:
+    the script succeeded, and the record is what a rollback decision is based on."""
     bundle = Path(bundle_dir)
     _check_bundle(bundle, target, mode)
-    yield from _run_entry(cfg, bundle, target, mode, ssh, _provider(target).entry, list(extra_args or []), op="deploy")
+    verify = os.environ.get("GISSTACK_VERIFY") != "0"
+    host = transport.host_label(mode, ssh)
+
+    def rows() -> list[dict[str, Any]]:
+        return list(ops.status(cfg, mode, ssh, target)["rows"])
+    mask = runner.redactor(runner.secrets_of(cfg))
+    try:
+        rec = deployments.begin(cfg, target, mode, host, rows if verify else None, kind=kind, rollback_of=rollback_of)
+    except OSError as e:                                  # the history is unwritable: deploy anyway, without a record, and say so
+        yield f"!! განთავსების ჩანაწერი ვერ შეიქმნა: {e.strerror or type(e).__name__}"
+        yield from _run_entry(cfg, bundle, target, mode, ssh, _provider(target).entry, list(extra_args or []), op="rollback" if kind == "rollback" else "deploy")
+        return
+    try:
+        yield from _run_entry(cfg, bundle, target, mode, ssh, _provider(target).entry, list(extra_args or []), op="rollback" if kind == "rollback" else "deploy")
+    except GeneratorExit:
+        deployments.finish(rec, "aborted")
+        raise
+    except BaseException as e:
+        deployments.finish(rec, "failed", mask(f"{type(e).__name__}: {e}"))
+        raise
+    if not verify:
+        deployments.finish(rec, "unverified")
+        return
+    yield "== შემოწმება: პროგრამები გაშვებულია?"
+    h = deployments.verify(cfg, rows)
+    deployments.finish(rec, {"healthy": "ok", "unhealthy": "unhealthy"}.get(h["state"], "unverified"), h.get("error", ""), h["rows"])
+    if h["state"] == "healthy":
+        yield "== ყველა პროგრამა მუშაობს და შემოწმებები გავიდა"
+    elif h["state"] == "unhealthy":
+        for r in h["rows"]:
+            if not r["ok"]:
+                yield f"!! {r['id']}: {r['state']}" + (f" ({', '.join(r['failing'])})" if r["failing"] else "")
+        yield "!! განთავსება დასრულდა, მაგრამ ყველაფერი ჯანმრთელი არ არის"
+    else:
+        yield "!! ჯანმრთელობა ვერ შემოწმდა: " + (h.get("error") or "პასუხი არ არის")
 
 
 def clean(cfg: dict[str, Any], bundle_dir: str | Path, target: str, mode: str,
