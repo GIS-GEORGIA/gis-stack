@@ -161,3 +161,9 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - ხელმოწერა: `release.yml` → `cosign sign-blob --bundle SHA256SUMS.sigstore.json SHA256SUMS` (keyless, `id-token: write`) + იმავე workflow-ში verify. `updater.verify_signature` იძახებს `cosign verify-blob`-ს იდენტობით `SIGNER_IDENTITY` (მხოლოდ ამ რეპოს release.yml, ვერსიის tag). არასწორი ხელმოწერა ყოველთვის უარყოფს; არარსებობა/cosign-ის უქონლობა — გაფრთხილება, `GISSTACK_REQUIRE_SIGNATURE=1`-ზე უარყოფა. ტესტებში cosign ყალბია (`tests/test_signature.py`); რეალური ხელმოწერა მხოლოდ tag-ზე გადის (v0.1.5 რეალური cosign-ით გადამოწმდა). გაკვეთილი: release workflow უშვებს ტესტებს ubuntu-latest-ზე, სადაც `$USER` არ არის დაყენებული — ტესტებში გამოიყენე `getpass.getuser()`; ჩავარდნილი tag წაშალე (`git tag -d vX && git push origin :refs/tags/vX`), გაასწორე, თავიდან დადე.
 - ინსტრუქციები: `docs/guides/{en,ka}/*.md`; `tests/test_guides.py` ითხოვს ერთნაირ სათაურებს, **ერთნაირ კოდის ბლოკებს**, არსებულ ბმულებს და არსებულ CLI ბრძანებებს. ახალი ინსტრუქცია = ორივე ენა.
 - `updater.py` არის i18n ტესტის სკანირებაში: ახალი ქართული შეტყობინება → `EN` ჩანაწერი.
+
+## დაშიფრული ასლები
+- `gisstack/backup_crypto.py` (gpg), `backup.download/upload/offsite(..., encrypt/passphrase)`, CLI `--encrypt/--passphrase-file/--encrypt-to`, `backup decrypt`. დაშიფვრა მხოლოდ **ადგილობრივ** ასლზეა, `gisstack-backup` და სერვერი უცვლელია (სერვერზე ცოცხალი საიდუმლოებებიც დგას, ამიტომ იქ დაშიფვრა ცოტას მატებს).
+- პაროლი არასოდეს argv/env-ში გადაეცემა gpg-ს: `--passphrase-fd 0`. recipient იწყება ასოთი/ციფრით (არასოდეს `-`), რომ gpg-ს პარამეტრად ვერ იქცეს.
+- `gpg --list-packets` უნდა გაეშვას `--list-only`-ით (სხვაგვარად agent-ს ელოდება და 60 წმ იკიდება); gpg 2.4 იყენებს AEAD პაკეტს („aead encrypted packet“), ძველი — MDC-ს.
+- ტესტებში GNUPGHOME ხანმოკლე გზაზე (`/tmp/gn…`: agent-ის socket-ს სიგრძის ლიმიტი აქვს) და `gpgconf --kill all` cleanup-ში.

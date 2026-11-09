@@ -869,7 +869,7 @@ class I18nTests(unittest.TestCase):
             text = re.sub(r"/\*.*?\*/", "", js.read_text(), flags=re.S)
             yield "dashboard/" + js.name, re.sub(r"(?<![:\"'])//[^\n]*", "", text)
         import ast as _ast
-        for f in ("desktop", "catalog", "config", "deploy", "ops", "existing", "discover", "updater", "projects", "webgui/app", "settings", "deps", "cli", "preflight", "journal", "runner", "rotation", "secretsrc", "backup", "monitoring/collect", "monitoring/alerts", "monitoring/notify", "monitoring/store", "monitoring/service", "monitoring/render"):
+        for f in ("desktop", "catalog", "config", "deploy", "ops", "existing", "discover", "updater", "projects", "webgui/app", "settings", "deps", "cli", "preflight", "journal", "runner", "rotation", "secretsrc", "backup", "backup_crypto", "monitoring/collect", "monitoring/alerts", "monitoring/notify", "monitoring/store", "monitoring/service", "monitoring/render"):
             tree = _ast.parse((root / f"{f}.py").read_text())
             docs = {id(n.body[0].value) for n in _ast.walk(tree)
                     if isinstance(n, (_ast.Module, _ast.FunctionDef, _ast.ClassDef)) and n.body

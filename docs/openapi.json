@@ -733,6 +733,16 @@
                   "id": {
                     "type": "string",
                     "pattern": "^(pre-)?\\d{8}-\\d{6}-[0-9a-f]{8}$"
+                  },
+                  "encrypt_to": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "items": {
+                      "type": "string",
+                      "maxLength": 100
+                    },
+                    "description": "encrypt the copy to these public keys (OpenPGP key id / fingerprint / e-mail in the server-side operator's keyring) before it is handed to the plugins"
                   }
                 }
               }

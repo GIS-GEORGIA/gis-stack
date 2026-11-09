@@ -27,7 +27,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import __version__, backup as backup_mod, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, services, settings, transport, updater
+from . import __version__, backup as backup_mod, backup_crypto, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, services, settings, transport, updater
 from .core import features, log, paths
 
 
@@ -289,7 +289,46 @@ def _monitor(a: argparse.Namespace, cfg: dict) -> int:
         return 1
 
 
+def _crypt_args(sp: argparse.ArgumentParser) -> None:
+    g = sp.add_argument_group("encryption of the copy kept on this machine (needs gpg; see docs/guides/en/BACKUP.md)")
+    g.add_argument("--encrypt", action="store_true", help="encrypt with a passphrase (from --passphrase-file, $GISSTACK_BACKUP_PASSPHRASE, or asked twice)")
+    g.add_argument("--passphrase-file", metavar="FILE", help="file whose first line is the passphrase (must be chmod 600); implies --encrypt")
+    g.add_argument("--encrypt-to", metavar="KEY", action="append", help="encrypt to this public key (key ID, fingerprint or e-mail in your keyring); repeatable")
+
+
+def _encrypt_spec(a: argparse.Namespace) -> backup_crypto.Spec | None:
+    """--encrypt-to KEY (public key) or --encrypt (passphrase from --passphrase-file, $GISSTACK_BACKUP_PASSPHRASE or a prompt); None = plain copy."""
+    to = getattr(a, "encrypt_to", None) or []
+    if to:
+        if getattr(a, "encrypt", False):
+            raise backup_crypto.DeployError("--encrypt და --encrypt-to ერთად არ გამოიყენება")
+        return backup_crypto.Spec(recipients=list(to)).validate()
+    if getattr(a, "encrypt", False) or getattr(a, "passphrase_file", None):
+        pw = backup_crypto.read_passphrase(getattr(a, "passphrase_file", None), prompt=True, confirm=True)
+        return backup_crypto.Spec(passphrase=pw or "").validate()
+    return None
+
+
+def _backup_decrypt(a: argparse.Namespace) -> int:
+    src = Path(a.file)
+    if not backup_crypto.looks_encrypted(src):
+        print("ERROR: " + "ფაილი .gpg არ არის", file=sys.stderr)
+        return 1
+    out = Path(a.out) if a.out else src.with_suffix("")
+    try:
+        pw = backup_crypto.read_passphrase(a.passphrase_file, prompt=False)
+        backup_crypto.decrypt(src, out, pw)
+        n = backup_mod.verify_archive(out)
+    except deploy.DeployError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    print(f"{out} (SHA-256 ✔, {n} ფაილი)")
+    return 0
+
+
 def _backup(a: argparse.Namespace, cfg: dict) -> int:
+    if a.bcmd == "decrypt":
+        return _backup_decrypt(a)
     ssh = _parse_ssh(a)
     if ssh is None:
         return 2
@@ -303,8 +342,8 @@ def _backup(a: argparse.Namespace, cfg: dict) -> int:
                 print(line, flush=True)
             bid = backup_mod.created_id(lines)
             if a.download is not None:
-                path = backup_mod.download(cfg, a.mode, ssh, bid, a.download or None)
-                print(f"ასლი ამ კომპიუტერზე: {path} (SHA-256 ✔)")
+                path = backup_mod.download(cfg, a.mode, ssh, bid, a.download or None, _encrypt_spec(a))
+                print(f"ასლი ამ კომპიუტერზე: {path} (SHA-256 ✔{', დაშიფრულია' if backup_crypto.looks_encrypted(path) else ''})")
             return 0
         if a.bcmd == "list":
             rows = backup_mod.list_backups(cfg, a.mode, ssh)
@@ -321,10 +360,11 @@ def _backup(a: argparse.Namespace, cfg: dict) -> int:
                 print(line, flush=True)
             return 0
         if a.bcmd == "download":
-            print(backup_mod.download(cfg, a.mode, ssh, a.id, a.dest))
+            print(backup_mod.download(cfg, a.mode, ssh, a.id, a.dest, _encrypt_spec(a)))
             return 0
         if a.bcmd == "upload":
-            print("UPLOAD_OK=" + backup_mod.upload(cfg, a.mode, ssh, a.file))
+            pw = backup_crypto.read_passphrase(a.passphrase_file, prompt=False) if backup_crypto.looks_encrypted(a.file) else None
+            print("UPLOAD_OK=" + backup_mod.upload(cfg, a.mode, ssh, a.file, pw))
             return 0
         if a.bcmd == "schedule":
             if a.action == "enable":
@@ -570,6 +610,7 @@ def main(argv: list[str] | None = None) -> int:
     b1.add_argument("--with-cache", action="store_true", help="also the MapProxy tile cache (can be very large)")
     b1.add_argument("--note", default="")
     b1.add_argument("--download", metavar="DIR", nargs="?", const="", help="also copy the verified backup to this machine")
+    _crypt_args(b1)
     bconn(bsub.add_parser("list", help="backups on the server"))
     b3 = bsub.add_parser("verify", help="re-read a backup and check every checksum")
     bconn(b3)
@@ -593,9 +634,16 @@ def main(argv: list[str] | None = None) -> int:
     bconn(b6)
     b6.add_argument("id")
     b6.add_argument("--dest", help="default: ~/.gisstack/backups/stack/<host>/")
+    _crypt_args(b6)
     b7 = bsub.add_parser("upload", help="put a downloaded backup on a (new) server, e.g. for disaster recovery")
     bconn(b7)
     b7.add_argument("file")
+    b7.add_argument("--passphrase-file", metavar="FILE", help="for an encrypted (.gpg) copy made with a passphrase (default: $GISSTACK_BACKUP_PASSPHRASE; a public-key copy asks gpg)")
+    b9 = bsub.add_parser("decrypt", help="decrypt a downloaded .gpg backup on this machine (no server involved)")
+    b9.add_argument("file")
+    b9.add_argument("-o", "--out", help="default: the file name without .gpg, next to it")
+    b9.add_argument("--passphrase-file", metavar="FILE")
+    b9.add_argument("-c", "--config", help=argparse.SUPPRESS)            # no server and no configuration involved; the shared start-up code expects the option
     b8 = bsub.add_parser("schedule", help="automatic backups with a systemd timer")
     bconn(b8)
     b8.add_argument("action", choices=["enable", "disable", "status"])

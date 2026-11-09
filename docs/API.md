@@ -57,6 +57,7 @@ Copy a verified backup to every BackupProvider plugin (job).
   - `ssh` (object)
   - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
   - `id` (string, required) - pattern `^(pre-)?\d{8}-\d{6}-[0-9a-f]{8}$`
+  - `encrypt_to` (array)
 * Response `data`: `{"job": "<id>"}` (a background job)
 * Errors: 400, 401, 403, 409
 

@@ -958,3 +958,26 @@ EN.update({
     "⚠ ხელმოწერა არ შემოწმებულა (cosign არ არის დაყენებული) — შემოწმდა მხოლოდ SHA-256":
         "⚠ The signature was not checked (cosign is not installed) - only the SHA-256 was checked",
 })
+
+# Encrypted backup copies
+EN.update({
+    ", დაშიფრულია": ", encrypted",
+    "--encrypt და --encrypt-to ერთად არ გამოიყენება": "--encrypt and --encrypt-to cannot be used together",
+    "და დაშიფრულია": "and encrypted",
+    "შემოწმებულია": "verified",
+    ": პაროლის ფაილი სხვებისთვისაც წაკითხვადია (chmod 600)": ": the passphrase file is readable by others (chmod 600)",
+    "gpg ვერ გაეშვა:": "gpg could not be run:",
+    "გაშიფვრა ვერ მოხერხდა (არასწორი პაროლი/გასაღები ან დაზიანებული ფაილი)": "Decryption failed (wrong passphrase/key or a damaged file)",
+    "დაშიფვრა ვერ მოხერხდა": "Encryption failed",
+    "დაშიფვრა: ან პაროლი, ან მიმღები (გასაღები) — ერთ-ერთი": "Encryption: either a passphrase or a recipient (key) - one of them",
+    "დაშიფვრის პაროლი მინიმუმ": "The encryption passphrase must be at least",
+    "სიმბოლო უნდა იყოს": "characters long",
+    "დაშიფვრისთვის gpg სჭირდება (apt install gnupg / dnf install gnupg2)": "gpg is needed for encryption (apt install gnupg / dnf install gnupg2)",
+    "დაშიფრულ ფაილს მთლიანობის დაცვა (MDC) არ აქვს": "The encrypted file has no integrity protection (MDC)",
+    "დაშიფრული ფაილი არასწორია": "The encrypted file is invalid",
+    "დაშიფრული ფაილი მიმღების გასაღებისთვის არ არის": "The encrypted file is not for the recipient key",
+    "მიმღების გასაღები არასწორია (გამოიყენე key ID, fingerprint ან e-mail)": "Invalid recipient key (use a key ID, fingerprint or e-mail)",
+    "პაროლები არ ემთხვევა": "The passphrases do not match",
+    "პაროლის ფაილი ვერ იკითხება:": "The passphrase file cannot be read:",
+    "პაროლის შეყვანა ტერმინალს საჭიროებს (გამოიყენე --passphrase-file ან": "Entering a passphrase needs a terminal (use --passphrase-file or",
+})

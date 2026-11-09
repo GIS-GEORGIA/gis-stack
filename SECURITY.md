@@ -104,7 +104,7 @@ store. Containers and Kubernetes are not supported by rotation yet.
 **Backups and restores (R-03).** `gisstack-backup` (see `docs/RECOVERY.md`) writes sealed, checksummed backups (0700/0600), refuses
 to restore a damaged backup, takes a verified pre-restore backup first, replaces data by renaming, validates recovery and rolls back
 on failure. Restore refuses archives with `..`, absolute paths, escaping links or members outside the allowed directories. Backups
-contain secrets (`credentials.txt`, role password hashes): they are not encrypted yet - keep the directory and downloaded copies private.
+contain secrets (`credentials.txt`, role password hashes). Backups on the server are not encrypted (the live secrets are on the same machine); copies that leave it can be: `backup download --passphrase-file / --encrypt-to` encrypts locally with gpg (AES-256 or OpenPGP public key, authenticated), verifies, and removes the plaintext. Keep the server directory private.
 
 **Signed releases (S-09).** The release workflow signs `SHA256SUMS` keylessly with Sigstore (cosign, bound to the workflow's GitHub identity, so there
 is no private key to steal) and attaches `SHA256SUMS.sigstore.json`; the workflow verifies the signature itself before publishing. `gisstack update`
@@ -121,7 +121,7 @@ refusal. A signature that is present and wrong always refuses. Release v0.1.5 is
 | Database content (PostGIS manager) | A user of the dashboard/API | arbitrary SQL | read-only role with limits, read-only transaction, statement timeout; write access needs a time-boxed, audited elevation | a user with `admin` scope can elevate by design |
 | GeoServer/MapProxy configuration and caches | A user of the dashboard/API; hostile XML/YAML | destructive edits; XML entity attacks | validation by the programs themselves, automatic backups, dry-run defaults, DTD/entity rejection, typed confirmations | `admin` scope can change configuration by design |
 | Releases and updates | A compromised download path or release asset | replaced files | HTTPS from this repository only, SHA-256, Sigstore signature of `SHA256SUMS` | a compromise of the GitHub repository or of its release workflow itself; unsigned old releases |
-| Backups | Anyone with the files | reading secrets inside | owner-only permissions, checksums | backups are not encrypted yet |
+| Backups | Anyone with the files | reading secrets inside | owner-only permissions, checksums; optional gpg encryption of downloaded/off-site copies | backups kept on the server are not encrypted; encryption is opt-in |
 | Plugins (flag `plugins`) | Third-party packages | arbitrary code in-process | off by default; contract checks, error isolation | a plugin runs with the program's privileges: install only what you trust |
 
 Out of scope: a compromised operator machine, a compromised root account on the target, and denial of service against the local GUI.

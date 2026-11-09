@@ -15,7 +15,7 @@ import tarfile
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
-from . import __version__, journal, plugins, runner, transport
+from . import __version__, backup_crypto, journal, plugins, runner, transport
 from .core import paths
 from .core.errors import DeployError
 
@@ -185,10 +185,36 @@ def _dest_dir(mode: str, ssh: Optional[dict[str, Any]], dest: Optional[str]) -> 
     return fsutil.private_dir(base / re.sub(r"[^A-Za-z0-9._-]", "_", _host(mode, ssh)))
 
 
-def download(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], bid: str, dest: Optional[str] = None) -> Path:
-    """Copy one backup to this machine as <id>.tar.gz (never overwrites) and verify it against the checksums inside."""
+def download(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], bid: str, dest: Optional[str] = None,
+             encrypt: Optional[backup_crypto.Spec] = None) -> Path:
+    """Copy one backup to this machine as <id>.tar.gz (never overwrites) and verify it against the checksums inside.
+    With `encrypt` the result is <id>.tar.gz.gpg: the verified archive is encrypted here (see backup_crypto) and the plaintext is removed."""
     _require_native(cfg)
     _check_id(bid)
+    if encrypt is not None:
+        encrypt.validate()
+        backup_crypto.gpg()                                  # fail before downloading gigabytes
+        final = _dest_dir(mode, ssh, dest) / f"{bid}.tar.gz{backup_crypto.SUFFIX}"
+        if final.exists():
+            raise DeployError(f"ფაილი უკვე არსებობს და არ გადაიწერება: {final}")
+        import shutil
+        import tempfile
+        tmp = Path(tempfile.mkdtemp(prefix="gisstack-enc-", dir=final.parent))      # private (0700) staging for the plaintext
+        try:
+            plain = download(cfg, mode, ssh, bid, str(tmp))
+            enc = backup_crypto.encrypt(plain, final, encrypt)
+            try:
+                if encrypt.passphrase is not None:
+                    with backup_crypto.decrypted(enc, encrypt.passphrase) as back:
+                        verify_archive(back)                  # the encrypted copy really restores to a valid backup
+                else:
+                    backup_crypto.check_packets(enc, encrypt.recipients)
+            except BaseException:
+                enc.unlink(missing_ok=True)
+                raise
+            return enc
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
     out = _dest_dir(mode, ssh, dest) / f"{bid}.tar.gz"
     try:
         fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -208,8 +234,8 @@ def download(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], bid:
     return out
 
 
-def offsite(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], bid: str) -> Iterator[str]:
-    """Copy one backup, verified, to every BackupProvider plugin.  Yields log lines; a provider that fails is reported and the others still run."""
+def offsite(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], bid: str, encrypt: Optional[backup_crypto.Spec] = None) -> Iterator[str]:
+    """Copy one backup, verified (and encrypted when `encrypt` is given), to every BackupProvider plugin.  Yields log lines; a provider that fails is reported and the others still run."""
     import shutil
     import tempfile
     _check_id(bid)
@@ -220,8 +246,8 @@ def offsite(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], bid: 
     failed = 0
     try:
         yield f"ჩამოტვირთვა: {bid}"
-        archive = download(cfg, mode, ssh, bid, str(tmp))
-        yield f"შემოწმებულია: {archive.name}"
+        archive = download(cfg, mode, ssh, bid, str(tmp), encrypt=encrypt) if encrypt else download(cfg, mode, ssh, bid, str(tmp))
+        yield f"შემოწმებულია{' და დაშიფრულია' if encrypt else ''}: {archive.name}"
         for plug in targets:
             try:
                 where = plug.store(archive, bid)  # type: ignore[attr-defined]
@@ -269,10 +295,14 @@ def verify_archive(path: str | Path) -> int:
     return len(want)
 
 
-def upload(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], archive: str | Path) -> str:
+def upload(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], archive: str | Path, passphrase: Optional[str] = None) -> str:
     """Put a downloaded backup onto a server (disaster recovery to a new machine).  The archive is verified here first and the
-    server refuses to overwrite an existing backup.  Returns the backup id."""
+    server refuses to overwrite an existing backup.  An encrypted copy (.gpg) is decrypted here, in a private temporary directory, and the
+    server only ever receives the plaintext archive over the (encrypted) SSH connection.  Returns the backup id."""
     _require_native(cfg)
+    if backup_crypto.looks_encrypted(archive):
+        with backup_crypto.decrypted(archive, passphrase) as plain:
+            return upload(cfg, mode, ssh, plain)
     verify_archive(archive)
     with tarfile.open(archive, "r:gz") as tf:
         tops = {n.split("/", 1)[0] for n in tf.getnames()}

@@ -33,6 +33,10 @@ Retention: the newest `--keep` backups are kept; with `--days` older ones are re
 The newest backup is never deleted. Pre-restore backups have their own limit (`--keep-pre`). Unfinished `.partial` (> 1 day) and
 `.FAILED` (> 7 days) leftovers are cleaned up.
 
+## Encrypted copies
+
+`gisstack backup download ID --passphrase-file FILE` (or `--encrypt` to be asked, or `--encrypt-to KEY` for a public key; `backup create --download` takes the same options) writes `ID.tar.gz.gpg` instead of `ID.tar.gz`. Encryption is done locally with `gpg` after the archive was verified; the passphrase never goes on a command line (file with mode 600, `GISSTACK_BACKUP_PASSPHRASE`, or a prompt, at least 12 characters). A passphrase copy is decrypted and verified once before the command succeeds; a public-key copy is checked as a well-formed authenticated OpenPGP message (the private key may be offline). `gisstack backup decrypt FILE.gpg` decrypts on this machine; `gisstack backup upload FILE.gpg` decrypts locally and sends the plaintext archive over SSH. The API route `/backups/offsite` accepts `encrypt_to` (public keys only) so BackupProvider plugins receive the encrypted file. Backups stored on the server are not encrypted. Lose the passphrase or the private key and the copy cannot be recovered.
+
 ## Restoring
 
 ```bash

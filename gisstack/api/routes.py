@@ -11,7 +11,7 @@ from typing import Any, Iterator, Optional
 
 from flask import Response, make_response
 
-from .. import (__version__, plugins, backup as backup_mod, catalog, config, deploy, discover, existing, generate, i18n, journal, ops, preflight as preflight_mod,
+from .. import (__version__, plugins, backup as backup_mod, backup_crypto, catalog, config, deploy, discover, existing, generate, i18n, journal, ops, preflight as preflight_mod,
                 projects, rotation, services, settings, updater)
 from ..core import features, paths
 from ..servers import store as servers_store
@@ -440,11 +440,16 @@ def backups_verify(req: Req) -> str:
 
 
 @R("POST", "/backups/offsite", "Copy a verified backup to every BackupProvider plugin (job)", "admin", tags=("backups", "plugins"), feature="plugins",
-   job=True, body=body({"id": BACKUP_ID}, ("id",)))
+   job=True, body=body({"id": BACKUP_ID, "encrypt_to": {"type": "array", "minItems": 1, "maxItems": 5, "items": {"type": "string", "maxLength": 100},
+                                                      "description": "encrypt the copy to these public keys (OpenPGP key id / fingerprint / e-mail in the server-side operator's keyring) before it is handed to the plugins"}}, ("id",)))
 def backups_offsite(req: Req) -> str:
     cfg, mode, ssh, _ = machine(req)
     need_native(cfg)
-    return lines_job(req, lambda: backup_mod.offsite(cfg, mode, ssh, req.body["id"]))
+    try:
+        spec = backup_crypto.Spec(recipients=list(req.body["encrypt_to"])).validate() if req.body.get("encrypt_to") else None
+    except DeployError as e:
+        raise ApiError(400, "config", str(e)) from e
+    return lines_job(req, lambda: backup_mod.offsite(cfg, mode, ssh, req.body["id"], spec))
 
 
 @R("POST", "/backups/prune", "Delete old backups (job). Defaults to a dry run; the newest backup is never deleted", "admin", tags=("backups",), legacy=("/api/backup/prune",),
