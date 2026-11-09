@@ -234,7 +234,7 @@ class RealSshTests(Home):
             port = s.getsockname()[1]
         cfg = d / "sshd_config"
         cfg.write_text(f"Port {port}\nListenAddress 127.0.0.1\nHostKey {hk}\nAuthorizedKeysFile {auth}\nPidFile {d}/pid\nPasswordAuthentication no\n"
-                       f"KbdInteractiveAuthentication no\nUsePAM no\nStrictModes no\nPubkeyAuthentication yes\n")
+                       f"KbdInteractiveAuthentication no\nUsePAM no\nStrictModes no\nPubkeyAuthentication yes\nMaxStartups 100:30:200\nLoginGraceTime 30\n")
         p = subprocess.Popen([SSHD, "-D", "-e", "-f", str(cfg)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         self.procs.append(p)
         for _ in range(60):
@@ -246,6 +246,15 @@ class RealSshTests(Home):
                     return port
             time.sleep(0.1)
         self.skipTest("sshd did not start")
+
+    def reachable(self, sid, tries=4):
+        """probe() until it connects: right after another ssh/ssh-keyscan on a busy CI runner sshd may reset one pre-auth connection (seen once, 'Connection reset')."""
+        for _ in range(tries):
+            r = service.probe(sid)
+            if r["reachable"]:
+                return r
+            time.sleep(0.5)
+        self.fail(f"{sid} not reachable after {tries} tries: {r}")
 
     def profile(self, sid, port, env="testing"):
         return store.save({"id": sid, "env": env, "host": "127.0.0.1", "port": port, "user": USER, "key": str(self.client_key)})
@@ -264,8 +273,7 @@ class RealSshTests(Home):
             hostkey.pin("one", "SHA256:" + "A" * 43)                        # a fingerprint nobody presented
         self.assertFalse(store.get("one")["pinned"])
         hostkey.pin("one", self.fp("s0"))
-        r = service.probe("one")
-        self.assertTrue(r["reachable"], r)
+        r = self.reachable("one")
         self.assertIn("os", r["facts"])
 
     def test_two_servers_with_independent_pins_and_compare(self):
@@ -273,6 +281,8 @@ class RealSshTests(Home):
             self.profile(sid, self.ports[i])
             hostkey.pin(sid, self.fp(f"s{i}"))
         self.assertNotEqual(store.ssh_for("one")["known_hosts"], store.ssh_for("two")["known_hosts"])
+        self.reachable("one")
+        self.reachable("two")
         r = service.compare(["one", "two"])
         self.assertTrue(r["complete"], r)
         self.assertEqual([s["reachable"] for s in r["servers"]], [True, True])
@@ -285,11 +295,12 @@ class RealSshTests(Home):
         store.set_pin("two", [store.known_hosts_file("one").read_text().strip().replace(str(self.ports[0]), str(self.ports[1]))], [self.fp("s0")])
         r = service.probe("two")
         self.assertFalse(r["reachable"], r)
+        self.assertIn("host key", r["error"].lower(), r)                    # refused BECAUSE of the key, not for some other reason
 
     def test_changed_host_key_is_refused_until_repinned(self):
         self.profile("one", self.ports[0])
         hostkey.pin("one", self.fp("s0"))
-        self.assertTrue(service.probe("one")["reachable"])
+        self.reachable("one")
         self.procs[0].terminate()
         self.procs[0].wait(5)
         # same address, NEW host key (rebuilt server or man in the middle)
@@ -309,10 +320,11 @@ class RealSshTests(Home):
             time.sleep(0.1)
         r = service.probe("one")
         self.assertFalse(r["reachable"], r)                                 # no silent trust of the new key
+        self.assertIn("host key", r["error"].lower(), r)
         with self.assertRaises(store.ServerError):
             hostkey.pin("one", self.fp("s0"))                               # replacing a pin must be explicit
         hostkey.pin("one", self.fp("s0"), replace=True)
-        self.assertTrue(service.probe("one")["reachable"])
+        self.reachable("one")
 
     def test_no_key_material_in_any_stored_file(self):
         self.profile("one", self.ports[0])
