@@ -25,9 +25,10 @@ import json
 import os
 import sys
 import time
+from typing import Any
 from pathlib import Path
 
-from . import __version__, backup as backup_mod, backup_crypto, config, deploy, deps, discover, existing, generate, i18n, ops, preflight, projects, rotation, services, settings, transport, updater
+from . import __version__, backup as backup_mod, backup_crypto, config, deploy, deps, discover, existing, generate, i18n, journal, ops, preflight, projects, rotation, services, settings, transport, updater
 from .core import features, log, paths
 
 
@@ -200,7 +201,7 @@ def _token(a: argparse.Namespace) -> int:
 
 def _api(a: argparse.Namespace) -> int:
     try:
-        from .api import docs, routes, routes_geoserver, routes_mapproxy, routes_monitor, routes_postgis, routes_security, routes_servers  # noqa: F401 - importing registers the routes
+        from .api import docs, routes, routes_geoserver, routes_mapproxy, routes_monitor, routes_postgis, routes_security, routes_servers, routes_stackbackup  # noqa: F401 - importing registers the routes
         from .api.registry import registry
     except ImportError as e:
         print(f"ERROR: the API needs Flask ({e}): pip install flask", file=sys.stderr)
@@ -285,6 +286,70 @@ def _monitor(a: argparse.Namespace, cfg: dict) -> int:
                     print(f"{time.strftime('%H:%M:%S', time.gmtime(p['ts']))}  {p['value']:g}  {json.dumps(p['labels'], ensure_ascii=False) if p['labels'] else ''}")
         return 0
     except (deploy.DeployError, m_alerts.RulesError, StoreError, ValueError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+
+def _stack_backup(a: argparse.Namespace, cfg: dict) -> int:
+    """Backups of a Compose / Podman / Kubernetes stack (the native target uses `gisstack backup`)."""
+    from .backups import provider as stack_provider
+    ssh = _parse_ssh(a)
+    if ssh is None:
+        return 2
+    cfg = dict(cfg, deploy_target=a.target or cfg["deploy_target"])
+    comps = [c for c in (getattr(a, "components", None) or "").split(",") if c] or None
+    try:
+        spec = _encrypt_spec(a) if a.sbcmd == "create" else None
+        passphrase = backup_crypto.read_passphrase(getattr(a, "passphrase_file", None)) if a.sbcmd in ("restore", "check") else None
+        prov = stack_provider.provider_for(cfg, a.mode, ssh, encryption=spec, passphrase=passphrase)
+
+        def show(obj: Any) -> int:
+            print(json.dumps(obj, indent=2, ensure_ascii=False, sort_keys=True))
+            return 0
+        if a.sbcmd == "list":
+            rows = prov.list_backups()
+            if a.json:
+                return show(rows)
+            for r in rows:
+                print(f"{r['id']}  {r['status']:8} {r['kind']:11} {', '.join(r['components']) or '-'}  {r['bytes']} bytes{'  [encrypted]' if r['encrypted'] else ''}  {r['note']}")
+            return 0
+        if a.sbcmd == "inspect":
+            return show(prov.inspect(a.id))
+        if a.sbcmd in ("verify", "check"):
+            rep = prov.verify(a.id) if a.sbcmd == "verify" else prov.check_restore(a.id, comps)
+            if a.json:
+                show(rep)
+            else:
+                print("OK" if rep["ok"] else "PROBLEMS:\n  " + "\n  ".join(rep["problems"]))
+            return 0 if rep["ok"] else 1
+        if a.sbcmd == "prune":
+            res = prov.prune(keep=a.keep, days=a.days, keep_pre=a.keep_pre, dry_run=a.dry_run)
+            return show(res)
+        if a.sbcmd == "delete":
+            if not a.yes and input(f"Delete backup {a.id}? type DELETE: ").strip() != "DELETE":
+                print("cancelled")
+                return 1
+            prov.delete(a.id)
+            print(f"deleted {a.id}")
+            return 0
+        if a.sbcmd == "restore":
+            rep = prov.check_restore(a.id, comps)
+            if not rep["ok"]:
+                print("restore refused, nothing was changed:\n  " + "\n  ".join(rep["problems"]), file=sys.stderr)
+                return 1
+            print(f"restoring {a.id}: {', '.join(rep['components'])} (live data is replaced; a verified pre-restore backup is made first; undone automatically on failure)")
+            if not a.yes and input("type RESTORE to continue: ").strip() != "RESTORE":
+                print("cancelled")
+                return 1
+        gen = {"create": lambda: prov.create(comps, note=a.note, with_cache=a.with_cache), "restore": lambda: prov.restore(a.id, comps, confirm=True),
+               "recover": prov.recover}[a.sbcmd]()
+        with journal.exclusive():
+            for line in gen:
+                print(line, flush=True)
+        if a.sbcmd == "create":
+            print(f"BACKUP_VERIFIED={prov.result['id']}")
+        return 0
+    except (deploy.DeployError, journal.Busy) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
 
@@ -598,6 +663,37 @@ def main(argv: list[str] | None = None) -> int:
     rt.add_argument("what", choices=rotation.WHAT)
     rt.add_argument("--password-file", metavar="FILE", help="read the new password from this file (mode 600) instead of generating one")
 
+    sb = sub.add_parser("stack-backup", help="verified backups and safe restores of a Docker Compose / Podman / Kubernetes stack")
+    sbs = sb.add_subparsers(dest="sbcmd", required=True)
+
+    def sconn(sp: argparse.ArgumentParser) -> None:
+        conn(sp)
+        sp.add_argument("--json", action="store_true")
+        sp.add_argument("--components", help="comma list of: postgres,geoserver,caddy,qgis,mapproxy_config,mapproxy_cache (default: everything this stack has; the cache only with --with-cache)")
+    s1 = sbs.add_parser("create", help="create a backup (checksums, structure and the PostgreSQL dump are verified before it counts)")
+    sconn(s1)
+    s1.add_argument("--with-cache", action="store_true", help="also the MapProxy tile cache (can be very large)")
+    s1.add_argument("--note", default="")
+    _crypt_args(s1)
+    sconn(sbs.add_parser("list", help="backups of this stack (newest first)"))
+    for name, hlp in (("inspect", "manifest and integrity of one backup"), ("verify", "re-read a backup and check every checksum and archive"),
+                      ("check", "pre-restore validation (changes nothing)"), ("restore", "restore a backup: validate, pre-restore backup, stage, swap, health check, undo on failure"),
+                      ("delete", "delete one backup")):
+        sp = sbs.add_parser(name, help=hlp)
+        sconn(sp)
+        sp.add_argument("id")
+        if name in ("restore", "delete"):
+            sp.add_argument("--yes", action="store_true", help="do not ask for the typed confirmation")
+        if name in ("restore", "check"):
+            sp.add_argument("--passphrase-file", metavar="FILE", help="passphrase of an encrypted backup (first line; mode 600); a private key is used through gpg-agent")
+    sconn(sbs.add_parser("recover", help="put the previous data back after an interrupted restore"))
+    s9 = sbs.add_parser("prune", help="retention: keep the newest N (the newest intact backup is never removed)")
+    sconn(s9)
+    s9.add_argument("--keep", type=int, default=14)
+    s9.add_argument("--keep-pre", type=int, default=5)
+    s9.add_argument("--days", type=int, default=None)
+    s9.add_argument("--dry-run", action="store_true")
+
     bk = sub.add_parser("backup", help="verified backups and safe restores of an installed (native) stack")
     bsub = bk.add_subparsers(dest="bcmd", required=True)
 
@@ -779,6 +875,8 @@ def main(argv: list[str] | None = None) -> int:
         return _monitor(a, cfg)
     if a.cmd == "backup":
         return _backup(a, cfg)
+    if a.cmd == "stack-backup":
+        return _stack_backup(a, cfg)
     if a.cmd == "preflight":
         return _preflight(a, cfg)
     if a.cmd == "rotate-credentials":

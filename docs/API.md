@@ -1360,6 +1360,168 @@ Change the interface language and/or theme.
   - `theme` (string)
 * Errors: 400, 401, 403
 
+## stack-backups
+
+### `POST /api/v1/stack-backups/check`
+
+Pre-restore validation (integrity, compatibility, workloads running, PostgreSQL version) - changes nothing.
+
+* Scope: **operate**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+  - `id` (string, required) - pattern `^(pre-)?\d{8}T\d{6}Z-[0-9a-f]{4}$`
+  - `components` (array)
+* Response `data`:
+  - `ok` (boolean, required)
+  - `problems` (array, required)
+  - `components` (array)
+  - `backup` (string)
+  - `created` (string)
+  - `kind` (string)
+* Errors: 400, 401, 403, 404
+
+### `POST /api/v1/stack-backups/create`
+
+Create a verified backup (job). Nothing is sealed unless every file was re-read and checked.
+
+* Scope: **operate**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+  - `components` (array)
+  - `note` (string) - maxLength `200`
+  - `with_cache` (boolean)
+  - `encrypt_to` (array)
+* Response `data`: `{"job": "<id>"}` (a background job)
+* Errors: 400, 401, 403, 409
+
+### `POST /api/v1/stack-backups/delete`
+
+Delete one backup (explicit; needs confirm=true).
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+  - `id` (string, required) - pattern `^(pre-)?\d{8}T\d{6}Z-[0-9a-f]{4}$`
+  - `confirm` (boolean, required)
+* Response `data`:
+  - `deleted` (string, required)
+* Errors: 400, 401, 403, 404
+
+### `POST /api/v1/stack-backups/export`
+
+Download one verified backup as a .tar (still encrypted if it was made encrypted; contains GeoServer's own credential hashes when it holds GeoServer data).
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+  - `id` (string, required) - pattern `^(pre-)?\d{8}T\d{6}Z-[0-9a-f]{4}$`
+* Response: `application/octet-stream` (no envelope)
+* Errors: 400, 401, 403, 404, 500
+
+### `POST /api/v1/stack-backups/inspect`
+
+One backup: manifest (no secrets) and its integrity status.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+  - `id` (string, required) - pattern `^(pre-)?\d{8}T\d{6}Z-[0-9a-f]{4}$`
+* Errors: 400, 401, 403, 404, 500
+
+### `POST /api/v1/stack-backups/list`
+
+Backups of this stack (newest first); partial, failed and damaged ones are listed with that status, never as ok.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+* Response `data`:
+  - `backups` (array, required)
+  - `restore_pending` (boolean, required)
+  - `components` (array)
+* Errors: 400, 401, 403
+
+### `POST /api/v1/stack-backups/prune`
+
+Apply the retention policy (keeps the newest intact backup whatever the policy says); dry_run shows what would go.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+  - `keep` (integer) - min `1`; max `1000`
+  - `days` (integer) - min `1`; max `3650`
+  - `keep_pre` (integer) - min `1`; max `1000`
+  - `dry_run` (boolean)
+* Errors: 400, 401, 403
+
+### `POST /api/v1/stack-backups/recover`
+
+Put the previous data back after a restore that was interrupted (job); safe to repeat.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+* Response `data`: `{"job": "<id>"}` (a background job)
+* Errors: 400, 401, 403, 409
+
+### `POST /api/v1/stack-backups/restore`
+
+Restore a backup (job): validate, automatic pre-restore backup, stage, reversible swap, health check; undone automatically on failure. Needs confirm=true.
+
+* Scope: **admin**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+  - `id` (string, required) - pattern `^(pre-)?\d{8}T\d{6}Z-[0-9a-f]{4}$`
+  - `components` (array)
+  - `confirm` (boolean, required)
+* Response `data`: `{"job": "<id>"}` (a background job)
+* Errors: 400, 401, 403, 409, 500
+
+### `POST /api/v1/stack-backups/verify`
+
+Re-read every file and check checksums, the file set and the archive structure.
+
+* Scope: **read**
+* Request body (JSON):
+  - `config` (object)
+  - `mode` (string, required) - one of `local`, `ssh`
+  - `ssh` (object)
+  - `server` (string) - pattern `^[a-z][a-z0-9_-]{0,30}$`
+  - `id` (string, required) - pattern `^(pre-)?\d{8}T\d{6}Z-[0-9a-f]{4}$`
+* Response `data`:
+  - `ok` (boolean, required)
+  - `problems` (array, required)
+  - `checked` (integer)
+  - `id` (string)
+* Errors: 400, 401, 403, 404
+
 ## updates
 
 ### `POST /api/v1/updates/apply`

@@ -59,7 +59,7 @@ class PlaceTests(Base):
 
     def test_unknown_component_or_target_is_an_error(self):
         with self.assertRaises(DeployError):
-            targets.place_of(cfg_for("compose"), "caddy")
+            targets.place_of(cfg_for("compose"), "webmap")
         with self.assertRaises(DeployError):
             targets.place_of({"deploy_target": "mainframe", "project": "x"}, "postgis")
 

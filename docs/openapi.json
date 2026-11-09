@@ -60,6 +60,9 @@
       "name": "settings"
     },
     {
+      "name": "stack-backups"
+    },
+    {
       "name": "updates"
     }
   ],
@@ -17478,6 +17481,2115 @@
           },
           "400": {
             "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stack-backups/check": {
+      "post": {
+        "operationId": "post_stack_backups_check",
+        "summary": "Pre-restore validation (integrity, compatibility, workloads running, PostgreSQL version) - changes nothing",
+        "tags": [
+          "stack-backups"
+        ],
+        "x-required-scope": "operate",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "id"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "ssh"
+                    ]
+                  },
+                  "ssh": {
+                    "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^(pre-)?\\d{8}T\\d{6}Z-[0-9a-f]{4}$"
+                  },
+                  "components": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "postgres",
+                        "geoserver",
+                        "caddy",
+                        "qgis",
+                        "mapproxy_config",
+                        "mapproxy_cache"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "ok",
+                        "problems"
+                      ],
+                      "properties": {
+                        "ok": {
+                          "type": "boolean"
+                        },
+                        "problems": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "components": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "backup": {
+                          "type": "string"
+                        },
+                        "created": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'operate'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stack-backups/create": {
+      "post": {
+        "operationId": "post_stack_backups_create",
+        "summary": "Create a verified backup (job). Nothing is sealed unless every file was re-read and checked",
+        "tags": [
+          "stack-backups"
+        ],
+        "x-required-scope": "operate",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "ssh"
+                    ]
+                  },
+                  "ssh": {
+                    "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
+                  "components": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "postgres",
+                        "geoserver",
+                        "caddy",
+                        "qgis",
+                        "mapproxy_config",
+                        "mapproxy_cache"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "with_cache": {
+                    "type": "boolean"
+                  },
+                  "encrypt_to": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "maxItems": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "job"
+                      ],
+                      "properties": {
+                        "job": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'operate'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "another operation is already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stack-backups/delete": {
+      "post": {
+        "operationId": "post_stack_backups_delete",
+        "summary": "Delete one backup (explicit; needs confirm=true)",
+        "tags": [
+          "stack-backups"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "id",
+                  "confirm"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "ssh"
+                    ]
+                  },
+                  "ssh": {
+                    "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^(pre-)?\\d{8}T\\d{6}Z-[0-9a-f]{4}$"
+                  },
+                  "confirm": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "deleted"
+                      ],
+                      "properties": {
+                        "deleted": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stack-backups/export": {
+      "post": {
+        "operationId": "post_stack_backups_export",
+        "summary": "Download one verified backup as a .tar (still encrypted if it was made encrypted; contains GeoServer's own credential hashes when it holds GeoServer data)",
+        "tags": [
+          "stack-backups"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "id"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "ssh"
+                    ]
+                  },
+                  "ssh": {
+                    "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^(pre-)?\\d{8}T\\d{6}Z-[0-9a-f]{4}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "binary download",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "integrity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stack-backups/inspect": {
+      "post": {
+        "operationId": "post_stack_backups_inspect",
+        "summary": "One backup: manifest (no secrets) and its integrity status",
+        "tags": [
+          "stack-backups"
+        ],
+        "x-required-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "id"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "ssh"
+                    ]
+                  },
+                  "ssh": {
+                    "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^(pre-)?\\d{8}T\\d{6}Z-[0-9a-f]{4}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'read'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "integrity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stack-backups/list": {
+      "post": {
+        "operationId": "post_stack_backups_list",
+        "summary": "Backups of this stack (newest first); partial, failed and damaged ones are listed with that status, never as ok",
+        "tags": [
+          "stack-backups"
+        ],
+        "x-required-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "ssh"
+                    ]
+                  },
+                  "ssh": {
+                    "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "backups",
+                        "restore_pending"
+                      ],
+                      "properties": {
+                        "backups": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "status"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "ok",
+                                  "partial",
+                                  "failed",
+                                  "damaged"
+                                ]
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "created": {
+                                "type": "string"
+                              },
+                              "bytes": {
+                                "type": "integer"
+                              },
+                              "components": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "encrypted": {
+                                "type": "boolean"
+                              },
+                              "note": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "restore_pending": {
+                          "type": "boolean"
+                        },
+                        "components": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'read'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stack-backups/prune": {
+      "post": {
+        "operationId": "post_stack_backups_prune",
+        "summary": "Apply the retention policy (keeps the newest intact backup whatever the policy says); dry_run shows what would go",
+        "tags": [
+          "stack-backups"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "ssh"
+                    ]
+                  },
+                  "ssh": {
+                    "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
+                  "keep": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3650
+                  },
+                  "keep_pre": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "dry_run": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object"
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stack-backups/recover": {
+      "post": {
+        "operationId": "post_stack_backups_recover",
+        "summary": "Put the previous data back after a restore that was interrupted (job); safe to repeat",
+        "tags": [
+          "stack-backups"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "ssh"
+                    ]
+                  },
+                  "ssh": {
+                    "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "job"
+                      ],
+                      "properties": {
+                        "job": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "another operation is already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stack-backups/restore": {
+      "post": {
+        "operationId": "post_stack_backups_restore",
+        "summary": "Restore a backup (job): validate, automatic pre-restore backup, stage, reversible swap, health check; undone automatically on failure. Needs confirm=true",
+        "tags": [
+          "stack-backups"
+        ],
+        "x-required-scope": "admin",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "id",
+                  "confirm"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "ssh"
+                    ]
+                  },
+                  "ssh": {
+                    "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^(pre-)?\\d{8}T\\d{6}Z-[0-9a-f]{4}$"
+                  },
+                  "components": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "postgres",
+                        "geoserver",
+                        "caddy",
+                        "qgis",
+                        "mapproxy_config",
+                        "mapproxy_cache"
+                      ]
+                    }
+                  },
+                  "confirm": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "job"
+                      ],
+                      "properties": {
+                        "job": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'admin'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "another operation is already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "restore",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stack-backups/verify": {
+      "post": {
+        "operationId": "post_stack_backups_verify",
+        "summary": "Re-read every file and check checksums, the file set and the archive structure",
+        "tags": [
+          "stack-backups"
+        ],
+        "x-required-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode",
+                  "id"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "config": {
+                    "$ref": "#/components/schemas/Config"
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "ssh"
+                    ]
+                  },
+                  "ssh": {
+                    "$ref": "#/components/schemas/Ssh"
+                  },
+                  "server": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,30}$",
+                    "description": "id of a server profile (feature `multi_server`): its own SSH settings and pinned host key replace `ssh`"
+                  },
+                  "id": {
+                    "type": "string",
+                    "pattern": "^(pre-)?\\d{8}T\\d{6}Z-[0-9a-f]{4}$"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "required": [
+                        "ok",
+                        "problems"
+                      ],
+                      "properties": {
+                        "ok": {
+                          "type": "boolean"
+                        },
+                        "problems": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "checked": {
+                          "type": "integer"
+                        },
+                        "id": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "error": {
+                      "type": "null"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'read'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "invalid request (error.details lists every problem)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "not_found",
             "content": {
               "application/json": {
                 "schema": {

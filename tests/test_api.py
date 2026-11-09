@@ -125,7 +125,8 @@ class RouteTableTests(unittest.TestCase):
         read_posts = {"/ops/status", "/ops/preflight", "/ops/logs", "/existing/scan", "/backups/list", "/config/validate", "/bundle/preview", "/updates/check",
                       "/dashboard/summary", "/geoserver/inventory", "/geoserver/health", "/geoserver/validate", "/geoserver/capabilities", "/geoserver/layers/detail",
                       "/geoserver/preview", "/postgis/inventory", "/postgis/health", "/mapproxy/config", "/mapproxy/validate", "/mapproxy/health", "/mapproxy/cache", "/mapproxy/tile",
-                      "/mapproxy/config/backups", "/servers/{id}/probe", "/servers/compare"}
+                      "/mapproxy/config/backups", "/servers/{id}/probe", "/servers/compare",
+                      "/stack-backups/list", "/stack-backups/inspect", "/stack-backups/verify"}
         for r in registry.routes:
             if r.method in ("POST", "PUT", "DELETE") and r.scope == "read":
                 self.assertIn(r.path, read_posts, f"{r.method} {r.path} changes things but only needs the read scope")

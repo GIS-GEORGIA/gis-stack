@@ -41,6 +41,19 @@ export async function postImage(url, body) {
   return URL.createObjectURL(await r.blob());
 }
 
+// POST that answers with a file (backup export): returns {blob, name}.
+export async function postFile(url, body) {
+  let r;
+  try { r = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-GisStack": "1" }, body: JSON.stringify(body || {}) }); }
+  catch (e) { throw new ApiError("სერვერთან კავშირი ვერ დამყარდა", "network", 0); }
+  if (!r.ok) {
+    let j = null; try { j = await r.json(); } catch (e) { /* not JSON */ }
+    throw new ApiError((j && j.error && j.error.message) || r.statusText || "შეცდომა", j && j.error && j.error.code, r.status);
+  }
+  const m = /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") || "");
+  return { blob: await r.blob(), name: m ? m[1] : "backup.tar" };
+}
+
 // Start a background job (deploy, backup, logs ...) and follow its log. onLines(newLines) is called as they arrive.
 export async function runJob(url, body, { onLines, signal, interval = 900 } = {}) {
   const { job } = await post(url, body);

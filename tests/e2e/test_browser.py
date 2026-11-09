@@ -220,7 +220,7 @@ class BrowserTests(unittest.TestCase):
         self.assertIn("70", self.rules_row(page, "cpu_high").inner_text())
         self.rules_row(page, "cpu_high").locator("button:has-text('Default')").click()
         page.click("#dlg button:has-text('Roll back'), #dlg button.primary")
-        page.wait_for_selector("#main tbody tr:has-text('cpu_high') >> text=Default", state="attached")
+        page.wait_for_selector("#main tbody tr:has-text('cpu_high') >> text=Changed", state="detached")      # the table was re-rendered
         self.assertNotIn("Changed", self.rules_row(page, "cpu_high").inner_text())
 
         # language switch keeps the page working

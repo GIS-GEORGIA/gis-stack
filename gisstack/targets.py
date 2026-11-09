@@ -21,6 +21,8 @@ WORKLOADS = {
     "postgis": ("postgis", "statefulset/postgis"),
     "geoserver": ("geoserver", "deployment/geoserver"),
     "mapproxy": ("mapproxy", "deployment/mapproxy"),
+    "caddy": ("caddy", "deployment/caddy"),
+    "qgis_server": ("qgis", "deployment/qgis"),
 }
 INTERNAL_PORTS = {"postgis": 5432, "geoserver": 8080, "mapproxy": 8081}
 _FORWARDED_ENV = ("PGPASSWORD", "PGCONNECT_TIMEOUT", "PGOPTIONS")

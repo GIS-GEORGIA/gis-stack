@@ -5,16 +5,14 @@ import { h, append, clear, loading, done, empty, errorBox, pill, table, toast, m
 import * as state from "../state.js";
 import { bytes, dateTime } from "../format.js";
 import { t } from "../i18n.js";
+import stackBackups from "./stackbackups.js";
 
 const COMPS = [["config", "კონფიგურაცია"], ["postgres", "PostgreSQL"], ["geoserver", "GeoServer-ის მონაცემები"], ["qgis", "QGIS პროექტები"], ["cache", "MapProxy ქეში (დიდი შეიძლება იყოს)"]];
 
 export default {
   title: () => "ბექაფები",
   async mount(root) {
-    if (state.getConfig().deploy_target !== "native") {
-      append(root, [h("h1", {}, "ბექაფები"), h("div", { class: "card" }, h("p", {}, "ბექაფი და აღდგენა ჯერ მხოლოდ native სამიზნეზეა."), h("p", { class: "muted" }, `მიმდინარე სამიზნე: ${state.getConfig().deploy_target}. შეცვალე „კავშირი“-ში.`))]);
-      return {};
-    }
+    if (state.getConfig().deploy_target !== "native") return stackBackups.mount(root);      // Compose / Podman / Kubernetes: the provider-based backups
     const listBox = h("div", { class: "card pad0" });
     const log = h("pre", { class: "log", hidden: true, "aria-label": "ოპერაციის ლოგი" });
     const actions = h("div", { class: "actions" },

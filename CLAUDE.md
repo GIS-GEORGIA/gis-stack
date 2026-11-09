@@ -189,3 +189,9 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - განთავსების ჩანაწერი: `deployments.py` + კაუკი `deploy.deploy()`-ში (ყველა UI გადის მასზე). უკან დაბრუნება = წინა `ok` ჩანაწერის კონფიგის ხელახლა გამოყენება; **ახლანდელი საიდუმლოები რჩება** (`with_current_secrets`); არასოდეს purge/clean. ახალი გამოსავალი → `OUTCOMES`. ტესტებში `GISSTACK_VERIFY_TIMEOUT=0` დააყენე, თორემ არაჯანმრთელი mock 60 წმ ელოდება.
 - კლასიკური `/` გვერდის `unsafe-inline` ჯერ რჩება (შიგნით ინლაინ სკრიპტი/სტილი, იხ. `docs/AUDIT-2026-11.md`); ძველი `/api/*` რჩება სანამ ეს გვერდი არ გაქრება.
 
+## ბექაფი Compose/Podman/K8s-ზე (`gisstack/backups/`)
+- `model` (ფორმატი, ids, კომპონენტები, `scan_tar`), `store` (ატომური `.partial`→seal, SHA256SUMS, verify, retention, restore-state), `provider` (ერთი საერთო `BackupProvider` + `Compose/Podman/Kubernetes` ადაპტერები: მხოლოდ `place`, `restart`, `running`). ახალი კომპონენტი = ჩანაწერი `model.COMPONENTS` + `targets.WORKLOADS` + ტესტი.
+- წესები: ბექაფი = სრულად გადამოწმებული; არაფერი იცვლება სანამ ჩანაცვლება არ დადასტურდა; ყოველი გაცვლა შექცევადია და state-ფაილში იწერება **წინასწარ**; წინა მონაცემები (`<db>_pre_*`, `.gs-pre-*`) არასოდეს იშლება ავტომატურად; საიდუმლოები არც ბექაფშია, არც manifest/ლოგში; ფაილები 0600 (`os.open`, არა `open`).
+- ტესტები: `tests/test_stack_backup.py` (ლოკალური დირექტორია ცვლის volume-ს: `LocalProvider._argv`), `tests/test_stack_backup_api.py`, რეალური: `tests/integration/test_stack_backup_{compose,k8s}.py` (საერთო ქეისები `stackbackup_cases.py`), ბრაუზერი `tests/e2e/test_browser_backup.py`. `kubectl exec` workload-ზე 0 რეპლიკით ელოდება pod-ს ~1 წუთი — `running()` ჯერ readyReplicas-ს ამოწმებს.
+- `statefulset` pod-ის „forced rollback" პრობლემა — იხ. `apply.sh` `replace_stale_pod`.
+

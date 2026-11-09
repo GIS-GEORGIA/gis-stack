@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### ბექაფი და აღდგენა: Docker Compose, Podman, Kubernetes
+- ახალი `gisstack/backups/` (ერთი საერთო რეალიზაცია + ხელსაწყო-სპეციფიკური `ComposeBackupProvider`, `PodmanBackupProvider`, `KubernetesBackupProvider`): PostgreSQL (`pg_dump -Fc`), GeoServer-ის მონაცემები, Caddy, QGIS, MapProxy (კონფიგურაცია; ქეში — არჩევით). ბექაფი ითვლება მხოლოდ მაშინ, როცა ყველა ფაილი თავიდან წაიკითხა, არქივები შემოწმდა, `pg_restore --list` წაიკითხა და `manifest.json` + `SHA256SUMS` ჩაიწერა; ჩავარდნისას რჩება `<id>.FAILED`, არასდროს ბექაფი.
+- აღდგენა: ვალიდაცია → აუცილებელი დადასტურება → ავტომატური დადასტურებული წინა ბექაფი → staging (PostgreSQL scratch ბაზაში, ფაილები — იმავე volume-ში) → შექცევადი გაცვლა → ჯანმრთელობის შემოწმება; ნებისმიერი ჩავარდნისას ავტომატური უკან დაბრუნება; წინა მონაცემები არასდროს იშლება; შეწყვეტილი აღდგენა — `recover`. არჩევითი gpg დაშიფვრა (გასაღები არასდროს ინახება), retention (უახლესი ბექაფი არასდროს იშლება).
+- `gisstack stack-backup create|list|inspect|verify|check|restore|recover|prune|delete`; API `/api/v1/stack-backups/*` (`read`/`operate`/`admin`, აუდიტი `stack_backup.*`); დაფა: „ბექაფები" არა-native სამიზნეებზე. დოკუმენტაცია: `docs/BACKUP-RESTORE.md`, `docs/BACKUP-RESTORE-ARCHITECTURE.md`. native `gisstack backup` უცვლელია.
+- გადამოწმებულია რეალურ Docker Compose-ზე და kind-ზე (PostgreSQL + GeoServer); Podman — **არ გამოცდილა**. `targets.WORKLOADS`-ში დაემატა `caddy`, `qgis_server`.
+
 ### შესწორებები (რეალურ Docker Compose-ზე და kind-ზე გამოვლენილი)
 - ჯანმრთელობის შემოწმება: გაუმართავი განახლება (ციკლურად ჩამოვარდნილი კონტეინერი) ჯანმრთელად ითვლებოდა, რადგან Compose-ის `Health` ველი `up`-ის შემდეგ ცარიელია, `Status` კი „(health: starting)"-ს ამბობს; გარდა ამისა, პირველივე კარგი წაკითხვა მიიღებოდა. ახლა Compose-ის პროვაიდერი სტატუსის ტექსტსაც კითხულობს, ხოლო პროგრამები ჯანმრთელი უნდა დარჩნენ „დაწყნარების" პერიოდში (`GISSTACK_VERIFY_SETTLE`, ნაგულისხმევი 10 წმ).
 - Kubernetes: StatefulSet-ის pod, რომელიც არასდროს გახდა მზად, შაბლონის გასწორების შემდეგაც არ იცვლება (Kubernetes-ის ცნობილი „forced rollback" პრობლემა) და უკან დაბრუნება ჩავარდებოდა. `apply.sh` ახლა შლის მხოლოდ ისეთ pod-ს, რომელიც არ არის მზად და ძველ რევიზიაზეა; volume რჩება.

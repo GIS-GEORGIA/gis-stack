@@ -69,6 +69,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_compose.py' -v
           python -m unittest discover -s tests -p 'test_deploy_rollback.py' -v
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_compose_managers.py' -v
+          GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_stack_backup_compose.py' -v
 
   browser:
     name: browser end-to-end (Playwright)
@@ -86,7 +87,9 @@ jobs:
           playwright install --with-deps chromium
       - env:
           GISSTACK_TEST_E2E: "1"
-        run: python -m unittest discover -s tests -p 'test_browser.py' -v
+        run: |
+          python -m unittest discover -s tests -p 'test_browser.py' -v
+          python -m unittest discover -s tests -p 'test_browser_backup.py' -v
 
   kubernetes:
     name: kubernetes (kind)
@@ -109,3 +112,7 @@ jobs:
         env:
           GISSTACK_TEST_K8S: "1"
         run: python -m unittest discover -s tests -p 'test_deploy_rollback_k8s.py' -v
+      - name: Backup, restore, failure and recovery against the kind cluster
+        env:
+          GISSTACK_TEST_K8S: "1"
+        run: python -m unittest discover -s tests -p 'test_stack_backup_k8s.py' -v

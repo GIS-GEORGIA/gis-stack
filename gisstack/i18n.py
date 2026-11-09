@@ -1104,3 +1104,31 @@ EN.update({
 EN.update({
     "!! განთავსების ჩანაწერი ვერ შეიქმნა:": "!! The deployment record could not be written:",
 })
+
+EN.update({
+    "Caddy (სერტიფიკატები)": "Caddy (certificates)",
+    "MapProxy-ის კონფიგურაცია": "MapProxy configuration",
+    "აღდგება:": "Will be restored:",
+    "აღდგენა შეუძლებელია — არაფერი შეცვლილა": "Restore is not possible - nothing was changed",
+    "ბექაფი": "Backup",
+    "ბექაფი დაზიანებულია": "The backup is damaged",
+    "ბექაფი ვერ შეიქმნა — იხილე ლოგი": "The backup could not be created - see the log",
+    "ბექაფში პაროლები არ ინახება, მაგრამ GeoServer-ის მონაცემები მის საკუთარ ჰეშებს შეიცავს — დაიცავი საქაღალდე და გამოიყენე დაშიფვრა.": "Backups do not store passwords, but GeoServer data contains GeoServer's own hashes - protect the folder and use encryption.",
+    "გასაღები არასდროს ინახება ბექაფში. პაროლით დაშიფვრა — მხოლოდ CLI-დან.": "The key is never stored in the backup. Passphrase encryption is available from the CLI only.",
+    "დაშიფვრა საჯარო გასაღებით (არასავალდებულო)": "Encrypt with a public key (optional)",
+    "დაშიფრულია": "Encrypted",
+    "ვერ დაბრუნდა — იხილე ლოგი": "Could not put it back - see the log",
+    "კომპონენტი": "Component",
+    "მთლიანობა": "Integrity",
+    "სამუდამოდ წაიშლება.": "will be deleted permanently.",
+    "ფაილები": "Files",
+    "ყველაზე ახალი გადამოწმებული ბექაფი არასდროს იშლება. ჯერ ნახავ რა წაიშლება.": "The newest verified backup is never deleted. You see first what would be deleted.",
+    "შეწყვეტილი აღდგენა ჩაწერილია — ახალი აღდგენა დაიბლოკა.": "An interrupted restore is recorded - a new restore is blocked.",
+    "შეწყვეტილი აღდგენის ნარჩენები გასუფთავდება და წინა მონაცემები დაბრუნდება. გაგრძელდეს?": "The leftovers of the interrupted restore will be cleaned up and the previous data put back. Continue?",
+    "ჩამოტვირთვა": "Download",
+    "წინა მონაცემები დაბრუნდა": "The previous data is back",
+    "წინა მონაცემების დაბრუნება": "Put the previous data back",
+    "✔ გადამოწმებულია": "✔ Verified",
+    "✖ დაზიანებულია": "✖ Damaged",
+    "🔒 დაშიფრული": "🔒 Encrypted",
+})
