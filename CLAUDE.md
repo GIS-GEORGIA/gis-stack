@@ -168,3 +168,4 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - `gpg --list-packets` უნდა გაეშვას `--list-only`-ით (სხვაგვარად agent-ს ელოდება და 60 წმ იკიდება); gpg 2.4 იყენებს AEAD პაკეტს („aead encrypted packet“), ძველი — MDC-ს.
 - ტესტებში GNUPGHOME ხანმოკლე გზაზე (`/tmp/gn…`: agent-ის socket-ს სიგრძის ლიმიტი აქვს) და `gpgconf --kill all` cleanup-ში.
 - OpenSSH 9.8+ drops connections from a source that connected without authenticating (ssh-keyscan) - "Connection reset"; throw-away test sshd must set PerSourcePenalties no. Check against a newer sshd: docker run debian:trixie (OpenSSH 10).
+- release.yml installs cosign itself (pinned sha256, curl retries); sigstore/cosign-installer failed repeatedly with curl exit 22 during a GitHub release-download outage (504).

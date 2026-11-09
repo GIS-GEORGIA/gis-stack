@@ -37,7 +37,13 @@ jobs:
           sudo apt-get install -y rpm >/dev/null && packaging/build.sh rpm || echo "rpm skipped"
           cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS
 
-      - uses: sigstore/cosign-installer@v3.7.0
+      - name: Install cosign v2.4.1 (pinned SHA-256 = the value in the release's cosign_checksums.txt; retried, because release downloads sometimes return 5xx)
+        run: |
+          curl -fsSL --retry 8 --retry-delay 10 --retry-all-errors -o /tmp/cosign \
+            https://github.com/sigstore/cosign/releases/download/v2.4.1/cosign-linux-amd64
+          echo "8b24b946dd5809c6bd93de08033bcf6bc0ed7d336b7785787c080f574b89249b  /tmp/cosign" | sha256sum -c -
+          sudo install -m 755 /tmp/cosign /usr/local/bin/cosign
+          cosign version
       - name: Sign SHA256SUMS (Sigstore, keyless) and verify the signature the way `gisstack update` will
         run: |
           cd dist
