@@ -11,6 +11,7 @@ functions into a *sample* and then flattened into metrics.  Every number comes f
 If a source is unavailable the metric is simply absent and the failure is reported in `errors` - nothing is ever made up."""
 from __future__ import annotations
 
+import contextlib
 import re
 import shlex
 import time
@@ -296,20 +297,24 @@ def probe_metrics(rows: list[list[str]]) -> list[dict[str, Any]]:
 
 
 def backup_metrics(rows: list[list[str]], now: float) -> dict[str, Any]:
-    """Age of the newest complete manual/scheduled backup, from `gisstack-backup list` lines (id status kind created bytes components)."""
+    """Age of the newest complete manual/scheduled backup and the number of FAILED attempts since it, from `gisstack-backup list` lines
+    (`backup <id> <status> <kind> <created> <bytes> <components>`; status complete / partial / failed / damaged)."""
     best: Optional[float] = None
     count = 0
+    newest_id = ""
     for r in rows:
         if len(r) >= 6 and r[0] == "backup" and r[2] == "complete" and r[3] in ("manual", "scheduled"):
             count += 1
+            newest_id = max(newest_id, r[1])
             try:
                 t = time.mktime(time.strptime(r[4], "%Y-%m-%dT%H:%M:%SZ")) - time.timezone
             except ValueError:
                 continue
             best = t if best is None or t > best else best
-    if not count:
+    failed = sum(1 for r in rows if len(r) >= 3 and r[0] == "backup" and r[2] in ("partial", "failed", "damaged") and (not newest_id or r[1] > newest_id))
+    if not count and not failed:
         return {"count": 0}
-    return {"count": count, **({"last_age_seconds": max(0.0, now - best)} if best is not None else {})}
+    return {"count": count, "failed": failed, **({"last_age_seconds": max(0.0, now - best)} if best is not None else {})}
 
 
 def _bytes(text: str) -> float:
@@ -398,6 +403,56 @@ def collect(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], targe
     return build_sample(cfg, t, out, rows, time.time() - t0)
 
 
+# --------------------------------------------------------------------------- container targets: database health and backups
+_PG_SQL = ("select count(*), current_setting('max_connections')::int, "
+           "coalesce(max(extract(epoch from now() - query_start)) filter (where state = 'active' and pid <> pg_backend_pid()), 0), "
+           "(select count(*) from pg_locks where not granted) from pg_stat_activity where datname is not null")
+
+
+def stack_backup_stats(store_rows: list[dict[str, Any]], now: float) -> dict[str, float]:
+    """From the stack-backup list (newest first): how many intact backups, the age of the newest one and how many attempts FAILED since it
+    (a partial / failed / damaged entry newer than the newest intact backup - a later good backup clears the alarm)."""
+    ok = [r for r in store_rows if r.get("status") == "ok" and r.get("kind") in ("manual", "scheduled")]
+    out: dict[str, float] = {"count": float(len(ok)), "failed": 0.0}
+    newest = ok[0]["id"] if ok else ""
+    out["failed"] = float(sum(1 for r in store_rows if r.get("status") in ("partial", "failed", "damaged") and (not newest or r["id"] > newest)))
+    for r in ok:
+        with contextlib.suppress(ValueError):
+            out["last_age_seconds"] = max(0.0, now - (time.mktime(time.strptime(r["created"], "%Y-%m-%dT%H:%M:%SZ")) - time.timezone))
+            break
+    return out
+
+
+def container_extras(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], now: float) -> tuple[list[tuple[str, dict[str, str], float]], list[str]]:
+    """Metrics the host script cannot give on Compose / Podman / Kubernetes: PostgreSQL health (asked through the same engine access the backups use)
+    and the state of the stack backups (read from the local backup store).  Returns (flat metrics, errors); never raises."""
+    from ..backups import provider as bprov
+    flat: list[tuple[str, dict[str, str], float]] = []
+    errors: list[str] = []
+    try:
+        prov = bprov.provider_for(cfg, mode, ssh)
+    except Exception as e:  # noqa: BLE001 - e.g. native target: nothing to add
+        return flat, [f"stack metrics: {type(e).__name__}"] if "native" not in str(e) else []
+    try:
+        st = stack_backup_stats(prov.store.list(), now)
+        flat += [("backup_count", {}, st["count"]), ("backup_failed_count", {}, st["failed"])]
+        if "last_age_seconds" in st:
+            flat.append(("backup_last_age_seconds", {}, st["last_age_seconds"]))
+    except Exception as e:  # noqa: BLE001 - an unreadable store is reported, not fatal
+        errors.append(f"backup store: {type(e).__name__}: {e}"[:200])
+    if generate.effective_components(cfg, cfg.get("deploy_target", "compose")).get("postgis"):
+        try:
+            row = prov.psql(_PG_SQL, db=prov.db, timeout=30).split("|")
+            total, mx, longest, waiting = (_num(x) for x in row[:4])
+            flat += [("pg_up", {}, 1.0), ("pg_connections_total", {}, total), ("pg_max_connections", {}, mx),
+                     ("pg_connections_percent", {}, round(100.0 * total / mx, 1) if mx else 0.0), ("pg_longest_query_seconds", {}, longest),
+                     ("pg_waiting_locks", {}, waiting)]
+        except Exception as e:  # noqa: BLE001 - PostgreSQL not answering IS the finding
+            flat.append(("pg_up", {}, 0.0))
+            errors.append(f"postgres: no answer ({type(e).__name__})")
+    return flat, errors
+
+
 # --------------------------------------------------------------------------- flattening
 def flatten(sample: dict[str, Any]) -> list[tuple[str, dict[str, str], float]]:
     """(metric name, labels, value) triples - the shape stored in SQLite and exported as Prometheus text."""
@@ -443,6 +498,7 @@ def flatten(sample: dict[str, Any]) -> list[tuple[str, dict[str, str], float]]:
     b = sample.get("backup")
     if b:
         add("backup_count", b.get("count"))
+        add("backup_failed_count", b.get("failed", 0))
         add("backup_last_age_seconds", b.get("last_age_seconds"))
     add("monitor_reachable", 1.0)                       # a sample exists, so the machine answered (Monitor.tick records 0 when it did not)
     add("collect_seconds", sample.get("took"))

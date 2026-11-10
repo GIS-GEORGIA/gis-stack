@@ -875,7 +875,7 @@ Create a custom alert rule (id must be new; `revision` is the one read from GET)
 * Request body (JSON):
   - `revision` (string, required) - pattern `^[0-9a-f]{1,64}$`
   - `id` (string, required) - pattern `^[a-z][a-z0-9_]{2,40}$`
-  - `metric` (string, required) - one of `host_cpu_percent`, `host_mem_used_percent`, `host_swap_used_percent`, `host_load1`, `disk_used_percent`, `service_up`, `service_cpu_percent`, `service_rss_bytes`, `probe_up`, `probe_seconds`, `pg_up`, `pg_connections_percent`, `pg_longest_query_seconds`, `pg_waiting_locks`, `pg_database_size_bytes`, `pg_cache_hit_ratio`, `mapproxy_cache_bytes`, `backup_last_age_seconds`, `monitor_reachable`, `collect_errors`
+  - `metric` (string, required) - one of `host_cpu_percent`, `host_mem_used_percent`, `host_swap_used_percent`, `host_load1`, `disk_used_percent`, `service_up`, `service_cpu_percent`, `service_rss_bytes`, `probe_up`, `probe_seconds`, `pg_up`, `pg_connections_percent`, `pg_longest_query_seconds`, `pg_waiting_locks`, `pg_database_size_bytes`, `pg_cache_hit_ratio`, `mapproxy_cache_bytes`, `backup_last_age_seconds`, `backup_failed_count`, `monitor_reachable`, `collect_errors`
   - `op` (string, required) - one of `>`, `>=`, `<`, `<=`, `==`
   - `threshold` (number, required)
   - `for` (integer, required) - min `1`; max `1000`
@@ -914,7 +914,7 @@ Change a rule. Built-in: threshold, for, level, enabled, renotify (or reset=true
 * Request body (JSON):
   - `revision` (string, required) - pattern `^[0-9a-f]{1,64}$`
   - `reset` (boolean)
-  - `metric` (string) - one of `host_cpu_percent`, `host_mem_used_percent`, `host_swap_used_percent`, `host_load1`, `disk_used_percent`, `service_up`, `service_cpu_percent`, `service_rss_bytes`, `probe_up`, `probe_seconds`, `pg_up`, `pg_connections_percent`, `pg_longest_query_seconds`, `pg_waiting_locks`, `pg_database_size_bytes`, `pg_cache_hit_ratio`, `mapproxy_cache_bytes`, `backup_last_age_seconds`, `monitor_reachable`, `collect_errors`
+  - `metric` (string) - one of `host_cpu_percent`, `host_mem_used_percent`, `host_swap_used_percent`, `host_load1`, `disk_used_percent`, `service_up`, `service_cpu_percent`, `service_rss_bytes`, `probe_up`, `probe_seconds`, `pg_up`, `pg_connections_percent`, `pg_longest_query_seconds`, `pg_waiting_locks`, `pg_database_size_bytes`, `pg_cache_hit_ratio`, `mapproxy_cache_bytes`, `backup_last_age_seconds`, `backup_failed_count`, `monitor_reachable`, `collect_errors`
   - `op` (string) - one of `>`, `>=`, `<`, `<=`, `==`
   - `threshold` (number)
   - `for` (integer) - min `1`; max `1000`

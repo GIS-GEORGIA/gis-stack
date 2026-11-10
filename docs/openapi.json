@@ -11112,6 +11112,7 @@
                       "pg_cache_hit_ratio",
                       "mapproxy_cache_bytes",
                       "backup_last_age_seconds",
+                      "backup_failed_count",
                       "monitor_reachable",
                       "collect_errors"
                     ]
@@ -11750,6 +11751,7 @@
                       "pg_cache_hit_ratio",
                       "mapproxy_cache_bytes",
                       "backup_last_age_seconds",
+                      "backup_failed_count",
                       "monitor_reachable",
                       "collect_errors"
                     ]

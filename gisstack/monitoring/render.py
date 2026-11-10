@@ -46,7 +46,8 @@ def format_snapshot(snap: dict[str, Any]) -> str:
         lines.append(f"PROBE  {p:<26} {'ok' if s['value'] >= 1 else 'FAIL':<5} {_g(m, 'probe_seconds', probe=p) or 0:.3f} s")
     age = _g(m, "backup_last_age_seconds")
     if age is not None or _g(m, "backup_count") is not None:
-        lines.append(f"BACKUP {_g(m, 'backup_count') or 0:.0f} backup(s)" + (f", newest {age / 3600:.1f} h old" if age is not None else ""))
+        lines.append(f"BACKUP {_g(m, 'backup_count') or 0:.0f} backup(s)" + (f", newest {age / 3600:.1f} h old" if age is not None else "")
+                     + (f", {_g(m, 'backup_failed_count'):.0f} FAILED since" if _g(m, "backup_failed_count") else ""))
     if _g(m, "collect_errors"):
         lines.append(f"NOTE   {_g(m, 'collect_errors'):.0f} metric source(s) were unavailable in this sample")
     lines.append("")

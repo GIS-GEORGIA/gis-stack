@@ -46,6 +46,12 @@ class Monitor:
             sample = collect.collect(self.cfg, self.mode, self.ssh, self.target)
             flat = collect.flatten(sample)
             ts, errors = sample["ts"], sample["errors"]
+            if collect.common.resolve_target(self.cfg, self.target) != "native":
+                extra, extra_errors = collect.container_extras(self.cfg, self.mode, self.ssh, ts)
+                have = {n for n, _, _ in flat}
+                flat += [m for m in extra if m[0] not in have]
+                errors = list(errors) + extra_errors
+                flat = [m for m in flat if m[0] != "collect_errors"] + [("collect_errors", {}, float(len(errors)))]
         except DeployError as e:
             ts, sample, errors = self.clock(), None, [f"unreachable: {e}"]
             flat = [("monitor_reachable", {}, 0.0)]

@@ -34,12 +34,13 @@ DEFAULT_RULES: dict[str, dict[str, Any]] = {
     "postgres_long_query": {"metric": "pg_longest_query_seconds", "op": ">", "threshold": 300.0, "for": 1, "level": "warn", "text": "a query has been running for {value:.0f} s"},
     "postgres_locks": {"metric": "pg_waiting_locks", "op": ">", "threshold": 5.0, "for": 3, "level": "warn", "text": "{value:.0f} sessions are waiting for locks"},
     "backup_old": {"metric": "backup_last_age_seconds", "op": ">", "threshold": 36 * 3600.0, "for": 1, "level": "warn", "text": "the newest backup is {value:.0f} s old"},
+    "backup_failed": {"metric": "backup_failed_count", "op": ">", "threshold": 0.0, "for": 1, "level": "crit", "text": "{value:.0f} backup attempt(s) failed since the newest good backup"},
     "host_unreachable": {"metric": "monitor_reachable", "op": "<", "threshold": 1.0, "for": 3, "level": "crit", "text": "the machine cannot be reached"},
     "collector_errors": {"metric": "collect_errors", "op": ">", "threshold": 0.0, "for": 3, "level": "warn", "text": "{value:.0f} metric source(s) unavailable"},
 }
 KNOWN_METRICS = ("host_cpu_percent", "host_mem_used_percent", "host_swap_used_percent", "host_load1", "disk_used_percent", "service_up", "service_cpu_percent",
                  "service_rss_bytes", "probe_up", "probe_seconds", "pg_up", "pg_connections_percent", "pg_longest_query_seconds", "pg_waiting_locks",
-                 "pg_database_size_bytes", "pg_cache_hit_ratio", "mapproxy_cache_bytes", "backup_last_age_seconds", "monitor_reachable", "collect_errors")
+                 "pg_database_size_bytes", "pg_cache_hit_ratio", "mapproxy_cache_bytes", "backup_last_age_seconds", "backup_failed_count", "monitor_reachable", "collect_errors")
 CUSTOM_ID = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
 CUSTOM_KEYS = {"metric", "op", "threshold", "for", "level", "text", "description", "enabled", "renotify"}
 MAX_RENOTIFY = 30 * 86400.0
