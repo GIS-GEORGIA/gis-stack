@@ -75,7 +75,14 @@ class BackupProvider:
         script = self.place(component).prelude() + "gs_in " + shlex.quote(user) + " " + " ".join(shlex.quote(c) for c in cmd)
         return transport.argv(self.mode, self.ssh, script, root=False)
 
-    def _fail(self, what: str, rc: int, err: str) -> BackupError:
+    def _ssh_trust_error(self, rc: int, err: str) -> Optional[Exception]:
+        """ssh exits 255 for its own failures: a changed / unknown host key must surface as such, not as "the workload is not running"."""
+        return transport.diagnose(err or "", self.ssh) if self.mode == "ssh" and rc == 255 else None
+
+    def _fail(self, what: str, rc: int, err: str) -> Exception:
+        trust = self._ssh_trust_error(rc, err)
+        if trust is not None:
+            return trust
         tail = self.mask((err or "").strip().splitlines()[-1] if (err or "").strip() else "no output")[:300]
         return BackupError(f"{what} (exit {rc}): {tail}")
 
@@ -133,6 +140,9 @@ class BackupProvider:
     def sh(self, component: str, user: str, cmd: list[str], *, timeout: int = 600, check: bool = True) -> tuple[int, str, str]:
         p = subprocess.run(self._argv(component, user, cmd), capture_output=True, timeout=timeout)  # nosec B603
         out, err = p.stdout.decode("utf-8", "replace"), p.stderr.decode("utf-8", "replace")
+        trust = self._ssh_trust_error(p.returncode, err)
+        if trust is not None:
+            raise trust                                                  # even with check=False: a refused host key is not an answer about the workload
         if check and p.returncode != 0:
             raise self._fail(f"{component}: command failed", p.returncode, err or out)
         return p.returncode, out, err

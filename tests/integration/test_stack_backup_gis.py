@@ -25,7 +25,12 @@ ENABLED = os.environ.get("GISSTACK_TEST_INTEGRATION") == "1" and shutil.which("d
 
 
 def pulled(image: str) -> bool:
-    return ENABLED and subprocess.run(["docker", "pull", "-q", image], capture_output=True).returncode == 0
+    """The image is available: already present locally, or pulled now (a registry that is unreachable must not silently skip a test whose image is cached)."""
+    if not ENABLED:
+        return False
+    if subprocess.run(["docker", "image", "inspect", image], capture_output=True).returncode == 0:
+        return True
+    return subprocess.run(["docker", "pull", "-q", image], capture_output=True).returncode == 0
 
 
 def free_port() -> int:

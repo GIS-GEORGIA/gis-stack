@@ -89,9 +89,9 @@ If the process is killed mid-restore, a state file remains; new restores refuse 
 
 | Provider | Unit | Real Docker Compose | Real Kubernetes (kind) | Real Podman |
 |---|---|---|---|---|
-| Compose | yes | yes (PostgreSQL + GeoServer, 10 tests) | - | - |
-| Kubernetes | yes | - | yes (PostgreSQL + GeoServer, 10 tests) | - |
-| Podman | yes (shared code path, Podman status/log/control scripts, qualified image names) | - | - | yes: PostgreSQL + GeoServer + gis-stack deployment/status, **rootful Podman 5.8.9 with podman-compose 1.6.0 in a privileged systemd container**; a rootless host install is **not** verified (CI workflow `podman.yml` has a rootless job that had not run when this was written) |
+| Compose | yes | yes (PostgreSQL + GeoServer 10 tests; Caddy/MapProxy/QGIS 4; Caddy ACME 1; `--mode ssh` 1) | - | - |
+| Kubernetes | yes | - | yes, in CI (PostgreSQL + GeoServer 10 tests; Caddy, MapProxy, QGIS 3 + monitoring 1) | - |
+| Podman | yes (shared code path, Podman status/log/control scripts, qualified image names) | - | - | yes: PostgreSQL + GeoServer + gis-stack deployment/status, **rootful Podman 5.8.9 with podman-compose 1.6.0 in a privileged systemd container**; rootless Podman: PostgreSQL + GeoServer backup/restore 11/11 on GitHub (rootful and rootless jobs, `55bc033` and `5ea1c29`) |
 
 On Podman the generated Compose files use fully qualified image names (`docker.io/...`) because Podman refuses short names without a terminal when several registries are configured; status, restart policy and logs read the Podman engine directly (the `podman-compose` provider has no `ps -a`). Docker bundles are unchanged.
 
@@ -104,8 +104,28 @@ On Podman the generated Compose files use fully qualified image names (`docker.i
 | **Caddy** `/data` | archive contains the CA and certificates; verified | the local CA (`root.crt`) is destroyed (`rm -rf /data/caddy`, Caddy then creates a *different* CA); restore brings back the **original `root.crt` byte for byte**, the post-restore health check passes and HTTPS verifies against the restored CA; the replaced state is kept (`.gs-pre-*`) | **COMPLETE** (Compose; the same code path runs on Podman and Kubernetes, which are exercised for PostgreSQL / GeoServer only) |
 | **MapProxy cache** | opt-in (`--with-cache`); a sentinel tile is in the backup | sentinel and an extra tile are changed, restore brings the sentinel back and removes the extra tile, previous cache kept; no pre-restore backup is made for a rebuildable cache (by design) | **COMPLETE** (Compose) |
 | **MapProxy configuration** | default component, verified | refused *by design* ("it is configuration: redeploy") - the test asserts the refusal | backup **COMPLETE**; in-place restore **NOT APPLICABLE** (redeploy the bundle) |
-| **QGIS Server projects** | the project file is inside the verified archive | on Compose the project directory is a read-only bind mount: `check`/`restore` refuse with a reason and nothing is touched (asserted); in-place restore exists only for Kubernetes PVCs | backup **COMPLETE**; restore **PARTIAL** (Kubernetes only, **not verified on kind in this run**) |
+| **QGIS Server projects** | the project file is inside the verified archive | on Compose the project directory is a read-only bind mount: `check`/`restore` refuse with a reason and nothing is touched (asserted); in-place restore exists only for Kubernetes PVCs | backup **COMPLETE**; restore **PARTIAL**: refused on Compose by design; on Kubernetes (a PVC) it is verified on kind in CI |
 
 Not backed up, on purpose: the Caddyfile and the MapProxy configuration (they are generated: redeploy), Caddy's `/config` volume (only an auto-saved copy of the Caddyfile). Limitations found by the tests: gis-stack's health probe of Caddy uses the standard HTTPS port 443, so a custom `HTTPS_PORT` in `.env` is verified by the container state only, not by the public URL probe (the Caddy test therefore runs on 80/443).
 
-Not covered by real-environment tests: `--mode ssh`, restore over a very large database, concurrent writes during a backup, Caddy / MapProxy cache restore on **Podman** and **Kubernetes**, QGIS restore on Kubernetes.
+### Caddy ACME certificates (real ACME server)
+
+`tests/integration/test_caddy_acme.py` runs gis-stack's Caddy next to **Pebble** (Let's Encrypt's test CA; no public CA is contacted). Caddy obtains a real certificate for `gis.example.com` by HTTP-01. Verified: the certificate, its key and the ACME account are in the verified backup; **no console line, operation log, manifest or checksum file contains key text**; backup files are 0600 in a 0700 folder; after the state is destroyed Caddy re-issues (control: Pebble's issuance count rises), and after the restore the **same certificate** is served again, Pebble is **not** asked for another one, and owners, groups and modes of the restored tree are identical to the original. The archive itself contains the private key, so it is sensitive: use `--encrypt` / `--encrypt-to` and keep copies private.
+
+### `--mode ssh` (commands run on a server over SSH, the backup is stored on the machine that runs gis-stack)
+
+`tests/integration/test_stack_backup_ssh.py` uses a real `sshd` (own host key, key-only login) in front of a real Compose stack. Verified:
+
+* an **unknown** host is refused before anything runs (`hostkey_unknown`), no valid backup is produced (a `FAILED` entry is recorded and raises the `backup_failed` alert); a **wrong** fingerprint is refused by `gisstack ssh-trust`; the right one establishes trust;
+* backup and restore over ssh work, are verified, and the restored data is correct; local backup files are 0600 / 0700; the database password is not in any metadata;
+* a **changed** host key is refused with `hostkey_changed` (before this review it was reported as "workload is not running"); nothing runs and nothing is overwritten;
+* a connection **killed mid-transfer** leaves no valid backup, no `.partial` directory, and no `pg_dump` keeps running on the server;
+* a **tampered** backup fails `verify` and is refused by `restore`; the database is unchanged.
+
+Not covered: very large transfers over slow links, an SSH server that drops idle connections during a long restore, SSH over a jump host.
+
+### Custom `HTTPS_PORT`
+
+The post-restore health check of Caddy probes the standard HTTPS port. On a stack whose `.env` sets another `HTTPS_PORT` the check reports Caddy unhealthy and the restore is reversed automatically (safe, but Caddy cannot be restored there). Keep the standard ports, or restore Caddy's `/data` by hand.
+
+Not covered by real-environment tests: restore over a very large database, concurrent writes during a backup, Caddy / MapProxy cache restore on **Podman**. Verified on a real kind cluster in CI (integration run 42864612991, commit `5ea1c29`): Caddy local-CA backup/restore, MapProxy cache restore and config refusal, QGIS projects restore on the PVC.
