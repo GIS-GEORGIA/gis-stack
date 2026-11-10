@@ -146,6 +146,7 @@ services:
       - caddy_config:/config
 {% endif %}
 
+{% if c.postgis or c.geoserver or c.mapproxy or c.caddy %}
 volumes:
 {% if c.postgis %}
   pgdata:
@@ -159,4 +160,5 @@ volumes:
 {% if c.caddy %}
   caddy_data:
   caddy_config:
+{% endif %}
 {% endif %}

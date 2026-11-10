@@ -5,6 +5,7 @@ at it through `docker exec`, and removes everything afterwards.  Nothing here to
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -48,12 +49,16 @@ class StackBase(unittest.TestCase):
                                  generate_secrets=True, persist_secrets=True)
         cls.out = Path(tempfile.mkdtemp())
         generate.generate_bundle(cls.cfg, cls.out)
+        yml = cls.out / "compose" / "docker-compose.yml"          # tests reach workloads with `exec`; fixed host ports (8080, 8081, 8380) would make concurrent runs collide
+        yml.write_text(re.sub(r'    ports:\n      - "(?:8080:8080|8081:8081|8380:80)"\n', "", yml.read_text()))
         d = cls.out / "compose"
         cls.base = ["docker", "compose", "-p", cls.project, "-f", str(d / "docker-compose.yml"), "--env-file", str(d / ".env")]
         up = subprocess.run([*cls.base, "up", "-d", "--wait", "--wait-timeout", "300"], capture_output=True, text=True, timeout=400)
         if up.returncode != 0:
-            cls.tearDownClass()
-            raise AssertionError(up.stdout + up.stderr)
+            ps = subprocess.run([*cls.base, "ps", "-a"], capture_output=True, text=True).stdout
+            logs = subprocess.run([*cls.base, "logs", "--tail", "40", "--no-color"], capture_output=True, text=True).stdout
+            cls.tearDownClass()                         # keep the evidence in the failure message: a timeout and a crash look the same otherwise
+            raise AssertionError(f"compose up failed (rc {up.returncode}) after waiting\n{up.stdout}{up.stderr}\n--- ps -a\n{ps}\n--- last log lines\n{logs}")
 
     @classmethod
     def tearDownClass(cls):
