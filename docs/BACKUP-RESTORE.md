@@ -8,7 +8,7 @@ For the **native** (apt/dnf) target use `gisstack backup ...` (see `docs/guides/
 |---|---|---|
 | `postgres` | `pg_dump -Fc` of the stack database (consistent snapshot, taken from inside the running database) | yes |
 | `geoserver` | the GeoServer data directory (workspaces, layers, styles, configuration) | yes |
-| `caddy` | `/data` (certificates and state) | yes |
+| `caddy` | `/data` (ACME account, issued certificates and keys, the local CA of `tls: internal`) | yes |
 | `qgis` | QGIS projects | Kubernetes only (a read-only bind mount on Compose) |
 | `mapproxy_config` | MapProxy configuration | no - it is configuration: redeploy |
 | `mapproxy_cache` | tile cache, only with `--with-cache` (can be very large, rebuildable) | yes |
@@ -95,4 +95,17 @@ If the process is killed mid-restore, a state file remains; new restores refuse 
 
 On Podman the generated Compose files use fully qualified image names (`docker.io/...`) because Podman refuses short names without a terminal when several registries are configured; status, restart policy and logs read the Podman engine directly (the `podman-compose` provider has no `ps -a`). Docker bundles are unchanged.
 
-Not covered by real-environment tests: Caddy and QGIS data, the MapProxy cache, `--mode ssh`, restore over a very large database, concurrent writes during a backup.
+### Caddy, QGIS Server, MapProxy - backup and restore verified separately (real Docker Compose)
+
+`tests/integration/test_stack_backup_gis.py`, each against a real throw-away Compose project:
+
+| Component | Backup | Restore | Status |
+|---|---|---|---|
+| **Caddy** `/data` | archive contains the CA and certificates; verified | the local CA (`root.crt`) is destroyed (`rm -rf /data/caddy`, Caddy then creates a *different* CA); restore brings back the **original `root.crt` byte for byte**, the post-restore health check passes and HTTPS verifies against the restored CA; the replaced state is kept (`.gs-pre-*`) | **COMPLETE** (Compose; the same code path runs on Podman and Kubernetes, which are exercised for PostgreSQL / GeoServer only) |
+| **MapProxy cache** | opt-in (`--with-cache`); a sentinel tile is in the backup | sentinel and an extra tile are changed, restore brings the sentinel back and removes the extra tile, previous cache kept; no pre-restore backup is made for a rebuildable cache (by design) | **COMPLETE** (Compose) |
+| **MapProxy configuration** | default component, verified | refused *by design* ("it is configuration: redeploy") - the test asserts the refusal | backup **COMPLETE**; in-place restore **NOT APPLICABLE** (redeploy the bundle) |
+| **QGIS Server projects** | the project file is inside the verified archive | on Compose the project directory is a read-only bind mount: `check`/`restore` refuse with a reason and nothing is touched (asserted); in-place restore exists only for Kubernetes PVCs | backup **COMPLETE**; restore **PARTIAL** (Kubernetes only, **not verified on kind in this run**) |
+
+Not backed up, on purpose: the Caddyfile and the MapProxy configuration (they are generated: redeploy), Caddy's `/config` volume (only an auto-saved copy of the Caddyfile). Limitations found by the tests: gis-stack's health probe of Caddy uses the standard HTTPS port 443, so a custom `HTTPS_PORT` in `.env` is verified by the container state only, not by the public URL probe (the Caddy test therefore runs on 80/443).
+
+Not covered by real-environment tests: `--mode ssh`, restore over a very large database, concurrent writes during a backup, Caddy / MapProxy cache restore on **Podman** and **Kubernetes**, QGIS restore on Kubernetes.

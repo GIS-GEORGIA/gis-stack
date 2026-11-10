@@ -1,0 +1,16 @@
+# Production readiness - prioritized plan
+
+Written 2026-11-10 from the code and `docs/IMPLEMENTATION-STATUS.md`. Nothing here is assumed production-ready without evidence; each item has the evidence required before it may be called COMPLETE. Status per item is kept in `docs/IMPLEMENTATION-STATUS.md` (section 00000), not here.
+
+| # | Stage | Why this priority | Evidence required for COMPLETE |
+|---|---|---|---|
+| 1 | **SSH: no silent trust-on-first-use by default**; explicit trust command; changed-key diagnostics | the weakest remaining trust decision: a first connection to an unknown (possibly spoofed) host was accepted silently and the host then receives root commands and secrets | real `sshd` tests for unknown / changed / trusted keys; CLI trust flow tested; existing flows still work with the documented opt-out |
+| 2 | **Podman reliability**: compose-provider diagnostics (no silent switching), Podman rollback, Podman monitoring script | three items marked NOT VERIFIED; the provider problem already cost two red CI runs | real Podman tests (rootful and rootless); clear failure text asserted by a test |
+| 3 | **GIS backup coverage**: Caddy, QGIS Server, MapProxy (config + cache) | the only components still implemented-but-never-run on a real engine | real engine backup **and** restore for each, data-level assertions; components that cannot be restored in place stay explicitly PARTIAL |
+| 4 | **Legacy API**: replacement for `/api/logout`, caller inventory, migration text | `/api/logout` is the only legacy route without a v1 successor | tests for the new route; document unchanged for routes still used by the classic page |
+| 5 | **Classic page CSP** (`unsafe-inline`) | needs the classic page's script/styles moved out and every flow re-tested in Chromium | zero CSP violations in Chromium across the page's flows; otherwise documented as an exception |
+| 6 | **Monitoring/alerting verification** (backup failure, disk space, database health, Podman) | alerts exist but were verified only with fixtures | real collection on real engines; alert rules lifecycle already browser-tested |
+| 7 | **Packaged service**: upgrade path, logging, health endpoint | the unprivileged service is verified for fresh installs on 5 distributions | upgrade test from the previous package |
+| 8 | **Full real-environment run** of every suite, docs, final report | closes the loop | exact counts from this machine and from GitHub |
+
+Order of work = order above. Stages that cannot be finished with real evidence in the available time are reported as PARTIAL / NOT VERIFIED, never as COMPLETE.

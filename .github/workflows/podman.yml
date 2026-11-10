@@ -30,6 +30,11 @@ jobs:
         env:
           GISSTACK_TEST_PODMAN: "1"
         run: sudo -E env "PATH=$PATH" python -W error::ResourceWarning -m unittest discover -s tests -p 'test_stack_backup_podman.py' -v
+      - name: Reliability on Podman (rollback, monitoring, provider diagnostic) (as root)
+        env:
+          GISSTACK_TEST_PODMAN: "1"
+          PODMAN_COMPOSE_PROVIDER: podman-compose
+        run: sudo -E env "PATH=$PATH" python -W error::ResourceWarning -m unittest discover -s tests -p 'test_podman_reliability.py' -v
 
   rootless:
     name: podman (rootless)
@@ -58,3 +63,8 @@ jobs:
           # provider we install (this is the combination verified on Ubuntu 24.04 + Podman 4.9.3 + podman-compose 1.6.0).
           PODMAN_COMPOSE_PROVIDER: podman-compose
         run: python -W error::ResourceWarning -m unittest discover -s tests -p 'test_stack_backup_podman.py' -v
+      - name: Reliability on Podman, rootless (rollback, monitoring; the provider diagnostic runs because the runner has the Docker Compose plugin and no Podman socket)
+        env:
+          GISSTACK_TEST_PODMAN: "1"
+          PODMAN_COMPOSE_PROVIDER: podman-compose
+        run: python -W error::ResourceWarning -m unittest discover -s tests -p 'test_podman_reliability.py' -v

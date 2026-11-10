@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-10: section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-10: section 00000 is the newest (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -11,6 +11,60 @@ Statuses (used consistently):
 * **BROKEN** - implemented but failing. *Nothing is currently BROKEN.*
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
+
+## 00000. Production readiness and security hardening
+
+Environment: Linux 7.0 host, Docker + Compose, Python 3.12 venv, Chromium via Playwright, a privileged systemd container with **rootful Podman 5.8.9** (Fedora 44) and a **rootless** user session in it (`podman` user, linger). No `kind`/`kubectl` on this machine: **nothing Kubernetes was re-run**. Python 3.9 was not re-run locally (CI covers 3.9-3.13).
+
+| Item | Status | Evidence (this machine) |
+|---|---|---|
+| SSH: no silent trust on first use for ad-hoc connections; `gisstack ssh-trust`; changed-key diagnostics | **COMPLETE** (CLI/API; classic page shows the error text) | real `sshd` tests: unknown refused with nothing run, trust with right/wrong fingerprint, changed key refused, `--replace`, opt-in TOFU recorded, strict wins; profiles unchanged. **Behaviour change** (see CHANGELOG migration) |
+| Podman compose-provider diagnostics (never switches provider) | **COMPLETE** | real Podman, rootful **and** rootless: Docker Compose plugin installed + no socket -> `up.sh` exits 3 with the three ways out, nothing started, also via gis-stack's deploy path. The test found a real flaw (Podman's `RemoteSocket.Exists` is `true` without a socket) - fixed, regression-tested |
+| Podman rollback (PG17 -> failed PG16 -> rollback) | **COMPLETE** (rootful + rootless, local) | data and password intact, record `rollback/ok`, second rollback refused as nothing to do |
+| Podman monitoring | **COMPLETE for state, host, PostgreSQL, backup metrics; PARTIAL for per-service CPU/memory** | real: `service_up`, host metrics, availability, `pg_up`, backup alert lifecycle. `podman stats --no-stream` returned **no rows** in this nested engine (verified), so `service_cpu_percent` / `service_rss_bytes` are absent there; not verified on a bare-metal engine |
+| Rootless Podman service lifecycle via systemd user units | **NOT VERIFIED** | not tested |
+| Caddy backup + restore | **COMPLETE (Compose, real)** | original local CA `root.crt` restored byte for byte after the state was destroyed, HTTPS verifies, replaced state kept |
+| MapProxy cache backup + restore | **COMPLETE (Compose, real)** | sentinel tile restored, extra tile removed |
+| MapProxy configuration | backup **COMPLETE**, in-place restore **NOT APPLICABLE** (redeploy; refusal asserted) | real |
+| QGIS Server | backup **COMPLETE**; restore **PARTIAL** (Kubernetes only, **not verified**; refused on Compose with a reason, asserted) | real Compose |
+| Compose template bug: empty `volumes:` (QGIS-only stack) | **FIXED** | found by the real run; regression test over all 1-3 component combinations |
+| Legacy `/api/logout` | **COMPLETE**: `POST /api/v1/session/logout`, old route still works with `Deprecation`/`Link`; all 28 legacy routes now have a successor | unit (API contract, session revoke, bearer, CSRF, audit); other legacy routes stay (the classic page uses them) |
+| Classic page CSP without `unsafe-inline` | **COMPLETE** | Chromium: 0 CSP violations, 0 console errors, 0 failed requests over the page's flows; computed styles of the former inline styles; enforcement proven. Exceptions: none for script/style. A real bug was found and fixed (log-stop button visibility) |
+| Monitoring on Compose/Podman/K8s: PostgreSQL health + backup state + `backup_failed` alert | **COMPLETE for Compose/Podman logic; IMPLEMENTED BUT NOT VERIFIED on Kubernetes** | unit (parsing, firing, resolving, native too) and real Podman (fires on a real failed backup, resolves after a good one) |
+| Monitoring alert **delivery** errors, disk-space alert on a real filling disk | existing unit coverage only; **not re-verified on real systems** | |
+| Packaged service upgrade from a previous package; unprivileged service on all distros | **NOT VERIFIED** this run (fresh install package test: ubuntu-24.04 + rocky-9 ran OK) | |
+
+### Test results of this run (exact)
+
+| Suite | Result |
+|---|---|
+| Python unit/contract/golden (`unittest discover -s tests`, venv) | **964 run, 0 failed, 102 skipped** (opt-in suites) |
+| `ruff check .` | all checks passed |
+| `mypy` | no issues in 93 source files |
+| `bandit -r gisstack` | 0 medium/high, 27 low |
+| JS (`node --test tests/js/*.test.mjs`) | 10/10 |
+| Chromium e2e (`test_browser`, `test_browser_backup`, `test_browser_csp`) | **10 run, 10 ok** |
+| Docker Compose: `test_compose` 1/1, `test_deploy_rollback` 1/1, `test_compose_managers` 22 run / 2 skipped / 0 failed, `test_stack_backup_gis` 4/4 | OK |
+| Docker Compose: `test_stack_backup_compose` | batch run: **9 run, 1 error** (`GeoServerFilesBackupRestore.setUpClass`); later: isolated 1/1 OK, full module **10/10 OK** twice, once with the managers suite and a CPU burner running. See the investigation below |
+| Rootful Podman: `test_stack_backup_podman` 11/11, `test_podman_reliability` 3/3 | OK |
+| Rootless Podman (nested user session): `test_podman_reliability` | 3/3 OK |
+| Installer `ubuntu-24.04` 1/1; packages `ubuntu-24.04, rocky-9` 1/1 | OK |
+| kind / Kubernetes | **not run** (no cluster here) |
+
+CI changes not yet run: `podman.yml` now also runs `test_podman_reliability.py` in both jobs.
+
+### Investigations done before committing
+
+**GeoServer `setUpClass` error (Compose backup suite):** the failing run's output was not kept, so the exact message is unknown. It did not reproduce in four later attempts (isolated, full module, under CPU load, and concurrently with another stack). Under concurrent load I reproduced a *different, explained* failure: two stacks published the same fixed host port 8080 (`failed to set up container networking`), i.e. concurrent or not-yet-released stacks collide on 8080/8081/8380. In the failing batch the suite ran right after the managers suite, so a port still held on 8080 is the **most likely, unproven** cause; a slow GeoServer start (up to ~180 s here against a 300 s wait) is the alternative. Done: test stacks no longer publish fixed host ports, and a setUpClass failure now carries `compose ps -a` and the last log lines, so a recurrence is diagnosable. Status: **cause not proven; mitigated; watch the GitHub runs.**
+
+**Per-service Podman metrics:** `podman stats --no-stream` returns a header and **no rows** for a running container in this nested engine, rootful (cgroupfs and systemd cgroup manager) and rootless - an engine/nesting property, not a parser fault (parsing of Podman-format lines is now unit-tested, and the real test prints how many rows the engine returned). Bare-metal / CI behaviour: **unknown until the Podman workflow runs**.
+
+**Podman reliability tests in `podman.yml`:** reviewed. They pin `PODMAN_COMPOSE_PROVIDER=podman-compose`; the diagnostic test strips the pin itself and runs only where `podman compose` resolves to Docker Compose without a Podman socket (the GitHub runners have the plugin), otherwise it is reported as skipped. Added about 3-4 minutes per job.
+
+**Kubernetes (kind):** no `kind`/`kubectl` on this machine, so **nothing Kubernetes was run**. New, never-run tests (`tests/integration/test_stack_backup_k8s_gis.py`, CI job `kubernetes-gis (kind)`): Caddy local-CA backup/restore, MapProxy cache restore + config refusal, QGIS projects restore on the PVC, PostgreSQL health and `backup_failed` alert lifecycle. Existing kind tests (managers, deploy/failed upgrade/rollback, PostgreSQL + GeoServer backup) are unchanged. None of this is claimed verified until the GitHub job is green.
+
+### Remaining security issues and risks
+Legacy `/api/*` routes remain (classic page uses them); classic page still uses `innerHTML` with escaped text; ad-hoc SSH TOFU is available as opt-in (`GISSTACK_SSH_TOFU=1`); custom `HTTPS_PORT` is not known to the public health probe; backups of Caddy/GeoServer contain sensitive material (encrypt them).
 
 ## 0000. GitHub Actions results for commit `55bc033` (pinned compose provider) - verified from the run logs
 

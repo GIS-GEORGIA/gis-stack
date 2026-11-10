@@ -70,6 +70,7 @@ jobs:
           python -m unittest discover -s tests -p 'test_deploy_rollback.py' -v
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_compose_managers.py' -v
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_stack_backup_compose.py' -v
+          GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_stack_backup_gis.py' -v
 
   browser:
     name: browser end-to-end (Playwright)
@@ -90,6 +91,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_browser.py' -v
           python -m unittest discover -s tests -p 'test_browser_backup.py' -v
+          python -m unittest discover -s tests -p 'test_browser_csp.py' -v
 
   kubernetes:
     name: kubernetes (kind)
@@ -116,3 +118,21 @@ jobs:
         env:
           GISSTACK_TEST_K8S: "1"
         run: python -m unittest discover -s tests -p 'test_stack_backup_k8s.py' -v
+
+  kubernetes-gis:
+    name: kubernetes-gis (kind)
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install flask jinja2 pyyaml
+      - uses: helm/kind-action@v1
+      - name: Caddy, MapProxy, QGIS backup/restore and PostgreSQL/backup monitoring against the kind cluster
+        env:
+          GISSTACK_TEST_K8S: "1"
+        run: python -m unittest discover -s tests -p 'test_stack_backup_k8s_gis.py' -v

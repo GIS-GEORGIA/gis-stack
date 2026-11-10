@@ -5,6 +5,15 @@
 
 ## [Unreleased]
 
+### წარმოებისთვის მზადყოფნა და უსაფრთხოება
+- **მიგრაცია (SSH):** პროფილის გარეშე `ssh` აღარ ენდობა უცნობ host key-ს ჩუმად. უცნობი ჰოსტი → შეცდომა `hostkey_unknown` (გაგზავნამდე), შეცვლილი გასაღები → `hostkey_changed`. ნდობა ცხადია: `gisstack ssh-trust HOST --fingerprint SHA256:...` (`--scan-only` მხოლოდ აჩვენებს, არაფერს ენდობა). ძველი ქცევა ნებაყოფლობითია: `GISSTACK_SSH_TOFU=1`; `GISSTACK_SSH_STRICT=1` ყოველთვის იმარჯვებს. პროფილები უცვლელია. დოკუმენტაცია: `docs/SERVERS.md`.
+- Podman: თუ `podman compose` Docker Compose პროვაიდერს იყენებს და Podman-ის API სოკეტი არ მუშაობს, `up.sh` (და start/stop/restart) ჩერდება გასაგები შეტყობინებით (exit 3) და **პროვაიდერს არასდროს ცვლის თავისით**; რეალური Podman-ის ტესტმა აჩვენა, რომ `podman info`-ის `RemoteSocket.Exists` ტყუის, ამიტომ მოწმდება თვით სოკეტის ფაილი.
+- `docker-compose.yml`: ცარიელი `volumes:` სექცია (მაგ. მხოლოდ QGIS Server) არასწორი იყო Docker Compose-ისთვის — გასწორდა (ნაპოვნია რეალურმა backup-ტესტმა).
+- ბექაფი: Caddy (სერტიფიკატები/ლოკალური CA), MapProxy (ქეში; კონფიგურაცია მხოლოდ ბექაფი) და QGIS Server (პროექტები; აღდგენა Compose-ზე უარყოფილია მიზეზით) რეალურ Docker Compose-ზე გატესტილია.
+- API: `POST /api/v1/session/logout` (`/api/logout`-ის შემცვლელი; ძველი როუტი მუშაობს და აბრუნებს `Deprecation`/`Link`).
+- CSP: კლასიკური გვერდი `/` ახლა მკაცრი პოლიტიკით მუშაობს — `unsafe-inline` აღარ არსებობს; კოდი გადავიდა `/static/classic/`-ში. Chromium-ში: 0 დარღვევა.
+- მონიტორინგი: Compose/Podman/Kubernetes-ზე ახლა იკრიბება PostgreSQL-ის ჯანმრთელობა (`pg_up`, კავშირები, ლოკები) და ბექაფების მდგომარეობა; ახალი წესი `backup_failed` (critical) იხსნება თავისით ახალი წარმატებული ბექაფის შემდეგ.
+
 ### Podman და გამკაცრება
 - Podman (რეალურ Podman 5.8-ზე ნაპოვნი ორი შეცდომა): (1) გენერირებული Compose-ისა და Dockerfile-ების სურათების სახელები `runtime: podman`-ზე სრულია (`docker.io/postgis/postgis:...`) — Podman TTY-ს გარეშე მოკლე სახელს არ იღებს; Docker-ის ბანდლები უცვლელია. (2) სტატუსი/ავტოგაშვება/ლოგები Podman-ზე ძრავიდან იკითხება (`podman ps --filter label=...`), რადგან `podman-compose`-ს `ps -a` არ აქვს და ყოველი სტატუსი „კონტეინერი არ არის" იყო. (3) rootless Podman 4.9-ზე `podman-compose` ერთ pod-ს ვერ ქმნის („unable to create pod cgroup“): `runtime: podman`-ზე გენერირებულ Compose-ში `x-podman: {in_pod: false}` — სერვისები პროექტის ქსელში მუშაობს, სახელით ერთმანეთს პოულობს. ახალი ტესტები რეალურ Podman-ზე (`GISSTACK_TEST_PODMAN=1`, `tests/integration/run_podman_tests.sh`) და CI workflow `podman.yml`.
 - `gisstack web` ნაგულისხმევად (`--server auto`) იყენებს waitress-ს, თუ დაყენებულია (pip-ის დამოკიდებულებაა; deb/rpm `Recommends`), სხვაგვარად Flask-ის სატესტო სერვერს გაფრთხილებით. წვდომის ტოკენი ჟურნალში/ფაილში აღარ იწერება — მხოლოდ ტერმინალში (`GISSTACK_PRINT_TOKEN=1` გადაფარავს).

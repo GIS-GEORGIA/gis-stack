@@ -10,13 +10,18 @@ run here or over SSH (about 4 s), exactly like `gisstack status`.
 |---|---|---|
 | Host | `/proc/loadavg`, `/proc/meminfo`, `/proc/stat` (two readings 1 s apart), `/proc/uptime`, `df` | `host_cpu_percent`, `host_mem_used_percent`, `host_load1/5/15`, `disk_used_percent{mount}` |
 | Services (native) | systemd cgroup members' `/proc/<pid>/stat` + `status`, `systemctl show` | `service_up`, `service_cpu_percent` (of one core), `service_rss_bytes`, `service_restarts` |
-| Services (Compose) | `docker stats --no-stream`, compose state | same names |
+| Services (Compose / Podman) | engine state (`compose ps` / `podman ps`) and `docker|podman stats --no-stream` | `service_up` always; `service_cpu_percent` / `service_rss_bytes` only when the engine returns usage rows (see below) |
 | PostgreSQL | `pg_stat_activity`, `pg_stat_database`, `pg_settings`, `pg_locks` | `pg_up`, `pg_connections_percent`, `pg_database_size_bytes{database}`, `pg_cache_hit_ratio`, `pg_longest_query_seconds`, `pg_waiting_locks` |
 | Health checks | `curl` timings / TCP connect against the public and local endpoints | `probe_up{probe}`, `probe_seconds{probe}` |
-| Backups | `gisstack-backup list` | `backup_count`, `backup_last_age_seconds` |
+| Backups (native) | `gisstack-backup list` | `backup_count`, `backup_last_age_seconds`, `backup_failed_count` |
+| PostgreSQL + backups (Compose / Podman / Kubernetes) | `psql` through the same engine access the backups use; the local stack-backup store | `pg_up`, `pg_connections_total/percent`, `pg_longest_query_seconds`, `pg_waiting_locks`; `backup_count`, `backup_last_age_seconds`, `backup_failed_count` |
 | The monitor itself | | `monitor_reachable`, `collect_seconds`, `collect_errors` |
 
-Kubernetes: service state and restarts only (no host: the host is the cluster). **If a source is unavailable the metric is absent and
+Kubernetes: service state and restarts, PostgreSQL health and backups (no host metrics: the host is the cluster).
+
+**Backup alerts:** `backup_failed` (critical) fires when a backup attempt left a `.partial` / `.FAILED` / damaged entry newer than the newest good backup, and resolves by itself after the next good backup; `backup_old` fires when the newest good backup is older than 36 h. A stack that has *never* been backed up has no age and therefore raises no `backup_old` alert - schedule a first backup.
+
+**Podman note:** per-service CPU / memory come from `podman stats`; some nested or containerised engines return no rows, then those two metrics are simply absent (verified on rootful Podman 5.8.9 inside a privileged systemd container). **If a source is unavailable the metric is absent and
 `collect_errors` says so - nothing is ever estimated or made up.** An unreachable machine is recorded as `monitor_reachable = 0`.
 
 ## Commands

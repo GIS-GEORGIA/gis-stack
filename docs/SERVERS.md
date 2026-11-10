@@ -27,6 +27,28 @@ Every operation through a profile runs `ssh` with `StrictHostKeyChecking=yes`, t
 
 The scan and the pin are two separate connections; the typed fingerprint is what protects against an attacker who answers only one of them.
 
+## Ad-hoc SSH (no profile): strict by default
+
+Without a profile (`--mode ssh --ssh user@host` in the CLI, the SSH fields of the classic page) gis-stack **no longer trusts an unknown host key silently**. The host must already be trusted - by your own `~/.ssh/known_hosts`, or by gis-stack's `~/.gisstack/known_hosts_adhoc` - or the command stops *before anything is sent* with error `hostkey_unknown` (HTTP 409 on the API). A changed key stops with `hostkey_changed`; the message names the old and new fingerprint, never overwrites anything and says how to proceed.
+
+Establish trust explicitly, comparing the fingerprint with the server console (`ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub`):
+
+```bash
+gisstack ssh-trust server.example.org --scan-only                      # show what the server presents; trusts nothing
+gisstack ssh-trust server.example.org --fingerprint SHA256:...         # trust exactly that key (a wrong fingerprint is refused)
+gisstack ssh-trust server.example.org --fingerprint SHA256:... --replace   # a changed key, only after you verified it
+```
+
+| Setting | Effect |
+|---|---|
+| (default) | unknown host refused, changed key refused, `StrictHostKeyChecking=yes` |
+| `GISSTACK_SSH_TOFU=1` | **opt-in** trust on first use (`accept-new`): the first key seen is recorded in `known_hosts_adhoc` without asking. A changed key is still refused. Use it only on networks you control. |
+| `GISSTACK_SSH_STRICT=1` | wins over `GISSTACK_SSH_TOFU`; forces strict checking |
+
+Profiles (above) are unchanged: they always use their own pinned key.
+
+**Migration:** scripts that relied on the previous silent first-use trust now fail with `hostkey_unknown`. Run `gisstack ssh-trust HOST` once (or set `GISSTACK_SSH_TOFU=1` for the old behaviour).
+
 ## Using a server
 
 **Use** makes the dashboard talk to that server: every request carries `"server": "<id>"` and the profile's credentials replace the `ssh` fields. Over the API, any route that takes `mode`/`ssh` also accepts `server` (with `mode: "ssh"`); the `ssh` object sent in the same body is ignored. Without `server`, `ssh` is an ad-hoc connection: trust on first use (`accept-new`), new hosts recorded in `~/.gisstack/known_hosts_adhoc` (keys already trusted in `~/.ssh/known_hosts` still count), a changed key is always refused, and `GISSTACK_SSH_STRICT=1` refuses every host whose key is not already trusted. Pin the key (a profile) for anything important.
