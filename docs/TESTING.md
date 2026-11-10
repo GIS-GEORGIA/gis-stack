@@ -31,7 +31,7 @@ Containers are privileged and use the host cgroup namespace (needed by systemd);
 
 ## What is not covered
 
-Podman: the CI workflow `podman.yml` (rootless job in particular) and a rootless host install had not run when this was written; the Podman results in `docs/IMPLEMENTATION-STATUS.md` are from a rootful engine in a systemd container. The RPM variant of the service test needs `rpmbuild` (CI only).
+Podman: on GitHub the rootful job of `podman.yml` passed (Podman 4.9.3, 11 tests); the rootless job failed on rootless Podman 4.9's pod cgroup limitation, fixed by `x-podman: {in_pod: false}` in the generated Compose file (see `docs/IMPLEMENTATION-STATUS.md`); a rootless run on a real host with the fix is still outstanding.
 
 
 The `kind` job and the rpm package test have only run in CI, not on the author's machine. The browser flow stops at the bundle download: a real deployment is the installer suite's job. Only PostGIS is installed by the installer suite; GeoServer, MapProxy, Caddy and QGIS Server steps are covered by their own manager tests against real software but not by a full `install.sh` run.

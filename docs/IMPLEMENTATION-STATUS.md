@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-10: section 0 is the newest, UNCOMMITTED Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-10: section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -12,7 +12,33 @@ Statuses (used consistently):
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
 
-## 0. Podman, hardening and Backups GUI phase (2026-11-10) - LOCAL, NOT COMMITTED, NOT PUSHED
+## 00. GitHub Actions results for commit `38d0005` (verified from the run logs)
+
+*`38d0005` is the Podman / hardening / backups-GUI commit, pushed to `main`. One verified failure was found by CI and its fix is **local only (not pushed, awaiting your approval)** - see the last table.*
+
+| Workflow / run | Result |
+|---|---|
+| `tests` | **success** |
+| `codeql` | **success** |
+| `integration` (dispatched once, run 42776843410, `headSha` = `38d00057e0de...`) | **success - all 9 jobs green on the first attempt, no re-run needed** |
+| `podman` (dispatched once, run 42778339424, `headSha` = `38d00057e0de...`) | **FAILURE: `podman (rootful)` success, `podman (rootless)` failure** |
+
+**integration jobs (test counts from the logs):** gate ok; **kubernetes (kind)** managers 4/4, deploy-failed-upgrade-rollback 1/1, **stack backup/restore 10/10**; **compose (real Docker)** smoke 1/1, rollback 1/1, managers 28/28, **stack backup/restore 10/10**; **browser (Playwright)** 7/7 + backup page 1/1 (waitress installed in that job); **installers** ubuntu-22.04, ubuntu-24.04, debian-12, rocky-9, alma-9: installer test ok and package test ok on all five, which includes the new check that the packaged `gisstack-web` service starts, is not root, uses waitress, keeps its token out of the journal and restarts after `kill -9` - **on Rocky 9 and Alma 9 (the RPM variant) this ran for the first time and passed**. Skipped / unavailable: none in these jobs.
+
+**podman (rootful) - success, 11/11 on a real Podman engine in GitHub Actions** (Podman 4.9.3, `podman-compose` 1.6.0, overlay, systemd): gis-stack's own `up.sh` deployment verified healthy + status + record (1), PostgreSQL create / verify / restore / corrupted / unrestorable dump / failed health check / interrupted restore / encryption / stopped workload / interrupted backup (9), GeoServer data directory backup and restore (1).
+
+**podman (rootless) - failure (0 tests ran).** `setUpClass` failed because `bash up.sh up` exited 1 in under a second; the CI log did not contain the script's output (the test discarded it). **Root cause, reproduced locally** in an Ubuntu 24.04 container with the distribution's Podman 4.9.3, `podman-compose` 1.6.0, a non-root user and a systemd user session (the same stack as the runner): `podman-compose` puts the services into one Podman pod and rootless Podman 4.9.x cannot create it: *"unable to create pod cgroup ...: Unit user-libpod_pod_<id>.slice was already loaded or has a fragment file"*. Rootless Podman 5.8.9 does not have this problem (it passed before the fix).
+
+| Fix for the rootless failure (LOCAL, not pushed) | Evidence |
+|---|---|
+| With `runtime: podman` the generated `docker-compose.yml` carries `x-podman: {in_pod: false}` (services on the project network instead of one pod; verified: service-name DNS, `com.docker.compose.*` labels and published ports all work); Docker bundles are unchanged | **Reproduced the failure, then with the fix**: rootless on Ubuntu 24.04 + Podman 4.9.3 + podman-compose 1.6.0 as a non-root user: PostgreSQL cases **10/10**, GeoServer case **1/1**; rootful nested Podman 5.8.9: suite passes; regression test `tests/test_podman.py::test_podman_services_are_not_put_into_one_pod`; Podman golden updated deliberately (only `compose/docker-compose.yml`); default suite 926 run, 833 passed, 93 skipped, 0 failed; ruff / mypy / bandit clean |
+| The Podman test now keeps the deployment output in its failure message | so the next CI failure is self-explaining |
+
+**Until that fix is pushed and `podman.yml` is run again, the rootless Podman job on GitHub is RED.** I did not dispatch it again (instructed: once).
+
+**Remaining production risks (from this evidence):** rootless Podman is verified only on a CI-equivalent container locally, not yet in GitHub Actions; Podman rollback, the Podman monitoring script and `docker-compose` as Podman's compose provider are untested; Caddy / QGIS / MapProxy backup components were not run on any real engine; Kubernetes was re-verified on GitHub (above) but the classic page still needs `unsafe-inline` and legacy `/api/*` routes still exist; ad-hoc SSH is still trust-on-first-use by default.
+
+## 0. Podman, hardening and Backups GUI phase (2026-11-10) - committed as `38d0005`
 
 *Your request ended in the middle of "PHASE 5 - Production reliability: Review: Service startup and recovery, Health checks" with nothing after it; I covered what those two items name (service start/recovery and health verification, below) and did not guess the rest.*
 
@@ -30,8 +56,9 @@ Podman is **not installed on this machine and I have no root** to install it. I 
 | Podman deployment through gis-stack (`up.sh` with `RUNTIME=podman`), status, deployment record | **COMPLETE** on the nested rootful engine | real: deploy verified healthy by gis-stack itself |
 | Podman backup, verify, restore (staging, swap, undo), recovery, encryption, corrupted / interrupted cases - PostgreSQL | **COMPLETE** on the nested rootful engine | real: 10/10 (deployment/status + the 9 shared cases), twice (also via `run_podman_tests.sh` with the final code: 11/11 with GeoServer) |
 | Podman GeoServer data-directory backup and restore | **COMPLETE** on the nested rootful engine | real: 1/1 |
-| Rootless Podman on a real host; Podman deploy -> failed upgrade -> rollback; Podman monitoring script; `docker-compose` as Podman's compose provider | **IMPLEMENTED BUT NOT VERIFIED** | not run |
-| CI workflow `.github/workflows/podman.yml` (rootful + rootless jobs, manual / weekly) | **IMPLEMENTED BUT NOT VERIFIED** - written, YAML-valid, **never run on GitHub**; the rootless job in particular may need adjustment | - |
+| Rootless Podman | **PARTIAL**: fails on GitHub (pod cgroup, fix pending push); passes locally on the CI-equivalent container with the fix | local real runs |
+| Podman deploy -> failed upgrade -> rollback; Podman monitoring script; `docker-compose` as Podman's compose provider | **IMPLEMENTED BUT NOT VERIFIED** | not run |
+| CI workflow `.github/workflows/podman.yml` | rootful job **COMPLETE** (11/11 on GitHub, run 42778339424); rootless job **BROKEN on GitHub** until the local `in_pod: false` fix (section 00) is pushed and the workflow re-run | GitHub Actions |
 
 ### Security hardening
 

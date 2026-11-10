@@ -60,6 +60,13 @@ class ImageNameTests(unittest.TestCase):
                     if "/" in str(v):
                         self.assertTrue(qualified(str(v)), f"{name}: build arg {v}")
 
+    def test_podman_services_are_not_put_into_one_pod(self):
+        """Regression (reproduced on Ubuntu 24.04 + Podman 4.9.3 + podman-compose 1.6.0, rootless): the default pod cannot be created ("Unit
+        user-libpod_pod_<id>.slice was already loaded"), which made the rootless CI job fail before any test ran."""
+        compose_yml = yaml.safe_load((bundle("podman") / "docker-compose.yml").read_text())
+        self.assertEqual(compose_yml["x-podman"], {"in_pod": False})
+        self.assertNotIn("x-podman", yaml.safe_load((bundle("docker") / "docker-compose.yml").read_text()))
+
     def test_docker_bundles_are_unchanged(self):
         d = bundle("docker")
         text = (d / "docker-compose.yml").read_text() + "".join(p.read_text() for p in d.rglob("Dockerfile"))

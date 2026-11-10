@@ -4,6 +4,13 @@
 {% set Z = ',z' if runtime == 'podman' else '' %}
 {% set pgdir = '/var/lib/postgresql' if (pg.version | int) >= 18 else '/var/lib/postgresql/data' %}
 name: {{ project }}
+{% if runtime == 'podman' %}
+
+# podman-compose puts every service of a project into one Podman pod by default. On rootless Podman 4.x that fails ("unable to create pod cgroup ...:
+# Unit user-libpod_pod_<id>.slice was already loaded"), and gis-stack does not need a pod: the services reach each other by name on the project network.
+x-podman:
+  in_pod: false
+{% endif %}
 
 services:
 {% if c.postgis %}

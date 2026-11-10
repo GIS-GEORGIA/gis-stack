@@ -56,11 +56,13 @@ class PodmanStackBase(unittest.TestCase):
                                   "components": comps}, generate_secrets=True, persist_secrets=True)
         cls.out = Path(tempfile.mkdtemp())
         generate.generate_bundle(cfg=cls.cfg, out_dir=cls.out)
+        lines: list[str] = []
         try:
-            lines = list(deploy.deploy(cls.cfg, cls.out, "compose", "local"))
-        except Exception:
+            for line in deploy.deploy(cls.cfg, cls.out, "compose", "local"):
+                lines.append(line)
+        except Exception as e:                                       # keep what the deployment printed: without it a CI log only says "exit 1"
             cls.tearDownClass()
-            raise
+            raise AssertionError(f"deployment on Podman failed: {e}\n--- output ---\n" + "\n".join(lines[-40:])) from e
         rec = deployments.records(cls.project)[0]
         if rec["outcome"] != "ok":
             cls.tearDownClass()
