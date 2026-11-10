@@ -1,6 +1,6 @@
 # Legacy `/api/*` routes - deprecation and retirement plan
 
-Before `/api/v1` existed, the web GUI used routes directly under `/api/`. They still work, unchanged, **only for compatibility**; every one of them has an `/api/v1` replacement except `/api/logout`.
+Before `/api/v1` existed, the web GUI used routes directly under `/api/`. They still work, unchanged, **only for compatibility**; every one of them has an `/api/v1` replacement.
 
 ## Current state
 
@@ -11,13 +11,13 @@ Before `/api/v1` existed, the web GUI used routes directly under `/api/`. They s
 
 ## Why not remove them now
 
-Removing a route the classic page uses breaks that page. The classic page also still needs CSP `unsafe-inline` (inline script and styles). Both go away together when the classic page is retired, so they are retired together, in one release with a migration note - not piecemeal.
+Removing a route the classic page uses breaks that page. The classic page no longer needs CSP `unsafe-inline` (its code was moved to `/static/classic/`; see `docs/DASHBOARD.md`), but it still calls most of these routes, so the routes are retired together with the page, in one release with a migration note - not piecemeal.
 
 ## Plan
 
 1. **Now (this release line, 0.1.x):** deprecated and documented, behaviour unchanged. This file is checked against the code by a test, so it cannot go stale.
 2. **Before retirement:** move the remaining classic-page workflows (deploy, clean, projects, programs already on the server) into the dashboard; verify each in a browser; then the classic page `/` redirects to `/dashboard`.
-3. **Retirement release (target: the first 0.3.0 release, announced in the CHANGELOG one release earlier):** remove the legacy routes and the classic page together, remove `unsafe-inline` from the CSP, and keep `/api/logout` as `POST /api/v1/session/logout` (new in that release).
+3. **Retirement release (target: the first 0.3.0 release, announced in the CHANGELOG one release earlier):** remove the legacy routes and the classic page together. `POST /api/v1/session/logout` already exists (replacement for `/api/logout`).
 4. **Migration for scripts:** replace the path using the table below, send `Authorization: Bearer <token>` (create one with `gisstack token create --name NAME --scope read|operate|admin`) and read the result from the `data` field of the `/api/v1` envelope (`{"data": ..., "error": null, "meta": ...}`). Request bodies are the same objects, now validated against the OpenAPI schema (`docs/openapi.json`).
 
 ## Routes
@@ -40,6 +40,7 @@ Removing a route the classic page uses breaks that page. The classic page also s
 | `/api/i18n` | GET | `/api/v1/i18n` | read | yes |
 | `/api/jobs/<jid>` | GET | `/api/v1/jobs/{id}` | read | yes |
 | `/api/jobs/<jid>/cancel` | POST | `/api/v1/jobs/{id}/cancel` | operate | yes |
+| `/api/logout` | POST | `/api/v1/session/logout` | read | no |
 | `/api/ops/control` | POST | `/api/v1/ops/control` | operate | yes |
 | `/api/ops/logs` | POST | `/api/v1/ops/logs` | read | yes |
 | `/api/ops/status` | POST | `/api/v1/ops/status` | read | yes |
@@ -53,4 +54,4 @@ Removing a route the classic page uses breaks that page. The classic page also s
 | `/api/update/apply` | POST | `/api/v1/updates/apply` | admin | yes |
 | `/api/update/check` | POST | `/api/v1/updates/check` | read | yes |
 
-`/api/logout` has no replacement yet (planned as above). The last column is a text search of the classic page and is approximate.
+`/api/logout` is replaced by `POST /api/v1/session/logout` (added in this release; same effect, JSON envelope, audited, needs the `X-GisStack: 1` header for browser sessions like every state change). The last column is a text search of the classic page and is approximate.

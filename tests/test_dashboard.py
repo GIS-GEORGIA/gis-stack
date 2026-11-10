@@ -212,7 +212,7 @@ class EndpointTests(unittest.TestCase):
         for path in ("/dashboard", "/static/dashboard/js/app.js", "/api/v1/dashboard/config", "/api/v1/journal"):
             self.assertEqual(self.c.get(path).status_code, 401, path)
 
-    def test_page_and_assets_are_served_with_a_strict_csp_but_the_classic_page_is_untouched(self):
+    def test_page_and_assets_are_served_with_a_strict_csp(self):
         r = self.c.get("/dashboard", headers=self.h)
         self.assertEqual(r.status_code, 200)
         csp = r.headers["Content-Security-Policy"]
@@ -230,7 +230,7 @@ class EndpointTests(unittest.TestCase):
         self.addCleanup(css.close)
         self.assertIn("text/css", css.content_type)
         classic = self.c.get("/", headers=self.h)
-        self.assertIn("unsafe-inline", classic.headers["Content-Security-Policy"])         # the classic page is unchanged
+        self.assertEqual(classic.headers["Content-Security-Policy"], csp)                  # the classic page runs under the same strict policy now
         self.assertEqual(self.c.get("/static/dashboard/js/nope.js", headers=self.h).status_code, 404)
         self.assertEqual(self.c.get("/static/dashboard/../../app.py", headers=self.h).status_code, 404)
 

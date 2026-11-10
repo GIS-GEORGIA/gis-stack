@@ -17239,6 +17239,99 @@
         }
       }
     },
+    "/session/logout": {
+      "post": {
+        "operationId": "post_session_logout",
+        "summary": "End the browser session of the caller: the session is revoked on the server and its cookie removed (a bearer token is not a session and is unaffected)",
+        "tags": [
+          "security"
+        ],
+        "x-required-scope": "read",
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "x-replaces": [
+          "/api/logout"
+        ],
+        "responses": {
+          "200": {
+            "description": "JSON document (no envelope)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "revoked"
+                  ],
+                  "properties": {
+                    "revoked": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "authentication required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "token scope below 'read'",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "error",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "null"
+                    },
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    "meta": {
+                      "$ref": "#/components/schemas/Meta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/settings": {
       "get": {
         "operationId": "get_settings",

@@ -130,6 +130,34 @@ class AppTests(unittest.TestCase):
         self.assertEqual(self.c.post("/api/logout", headers={"X-GisStack": "1"}).status_code, 200)
         self.assertEqual(self.c.get("/api/settings").status_code, 401)
 
+    def test_v1_logout_revokes_the_session_removes_the_cookie_and_is_audited(self):
+        self.c.get("/?token=tok")
+        self.assertEqual(self.c.get("/api/settings").status_code, 200)
+        self.assertEqual(self.c.post("/api/v1/session/logout").status_code, 403)               # a session needs the CSRF header like every state change
+        self.assertEqual(self.c.get("/api/settings").status_code, 200)
+        r = self.c.post("/api/v1/session/logout", headers={"X-GisStack": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()["data"], {"revoked": True})
+        self.assertIn("gs_session=;", r.headers["Set-Cookie"])
+        self.assertEqual(self.c.get("/api/settings").status_code, 401)                        # the server-side session is gone, not only the cookie
+        self.assertTrue([e for e in self.audit() if e.get("path") == "/api/v1/session/logout" and e.get("status") == 200])
+
+    def test_v1_logout_with_a_bearer_token_revokes_nothing(self):
+        r = self.c.post("/api/v1/session/logout", headers={"Authorization": "Bearer tok"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json()["data"], {"revoked": False})
+        self.assertEqual(self.c.get("/api/v1/dashboard/summary", headers={"Authorization": "Bearer tok"}).status_code in (200, 405), True)
+        self.assertEqual(self.c.get("/api/settings", headers={"Authorization": "Bearer tok"}).status_code, 200)   # the token still works
+        self.assertEqual(self.c.post("/api/v1/session/logout").status_code, 401)               # unauthenticated: refused like everything else
+
+    def test_legacy_logout_still_works_and_now_names_its_successor(self):
+        self.c.get("/?token=tok")
+        r = self.c.post("/api/logout", headers={"X-GisStack": "1"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.headers.get("Deprecation"), "true")
+        self.assertIn("/api/v1/session/logout", r.headers.get("Link", ""))
+        self.assertEqual(self.c.get("/api/settings").status_code, 401)
+
     def test_session_expires(self):
         clock = FakeClock()
         self.app.config["SESSIONS"].clock = clock

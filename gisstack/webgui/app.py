@@ -74,6 +74,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
     app.config["ALLOWED_HOSTS"] = hosts
     app.config["TOKENS"] = TokenStore()
     COOKIE = "gs_session"
+    app.config["SESSION_COOKIE"] = COOKIE
 
     def client_ip() -> str:
         return request.remote_addr or "?"
@@ -167,13 +168,10 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
         resp.headers["X-Content-Type-Options"] = "nosniff"
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Cache-Control"] = "no-store"
-        if request.path == "/dashboard" or request.path.startswith("/static/dashboard/"):
-            # the dashboard has no inline script or style at all, so nothing needs 'unsafe-inline' (audit S-07)
-            resp.headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
-                                                       "font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
-        else:
-            resp.headers["Content-Security-Policy"] = (
-                "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'")
+        # One strict policy for every response, the classic page `/` included: it has no inline script, style or handler any more (its code lives in
+        # /static/classic/), so nothing needs 'unsafe-inline' (audit S-07).  Do not weaken this: move code into a static file instead.
+        resp.headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
+                                                   "font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
         resp.headers["Referrer-Policy"] = "no-referrer"
         return resp
 

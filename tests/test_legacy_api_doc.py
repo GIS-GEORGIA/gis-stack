@@ -21,7 +21,7 @@ class LegacyDocTests(unittest.TestCase):
         documented = {(old, method, new) for old, method, new in rows}
         actual = {(old, r.method, "/api/v1" + r.path) for r in registry.routes for old in r.legacy}
         self.assertEqual(documented, actual)
-        self.assertIn("/api/logout", text)                      # the one legacy route without a v1 successor
+        self.assertIn("/api/v1/session/logout", text)           # even the last route that had no successor now has one
 
     def test_the_plan_states_the_facts_it_relies_on(self):
         text = DOC.read_text(encoding="utf-8")

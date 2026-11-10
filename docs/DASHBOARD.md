@@ -33,6 +33,7 @@ failing source shows an error in its own card and never blanks the rest of the p
 * No inline script, no inline style, no event-handler attributes, no `innerHTML`/`eval` anywhere: the dashboard is served with
   `Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; ...` (no `unsafe-inline`), `Referrer-Policy: no-referrer`.
   All text from servers is inserted as text nodes. Tests scan the shipped files for violations.
+* **The same policy applies to the classic page `/` and to every other response** (since this release). Its script and stylesheet moved to `/static/classic/{boot.js,app.js,app.css}`, the 13 `style=` attributes became CSS classes, the `onsubmit` attribute became an event listener. Verified in Chromium (`tests/e2e/test_browser_csp.py`): zero `securitypolicyviolation` events, console errors or failed requests while the page's flows run, and a test proves the policy really blocks an injected inline script and handler. **Remaining exceptions: none** for scripts and styles. (The classic page still uses `innerHTML` with escaped text in places - that is an XSS-hygiene topic, not a CSP one; the dashboard has none.)
 * Same authentication as the rest (session cookie), the CSRF header on every state-changing call, destructive actions behind
   explicit confirmation (typed word for restore / delete).
 * It uses the existing endpoints plus `/api/v1/dashboard/{config,summary}` and `/api/v1/journal`.

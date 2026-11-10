@@ -939,8 +939,10 @@ class I18nTests(unittest.TestCase):
         self.assertEqual((r.get_json()["lang_resolved"], r.get_json()["theme"]), ("en", "dark"))
         self.assertEqual(c.post("/api/settings", json={"lang": "xx"}, headers=h).status_code, 400)
         page = c.get("/").get_data(as_text=True)
-        for needle in ('id="btn-gh"', "https://github.com/GIS-GEORGIA/gis-stack", 'id="dlg-set"', 'data-lang="en"', 'html[data-theme="dark"]'):
+        for needle in ('id="btn-gh"', "https://github.com/GIS-GEORGIA/gis-stack", 'id="dlg-set"', 'data-lang="en"'):
             self.assertIn(needle, page)
+        css = c.get("/static/classic/app.css").get_data(as_text=True)                        # the dark theme lives in the stylesheet (no inline <style>)
+        self.assertIn('html[data-theme="dark"]', css)
 
 
 class TkI18nTests(unittest.TestCase):

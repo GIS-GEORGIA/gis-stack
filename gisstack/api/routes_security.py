@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from flask import Response, request
+
 from .. import security_report
-from .mount import Req
+from .mount import Req, envelope
 from .registry import registry
 from .routes import STR
 
@@ -25,3 +27,19 @@ def posture(req: Req) -> list[dict[str, Any]]:
    response={"type": "array", "items": {"type": "object"}})
 def audit(req: Req) -> list[dict[str, Any]]:
     return security_report.audit_events(int(req.query.get("limit", 100)), str(req.query.get("event", "")))
+
+
+@R("POST", "/session/logout", "End the browser session of the caller: the session is revoked on the server and its cookie removed (a bearer token is not a session and is unaffected)",
+   "read", tags=("security",), legacy=("/api/logout",), raw="json",
+   response={"type": "object", "required": ["revoked"], "properties": {"revoked": {"type": "boolean"}}})
+def logout(req: Req) -> Response:
+    # `read` is enough: ending your own session is not a privilege.  The legacy route is deprecated in favour of this one.
+    cookie = str(req.app.config.get("SESSION_COOKIE", "gs_session"))
+    sid = request.cookies.get(cookie, "")
+    revoked = bool(sid) and req.principal.kind == "session"
+    if revoked:
+        req.app.config["SESSIONS"].revoke(sid)
+    resp = envelope({"revoked": revoked})
+    if sid:
+        resp.delete_cookie(cookie)
+    return resp

@@ -1212,6 +1212,14 @@ Permissions and policy checks for the machine that runs gis-stack (read-only).
 * Response `data`: an array
 * Errors: 401, 403
 
+### `POST /api/v1/session/logout`
+
+End the browser session of the caller: the session is revoked on the server and its cookie removed (a bearer token is not a session and is unaffected).
+
+* Scope: **read**
+* Replaces (deprecated): `/api/logout`
+* Errors: 401, 403
+
 ## servers
 
 ### `GET /api/v1/servers`
