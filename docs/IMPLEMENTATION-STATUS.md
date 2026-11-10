@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-10: section 00000 is the newest (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-10: section 000000 is the newest (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -11,6 +11,40 @@ Statuses (used consistently):
 * **BROKEN** - implemented but failing. *Nothing is currently BROKEN.*
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
+
+## 000000. Commits and GitHub results for `5ea1c29` (verified from the run logs)
+
+| Commit | Content |
+|---|---|
+| `2e89c47` (preserved, not amended) | docs: RPM variant of the packaged service verified |
+| `4fcdec6` | security: ad-hoc SSH no longer trusts unknown host keys silently |
+| `f0bf12a` | monitoring: PostgreSQL health and backup state on Compose/Podman/Kubernetes, `backup_failed` alert |
+| `3d5b3fe` | podman: compose-provider diagnostic, real reliability tests |
+| `50ac9d3` | backup: Caddy/MapProxy/QGIS tests, empty `volumes:` fix |
+| `a506182` | web: `POST /api/v1/session/logout`, classic page under strict CSP |
+| `5ea1c29` | docs, CI: status, changelog, new CI steps and job |
+
+(The monitoring commit precedes the Podman commit because the Podman reliability test depends on the monitoring code.) Local `main` == `origin/main` == `5ea1c29` after the push; each commit was tested in an isolated worktree, the final HEAD ran the whole suite (970 run, 0 failed, 96 skipped, Chromium enabled).
+
+| Workflow | Run | Result |
+|---|---|---|
+| `tests` (push) | 42863565988 | **success** |
+| `codeql` (push) | 42863566177 | **success** |
+| `podman` (dispatched once) | 42864604580 | **success**: rootful 11/11 + reliability 3 run / 2 ok / **1 skipped**; rootless 11/11 + reliability **3/3 ok** |
+| `integration` (dispatched once) | 42864612991 | **success**, all 10 jobs (gate, installer x5, compose, browser, kubernetes, kubernetes-gis) |
+
+Details that matter:
+
+* **Podman rootful, skipped:** the provider-diagnostic test was **skipped** in the rootful job (there `podman compose` does not resolve to Docker Compose without a socket, which the test requires). It **ran and passed in the rootless job** on GitHub (and locally, rootful and rootless).
+* **Podman per-service metrics:** on the GitHub engines `podman stats` returned **1 row** for the project in both jobs, so `service_cpu_percent` / `service_rss_bytes` were asserted and passed there. The "no rows" behaviour is specific to the nested local engine.
+* **Kubernetes (kind) - now verified in CI, first run:** `kubernetes-gis`: Caddy local-CA backup/restore, MapProxy cache restore + config refusal, QGIS projects restore on the PVC, PostgreSQL health + `backup_failed` alert lifecycle - **4/4 ok**. `kubernetes` job: managers 4/4, deploy/failed-upgrade/rollback 1/1, backup suite 10/10 - all ok. Not verified on Kubernetes: restore with Caddy certificates other than the local CA (ACME), anything beyond kind (other CNIs/storage classes).
+* **Compose:** `test_compose` 1, rollback 1, managers (28 tests across the job's steps), backup 10/10, GIS backup 4/4 - ok. The GeoServer `setUpClass` error did not recur on GitHub (still not explained; mitigated as described above).
+* **Browser:** 7 + backup + CSP 2/2 ok.
+* No test was skipped in the integration run other than as listed above.
+
+Remaining unverified: rootless Podman systemd user-unit service lifecycle; packaged-service upgrade from a previous package; real alert-delivery failure handling and a real disk-full alert; ACME certificates on Caddy backup/restore; Python 3.9 locally (CI `tests` covers it and was green); `--mode ssh` backups; very large databases.
+Security risks left: legacy `/api/*` routes (the classic page still calls them); the classic page uses `innerHTML` with escaped text; ad-hoc SSH TOFU exists as an opt-in; backups of Caddy/GeoServer hold sensitive material (use encryption); custom `HTTPS_PORT` is invisible to the public health probe.
+Recommended next tasks: (1) packaged-service upgrade test; (2) rootless Podman systemd-user lifecycle test; (3) retire the classic page and legacy routes (docs/LEGACY-API.md plan); (4) alert-delivery failure and disk-full tests on a real host; (5) capture and explain the next GeoServer `setUpClass` failure if it recurs (diagnostics are in place).
 
 ## 00000. Production readiness and security hardening
 
@@ -49,7 +83,7 @@ Environment: Linux 7.0 host, Docker + Compose, Python 3.12 venv, Chromium via Pl
 | Rootful Podman: `test_stack_backup_podman` 11/11, `test_podman_reliability` 3/3 | OK |
 | Rootless Podman (nested user session): `test_podman_reliability` | 3/3 OK |
 | Installer `ubuntu-24.04` 1/1; packages `ubuntu-24.04, rocky-9` 1/1 | OK |
-| kind / Kubernetes | **not run** (no cluster here) |
+| kind / Kubernetes | **not run locally** (no cluster here); run on GitHub, see section 000000 |
 
 CI changes not yet run: `podman.yml` now also runs `test_podman_reliability.py` in both jobs.
 
