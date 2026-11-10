@@ -40,6 +40,11 @@ class SourceTests(unittest.TestCase):
         for cls in (".sm", ".mt6", ".mt4", ".ml10", ".w60", ".ox", ".nw", ".nodisp", "#updbox a.dl.bggray"):
             self.assertIn(cls, CSS)
 
+    def test_esc_escapes_all_five_html_specials_and_no_attribute_is_single_quoted(self):
+        self.assertRegex(JS, r'const esc = .*replace\(/\[&<>"\x27\]/g')
+        self.assertIn("&#39;", JS)
+        self.assertNotRegex(JS, r"=\x27\$\{")                                                  # esc() output is only ever placed in double-quoted attributes or text
+
     def test_page_references_its_three_files(self):
         for ref in ('href="/static/classic/app.css"', 'src="/static/classic/boot.js"', 'src="/static/classic/app.js"'):
             self.assertIn(ref, HTML)

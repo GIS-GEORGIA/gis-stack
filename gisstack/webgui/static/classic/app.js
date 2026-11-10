@@ -3,7 +3,7 @@ const H = {"Content-Type": "application/json", "X-GisStack": "1"};
 const $ = (s) => document.querySelector(s);
 let CAT, DEF, FILES = {};
 
-const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function checks(container, items, name, checked, labelKey) {
   $(container).innerHTML = items.map((it) => {
     const id = it.id || it;
