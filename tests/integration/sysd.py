@@ -49,6 +49,23 @@ def _docker(*args: str, timeout: int = 600, check: bool = True, input_text: Opti
     return subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout, check=check, input=input_text)
 
 
+BUILD_ATTEMPTS = 3
+
+
+def build(tag: str, context: str, attempts: int = BUILD_ATTEMPTS, pause: float = 20.0) -> None:
+    """`docker build` of a test image.  The build runs apt/dnf against public mirrors, which fail now and then (seen on CI: ubuntu-22.04, 51 s,
+    no gis-stack code involved); retry a few times, and when it still fails say *why* - the plain CalledProcessError hid the build's stderr."""
+    last = ""
+    for n in range(1, attempts + 1):
+        p = _docker("build", "-q", "-t", tag, context, timeout=900, check=False)
+        if p.returncode == 0:
+            return
+        last = (p.stderr or p.stdout or "").strip()[-1500:]
+        if n < attempts:
+            time.sleep(pause * n)
+    raise RuntimeError(f"docker build of {tag} failed {attempts} times; last output:\n{last}")
+
+
 def image(distro: str) -> str:
     base, family = DISTROS[distro]
     tag = f"gisstack-it-{distro}:1"
@@ -57,7 +74,7 @@ def image(distro: str) -> str:
     d = tempfile.mkdtemp()
     try:
         (Path(d) / "Dockerfile").write_text(DOCKERFILE[family].format(base=base))
-        _docker("build", "-q", "-t", tag, d, timeout=900)
+        build(tag, d)
     finally:
         shutil.rmtree(d, ignore_errors=True)
     return tag

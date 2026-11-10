@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-09 after the Universal Backup & Restore phase. Base: commit `696076f` (pushed). Everything described below as "this phase" is in the working tree, **not committed and not pushed**. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-10 with the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -12,9 +12,25 @@ Statuses (used consistently):
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
 
-## 1. CI gate before this phase
+## 1. GitHub Actions results (verified, not assumed)
 
-Commit `696076f`: `tests` and `codeql` passed; the `integration` workflow **failed** in exactly one job: `browser end-to-end`, `test_6_alert_rules_manager` ("Changed" still present after *Reset*). Root cause: a race in my test (it waited on the text "Default", which already matches the row's button, so it asserted before the table re-rendered) - not a product bug. Everything else in that run passed on GitHub: kubernetes (kind) including the new rollback test, compose (real Docker) including the new rollback test, and all five distro installers. Fixed locally (waits for the "Changed" pill to disappear), 5/5 repeated runs pass; **the fix is not yet on GitHub, so that workflow is red until it is pushed and re-run**.
+**Commit `696076f`** (previous): `tests` and `codeql` passed; the `integration` workflow failed only in `browser end-to-end` (`test_6_alert_rules_manager`), a race in my own test (it waited on the text "Default", which already matched the row's button). Fixed in `d1382ac`.
+
+**Commit `d1382ac`** - push-triggered `tests` and `codeql`: **both succeeded** (verified with `gh run list --commit`). **`integration` workflow, dispatched once manually, run 42766456604, commit `d1382ac841bd...` (verified against the run's `headSha`) - first attempt: FAILURE, caused by exactly one job; after re-running only that job (`gh run rerun --job`, no new dispatch) the run is SUCCESS with all 9 jobs green:**
+
+| Job | Result | What the log shows |
+|---|---|---|
+| gate | success | - |
+| browser end-to-end (Playwright) | **success** | `test_browser.py` 7/7 ok, including `test_6_alert_rules_manager` (**the race fix works on CI**); `test_browser_backup.py` 1/1 ok (backup page: create, details, verify, export, restore with typed confirmation, delete) |
+| compose (real Docker) | **success** | `test_compose` ok; `test_deploy_rollback` (deploy -> failed upgrade -> rollback) ok; `test_compose_managers` 28/28; **`test_stack_backup_compose` 10/10** (PostgreSQL 9 + GeoServer 1), 196 s |
+| kubernetes (kind) | **success** | `test_k8s_managers` 4/4; `test_deploy_rollback_k8s` ok; **`test_stack_backup_k8s` 10/10** (PostgreSQL 9 + GeoServer 1), 212 s |
+| installer (ubuntu-24.04) | **success** | installer test ok (522 s); deb/rpm package test ok (241 s) |
+| installer (debian-12), (rocky-9), (alma-9) | **success** | installer tests ok |
+| installer (ubuntu-22.04) | **FAILURE on attempt 1, SUCCESS on attempt 2** | `docker build` of the test image `gisstack-it-ubuntu-22.04:1` exited 1 after 51 s - **before any gis-stack code ran**. The step that failed is the image's `apt-get update/install` inside `docker build`. The helper discarded the build's stderr, so the log does not contain the actual apt error: **the root cause is not proven.** The same job passed on the previous run, nothing in `d1382ac` touches the installer or this helper, and a from-scratch local `docker build --no-cache` of the identical Dockerfile succeeded today (3 min 57 s), which is consistent with a transient mirror/network failure - but that remains an inference. The deb/rpm package step of attempt 1 was skipped because the installer step failed. **Attempt 2 (same commit, same code, only that job re-run): installer test ok and deb/rpm package test ok** (log lines verified). A same-code retry passing, the previous run passing and the local rebuild succeeding all point to a transient failure of the image build, but because the original error text was never captured, **the cause remains unproven**. |
+
+**Podman:** no Podman job exists and Podman is not available on the runners used; nothing was run. **Kubernetes backup and restore: passed on CI. Docker Compose backup and restore: passed on CI. Ubuntu 24.04: passed.**
+
+**Local follow-up (uncommitted):** `sysd.build()` retries a failing image build up to 3 times with back-off and raises an error that includes the build's own output (so the next failure explains itself); 4 unit tests in `tests/test_sysd_helper.py` cover retry, back-off, single build on success, the reported reason, and no rebuild of an existing image. This does not fix a cause that has not been identified; it removes the blind spot and tolerates transient mirror failures. The ubuntu-22.04 job was re-run after approval and passed (above); the retry helper itself is committed in the commit that follows `d1382ac`.
 
 ## 2. Backup and restore for Compose / Podman / Kubernetes (this phase)
 
@@ -31,12 +47,12 @@ Commit `696076f`: `tests` and `codeql` passed; the `integration` workflow **fail
 | PostgreSQL/PostGIS backup, staged restore (scratch DB), reversible rename swap, undo, interrupted-restore recovery | **COMPLETE** on Compose and Kubernetes | real: 9 cases each (create/verify/inspect/no secrets, restore keeps the old data + health check + automatic pre-restore backup, corrupted/missing/extra files refused, unrestorable dump fails before the swap, failed health check undoes the swap, interrupted restore recovered and recovery idempotent, encrypted + wrong key, stopped workload, interrupted backup) |
 | GeoServer data directory backup, staged restore, swap, restart, undo | **COMPLETE** on Compose and Kubernetes | real GeoServer 2.28.6: workspace created -> backup -> another workspace created -> restore -> original state back, replaced data kept, no plaintext admin password in the archive |
 | Caddy data, QGIS projects, MapProxy configuration, MapProxy cache | **IMPLEMENTED BUT NOT VERIFIED** (same tar code path as GeoServer; no real Caddy/QGIS/MapProxy backup was run) | unit (local stand-in) only |
-| Docker Compose provider | **PARTIAL** (PostgreSQL + GeoServer verified real; the rest above) | real Compose |
-| Kubernetes provider | **PARTIAL** (same scope) | real kind v1.37 |
+| Docker Compose provider | **PARTIAL** (PostgreSQL + GeoServer verified real; the rest above) | real Compose locally **and on GitHub Actions** (run 42766456604, 10/10) |
+| Kubernetes provider | **PARTIAL** (same scope) | real kind v1.37 locally **and on GitHub Actions** (run 42766456604, 10/10) |
 | Podman provider | **IMPLEMENTED BUT NOT VERIFIED** (Compose code with `podman`; Podman is not installed here) | unit (class selection, format) |
 | `--mode ssh` (commands over SSH, backup stored locally) | **IMPLEMENTED BUT NOT VERIFIED** | not run |
 | API `/api/v1/stack-backups/*` (list, inspect, verify, check, create, restore, recover, delete, prune, export), scopes, validation, audit, no secrets/paths in responses | **COMPLETE** | unit (7 tests, contract-checked, scope matrix test updated) |
-| Dashboard Backups page (create, details, verify, export, restore with typed confirmation + live log, delete, retention, recover banner, KA/EN, phone width, console clean) | **COMPLETE** for UI behaviour | real Chromium against the real API with a local stand-in workload (`test_browser_backup.py`); UI + real containers together were **not** tested end to end |
+| Dashboard Backups page (create, details, verify, export, restore with typed confirmation + live log, delete, retention, recover banner, KA/EN, phone width, console clean) | **COMPLETE** for UI behaviour | real Chromium against the real API with a local stand-in workload (`test_browser_backup.py`; passed locally and on GitHub Actions); UI + real containers together were **not** tested end to end |
 | CLI `gisstack stack-backup ...` | **IMPLEMENTED BUT NOT VERIFIED** against a real stack | unit with the stand-in workload |
 | Scheduled backups for container targets | **NOT IMPLEMENTED** (native has its systemd timer) | - |
 | Off-site shipping / upload of container-target backups | **NOT IMPLEMENTED** (export download exists) | - |
@@ -65,7 +81,7 @@ One existing test was changed on purpose: `tests/test_targets.py::test_unknown_c
 
 | Area | Status | Evidence |
 |---|---|---|
-| Security page, Alert Rules manager | **COMPLETE** | unit + real Chromium (browser suite 7/7 before this phase; test_6 race fixed locally) |
+| Security page, Alert Rules manager | **COMPLETE** | unit + real Chromium (browser suite 7/7 locally and on GitHub Actions run 42766456604; the `test_6` race fix is verified on CI) |
 | Deployment records, health verification (with settle period), manual rollback | **COMPLETE** on Compose and Kubernetes | real (previous phase; CI integration jobs passed on GitHub for `696076f`) |
 | Native-host deployment rollback | **IMPLEMENTED BUT NOT VERIFIED** | unit only |
 | Podman deploy/rollback | **IMPLEMENTED BUT NOT VERIFIED** | - |
@@ -101,11 +117,11 @@ Environment: Linux, Python 3.12 venv (Flask, Jinja2, PyYAML, Playwright), Docker
 * **`--mode ssh`** for backups - no SSH-to-Docker environment set up for this phase.
 * **Caddy, QGIS and MapProxy** backup/restore against real workloads - not run (time); same code path as GeoServer.
 * **A real native host** for deployment rollback; **Python 3.9-3.13** matrix; the **installer/package suites**, **MapProxy script tests** and **shellcheck** (tools/prerequisites missing locally).
-* **The GitHub `integration` workflow** on this phase's changes - nothing was pushed (per instruction). The workflow file already runs the new suites (compose, kubernetes, browser jobs).
+* **Podman jobs in GitHub Actions** - none exist; the runners used have no Podman set up.
 
 ## 6. Remaining limitations and security issues
 
-1. The three-commit-old browser-test race fix is unpushed; the last integration run on GitHub is red because of it.
+1. The one image-build failure of ubuntu-22.04 (section 1) went away on retry; its cause is unproven. The retry/diagnostics helper is meant to make a recurrence tolerated and self-explaining.
 2. Container-target backups: no scheduling, no off-site shipping, not encrypted at rest unless requested; roles/passwords are not restored (by design); GeoServer data is copied live.
 3. Classic page `/` still needs `unsafe-inline`; 28 legacy `/api/*` routes remain; ad-hoc SSH trusts the host key on first use; the packaged web service uses the development server as root.
 4. Native backups on the server are unencrypted; rollback snapshots hold secrets (0600, never returned by an API).
@@ -113,11 +129,11 @@ Environment: Linux, Python 3.12 venv (Flask, Jinja2, PyYAML, Playwright), Docker
 
 ## 7. Release readiness
 
-No release was created. Before proposing 0.1.8: commit and push (needs your approval), run the `integration` workflow and require it green (the new Compose/kind/browser backup jobs have only run locally), add the installer/package suites to that run, then bump the version and tag.
+No release was created. The new Compose/kind/browser backup jobs pass on GitHub and run 42766456604 is fully green after the single re-run. Before proposing 0.1.8: run the `integration` workflow once more on the final commit (the push does not trigger it), then bump the version and tag. No release was created.
 
 ## 8. Recommended next 5 tasks
 
-1. Approve a commit + push of this phase and the browser-test fix; run the `integration` workflow and fix whatever CI shows.
+1. Run the `integration` workflow once on the commit that contains the image-builder retry to confirm it stays green without a manual re-run.
 2. Real-environment tests for Caddy, QGIS and MapProxy components and for `--mode ssh`; run the whole backup suite on Podman where available.
 3. Scheduled backups and off-site shipping (encrypted) for container targets, reusing the store/retention code.
 4. Production serving: waitress in the packaged service and dependencies; consider dropping root.
