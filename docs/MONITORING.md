@@ -98,6 +98,23 @@ can be created, edited and deleted. A custom rule needs `id` (`a-z0-9_`, 3-41 ch
   `GISSTACK_SMTP_PASSWORD_FILE` (a file readable only by you).
 * A failing receiver becomes a `notify.failed` event; it never stops monitoring.
 
+### Delivery guarantees (verified against a real HTTP receiver)
+
+A notification that could not be delivered is **not lost**: it is kept in an outbox next to the history (`~/.gisstack/monitor/<project>-<host>.outbox.json`, mode 0600, alert texts only - never a secret) and retried by the following monitoring rounds.
+
+| Behaviour | Value |
+|---|---|
+| in-call retries | webhook: 2 retries with 0.5 s / 1 s back-off (HTTP 4xx other than 429 is not retried in-call) |
+| outbox retry back-off | 60 s, doubling, at most 30 min |
+| order | per receiver, strictly in the original order (a `resolved` never overtakes its `firing`); new notices queue behind older undelivered ones |
+| duplicates | none: an entry leaves the outbox only after a successful delivery; no notice is re-sent once delivered |
+| restart of the monitor | the outbox survives it |
+| give up | after 24 h the notice is dropped with a warning event `notify.dropped` (a day-old "firing" is no longer news) |
+| events | `notify.failed` (each failed attempt), `notify.retried` (delivered late, with how long it waited), `notify.dropped` |
+| slow receiver | bounded by the per-request timeout (10 s default); it cannot stall the loop |
+
+Disk capacity: the `disk_high` (85 %) / `disk_critical` (95 %) rules were verified on a real machine (a systemd container whose `/var/lib/gisstack` is a 24 MB tmpfs): the collector reported the mount, the alert fired once, reached the receiver, produced no duplicate while the disk stayed full, and resolved when the space was freed.
+
 ## Web API (needs the flag and the usual authentication)
 
 Envelope `{data, error, meta}`; errors carry a `code`. `POST /api/v1/monitor/collect` (body: config, mode, ssh),

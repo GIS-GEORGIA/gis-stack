@@ -38,6 +38,7 @@ class Monitor:
         self.providers = providers if providers is not None else notify.load_providers(notify_path()) + notify.plugin_notifiers()
         self.clock = clock
         self._last_prune = 0.0
+        self.outbox = notify.Outbox(paths.monitor_db(cfg["project"], self.host).with_suffix(".outbox.json"))
 
     def tick(self) -> dict[str, Any]:
         """One round.  An unreachable machine is itself a recorded fact (`monitor_reachable` = 0), never a gap that hides an outage."""
@@ -58,14 +59,37 @@ class Monitor:
             self.store.add_event(ts, "warn", "collect.failed", self.host, str(e))
         self.store.add_sample(ts, flat, errors)
         notes = alerts.evaluate(self.store, self.rules, flat, ts, ctx)
-        results = notify.dispatch(notes, self.providers,
-                                  on_failure=lambda name, msg: self.store.add_event(self.clock(), "warn", "notify.failed", name, msg))
+        results = self._deliver(notes)
         for n in notes:
             events.emit("monitor.alert", n["message"], **{k: n[k] for k in ("rule", "subject", "level", "state")})
         if self.clock() - self._last_prune >= PRUNE_EVERY:
             self.store.prune(self.clock())
             self._last_prune = self.clock()
         return {"sample": sample, "metrics": flat, "notifications": notes, "delivery": results, "errors": errors}
+
+    def _deliver(self, notes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Retry what earlier rounds could not deliver, then send the new notifications; whatever fails is queued (never lost, never reordered)."""
+        now = self.clock()
+        event = lambda level, who, msg: self.store.add_event(self.clock(), level, "notify.retried" if level == "info" else "notify.failed", who, msg)  # noqa: E731
+        for old in self.outbox.expire(now):
+            self.store.add_event(now, "warn", "notify.dropped", old["provider"], f"undeliverable for over a day, dropped: {old['note'].get('rule')} {old['note'].get('state')}")
+        self.outbox.flush(now, self.providers, event)
+        immediate: list[dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
+        queued_for = {p.name for p in self.providers if self.outbox.pending(p.name)}
+        for p in self.providers:
+            if p.name in queued_for:                                                  # an older notice is still waiting: keep the order
+                for n in notes:
+                    self.outbox.add(now, p.name, n)
+                    results.append({"provider": p.name, "rule": n["rule"], "subject": n["subject"], "ok": False, "error": "queued behind an undelivered notification"})
+            else:
+                immediate.append(p)
+        failed: list[tuple[str, dict[str, Any]]] = []
+        results += notify.dispatch(notes, immediate, on_failure=lambda name, msg: self.store.add_event(self.clock(), "warn", "notify.failed", name, msg), failed=failed)
+        for name, n in failed:
+            self.outbox.add(now, name, n)
+        self.outbox.save()
+        return results
 
     def watch(self, interval: float = 30.0, stop: Optional[threading.Event] = None, max_ticks: Optional[int] = None, on_tick: Any = None) -> int:
         """Run `tick` every `interval` seconds until `stop` is set.  Never dies of a single failure."""

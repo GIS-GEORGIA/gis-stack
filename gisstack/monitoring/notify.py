@@ -3,6 +3,7 @@ warning event.  Secrets (SMTP password) come from the environment / a secret fil
 (which may contain a token) is never logged - only its host."""
 from __future__ import annotations
 
+import contextlib
 import json
 import smtplib
 import ssl
@@ -144,8 +145,10 @@ def plugin_notifiers() -> list[Any]:
     return out
 
 
-def dispatch(notes: list[dict[str, Any]], providers: list[Any], on_failure: Optional[Callable[[str, str], None]] = None) -> list[dict[str, Any]]:
-    """Send every notification through every provider.  Returns [{provider, rule, subject, ok, error}]; never raises."""
+def dispatch(notes: list[dict[str, Any]], providers: list[Any], on_failure: Optional[Callable[[str, str], None]] = None,
+             failed: Optional[list[tuple[str, dict[str, Any]]]] = None) -> list[dict[str, Any]]:
+    """Send every notification through every provider.  Returns [{provider, rule, subject, ok, error}]; never raises.
+    `failed` (if given) receives (provider name, notification) for every delivery that did not succeed, so the caller can retry it later."""
     results = []
     for n in notes:
         for p in providers:
@@ -158,4 +161,83 @@ def dispatch(notes: list[dict[str, Any]], providers: list[Any], on_failure: Opti
                 _log.warning("notification failed: %s", msg)
                 if on_failure:
                     on_failure(p.name, msg)
+                if failed is not None:
+                    failed.append((p.name, n))
     return results
+
+
+# --------------------------------------------------------------------------- outbox: a notification that could not be delivered is not lost
+OUTBOX_TTL = 24 * 3600.0          # an undeliverable notice older than this is dropped (and said so): a day-old "firing" is no longer news
+OUTBOX_MAX = 200
+BACKOFF_FIRST = 60.0
+BACKOFF_MAX = 1800.0
+
+
+def backoff(attempts: int) -> float:
+    return min(BACKOFF_FIRST * (2 ** max(0, attempts - 1)), BACKOFF_MAX)
+
+
+class Outbox:
+    """Notifications waiting for a receiver that was down: persisted (0600, atomic) so a restart of the monitor does not lose them, retried with
+    exponential back-off, delivered in the original order per provider, dropped after OUTBOX_TTL.  Contains alert texts only - never a secret."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = Path(path)
+        self.items: list[dict[str, Any]] = []
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                self.items = [i for i in data if isinstance(i, dict) and {"ts", "provider", "note", "attempts", "next_try"} <= set(i)]
+        except (OSError, ValueError):
+            self.items = []
+
+    def save(self) -> None:
+        from .. import fsutil
+        if self.items:
+            fsutil.write_private(self.path, json.dumps(self.items, ensure_ascii=False, default=str))
+        else:
+            with contextlib.suppress(OSError):
+                self.path.unlink()
+
+    def pending(self, provider: str) -> list[dict[str, Any]]:
+        return [i for i in self.items if i["provider"] == provider]
+
+    def add(self, now: float, provider: str, note: dict[str, Any]) -> None:
+        first = self.pending(provider)
+        self.items.append({"ts": now, "provider": provider, "note": note, "attempts": 1 if not first else 0,
+                           "next_try": first[0]["next_try"] if first else now + backoff(1)})
+        overflow = len(self.items) - OUTBOX_MAX
+        if overflow > 0:
+            del self.items[:overflow]
+
+    def expire(self, now: float) -> list[dict[str, Any]]:
+        old = [i for i in self.items if now - i["ts"] > OUTBOX_TTL]
+        self.items = [i for i in self.items if now - i["ts"] <= OUTBOX_TTL]
+        return old
+
+    def flush(self, now: float, providers: list[Any], on_event: Callable[[str, str, str], None]) -> int:
+        """Retry what is due, per provider in order; the first failure of a provider keeps the rest of its queue waiting.  Returns how many were delivered."""
+        by_name = {p.name: p for p in providers}
+        delivered = 0
+        blocked: set[str] = set()
+        keep: list[dict[str, Any]] = []
+        for i in self.items:
+            p = by_name.get(i["provider"])
+            if p is None:
+                continue                                                               # the provider was removed from the configuration: nothing to deliver to
+            if i["provider"] in blocked or i["next_try"] > now:
+                keep.append(i)
+                continue
+            try:
+                p.send(i["note"])
+            except Exception as e:  # noqa: BLE001 - a still-broken receiver is the normal case here
+                i["attempts"] += 1
+                i["next_try"] = now + backoff(i["attempts"])
+                blocked.add(i["provider"])
+                keep.append(i)
+                _log.warning("notification retry failed (attempt %d): %s", i["attempts"], e)
+                continue
+            delivered += 1
+            on_event("info", i["provider"], f"delivered late ({i['note'].get('rule')} {i['note'].get('state')}, queued {int(now - i['ts'])} s)")
+        self.items = keep
+        return delivered
