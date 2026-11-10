@@ -114,7 +114,7 @@ class HungSshTests(unittest.TestCase):
         ssh = Path(self.td.name) / "ssh"
         ssh.write_text("#!/bin/bash\necho connecting >&2\nexec sleep 300\n")
         ssh.chmod(0o755)
-        self.env = mock.patch.dict(os.environ, {"PATH": f"{self.td.name}:{os.environ['PATH']}"})
+        self.env = mock.patch.dict(os.environ, {"PATH": f"{self.td.name}:{os.environ['PATH']}", "GISSTACK_SSH_TOFU": "1"})
         self.env.start()
         self.addCleanup(self.env.stop)
         self.addCleanup(self.td.cleanup)

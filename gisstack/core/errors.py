@@ -43,6 +43,16 @@ class Timeout(RunnerError):
     code = "timeout"
 
 
+class HostKeyUnknown(DeployError):
+    """An SSH server whose host key has never been trusted (ad-hoc connection, strict policy)."""
+    code = "hostkey_unknown"
+
+
+class HostKeyChanged(DeployError):
+    """The server presents a different host key than the one that was trusted: refused, never silently accepted."""
+    code = "hostkey_changed"
+
+
 class Busy(GisStackError):
     """Another operation holds the lock."""
     code = "busy"

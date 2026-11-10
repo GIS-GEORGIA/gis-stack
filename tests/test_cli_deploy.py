@@ -314,7 +314,8 @@ class RunnerTests(unittest.TestCase):
         self.bin = self.td / "bin"
         self.bin.mkdir()
         self.log = self.td / "calls.log"
-        env = mock.patch.dict(os.environ, {"PATH": f"{self.bin}:{os.environ['PATH']}", "GISSTACK_HOME": str(self.td / "home"), "GISSTACK_VERIFY_TIMEOUT": "0"})
+        env = mock.patch.dict(os.environ, {"PATH": f"{self.bin}:{os.environ['PATH']}", "GISSTACK_HOME": str(self.td / "home"), "GISSTACK_VERIFY_TIMEOUT": "0",
+                                                  "GISSTACK_SSH_TOFU": "1"})
         env.start()
         self.addCleanup(env.stop)
         for tool in ("docker", "podman", "kubectl"):       # preflight wants a container runtime; none is really used

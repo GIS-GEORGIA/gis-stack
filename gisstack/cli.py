@@ -290,6 +290,30 @@ def _monitor(a: argparse.Namespace, cfg: dict) -> int:
         return 1
 
 
+def _ssh_trust(a: argparse.Namespace) -> int:
+    """Establish SSH trust explicitly: show what the server presents; trust it only for the fingerprint the operator confirms."""
+    from . import sshtrust
+    try:
+        entries = sshtrust.scan(a.host, a.port)
+        print(f"{a.host}:{a.port} presents:")
+        for e in entries:
+            print(f"  {e['type']:22} {e['fingerprint']}")
+        if a.scan_only:
+            return 0
+        expected = a.fingerprint
+        if not expected:
+            if not sys.stdin.isatty():
+                print("ERROR: compare the fingerprint with the server console, then pass it with --fingerprint SHA256:...", file=sys.stderr)
+                return 2
+            expected = input("Type the fingerprint exactly as the server console shows it, to trust it: ").strip()
+        res = sshtrust.trust(a.host, a.port, expected=expected, replace=a.replace)
+        print(("already trusted" if res["already"] else "trusted (replaced the previous key)" if res["replaced"] else "trusted") + f": {res['type']} {res['fingerprint']} -> {res['path']}")
+        return 0
+    except deploy.DeployError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+
 def _stack_backup(a: argparse.Namespace, cfg: dict) -> int:
     """Backups of a Compose / Podman / Kubernetes stack (the native target uses `gisstack backup`)."""
     from .backups import provider as stack_provider
@@ -664,6 +688,12 @@ def main(argv: list[str] | None = None) -> int:
     rt.add_argument("what", choices=rotation.WHAT)
     rt.add_argument("--password-file", metavar="FILE", help="read the new password from this file (mode 600) instead of generating one")
 
+    st = sub.add_parser("ssh-trust", help="trust an SSH server's host key explicitly (ad-hoc --mode ssh connections refuse unknown hosts)")
+    st.add_argument("host")
+    st.add_argument("--port", type=int, default=22)
+    st.add_argument("--fingerprint", metavar="SHA256:...", help="the fingerprint you compared with the server console (otherwise it is asked)")
+    st.add_argument("--replace", action="store_true", help="replace an already trusted key that differs (only after verifying the new fingerprint)")
+    st.add_argument("--scan-only", action="store_true", help="only show the fingerprints the server presents")
     sb = sub.add_parser("stack-backup", help="verified backups and safe restores of a Docker Compose / Podman / Kubernetes stack")
     sbs = sb.add_subparsers(dest="sbcmd", required=True)
 
@@ -838,6 +868,8 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "update":
         return _update(a)
 
+    if a.cmd == "ssh-trust":                   # needs no stack configuration
+        return _ssh_trust(a)
     if a.cmd == "token":
         return _token(a)
     if a.cmd == "api":
@@ -878,6 +910,7 @@ def main(argv: list[str] | None = None) -> int:
         return _backup(a, cfg)
     if a.cmd == "stack-backup":
         return _stack_backup(a, cfg)
+
     if a.cmd == "preflight":
         return _preflight(a, cfg)
     if a.cmd == "rotate-credentials":

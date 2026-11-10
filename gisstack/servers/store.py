@@ -79,7 +79,7 @@ def validate(p: dict[str, Any]) -> dict[str, Any]:
     if env not in ENVS:
         raise ServerError(f"env: {', '.join(ENVS)}")
     ssh = {"host": str(p.get("host", "")).strip(), "port": 22 if p.get("port") in (None, "") else p["port"], "user": str(p.get("user") or "root").strip()}
-    transport.ssh_base(ssh)                                # same host / user / port rules as every connection
+    transport.ssh_base(ssh, check_trust=False)                                # same host / user / port rules as every connection
     try:
         ssh["port"] = int(ssh["port"])
     except (TypeError, ValueError):

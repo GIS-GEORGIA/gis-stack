@@ -102,7 +102,7 @@ class SshResidueTests(Base):
         ssh = stub / "ssh"
         ssh.write_text(f'#!/bin/bash\necho "ssh $*" >> "{self.log}"\ncase "$*" in *"tar xzf"*) cat > /dev/null ;; *) echo remote-output ;; esac\n')
         ssh.chmod(0o755)
-        p = mock.patch.dict(os.environ, {"PATH": f"{stub}:{os.environ['PATH']}"})
+        p = mock.patch.dict(os.environ, {"PATH": f"{stub}:{os.environ['PATH']}", "GISSTACK_SSH_TOFU": "1"})
         p.start()
         self.addCleanup(p.stop)
         self.b = self.td / "bundle"

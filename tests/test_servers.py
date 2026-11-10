@@ -25,7 +25,7 @@ except ImportError:
     HAVE_FLASK = False
 
 from gisstack import journal, transport
-from gisstack.core.errors import DeployError
+from gisstack.core.errors import DeployError, HostKeyChanged, HostKeyUnknown
 from gisstack.servers import hostkey, service, store
 
 SSHD = shutil.which("sshd") or ("/usr/sbin/sshd" if os.path.exists("/usr/sbin/sshd") else None)
@@ -117,25 +117,57 @@ class TransportTests(Home):
         self.assertIn("GlobalKnownHostsFile=/dev/null", cmd)
         self.assertNotIn("StrictHostKeyChecking=accept-new", cmd)
 
-    def test_without_a_profile_trust_on_first_use_stays_but_is_recorded_in_our_own_file(self):
-        cmd = transport.ssh_base({"host": "h.example", "user": "u"})
-        self.assertIn("StrictHostKeyChecking=accept-new", cmd)                                    # compatible with earlier versions
-        opt = [c for c in cmd if c.startswith("UserKnownHostsFile=")]
-        own = str(Path(self.td) / "known_hosts_adhoc")
-        self.assertEqual(opt, [f"UserKnownHostsFile={own} ~/.ssh/known_hosts"])                  # new hosts go to our file; the user's trusted keys still count
-        self.assertNotIn("GlobalKnownHostsFile=/dev/null", cmd)
+    def test_without_a_profile_an_unknown_host_is_refused_before_any_connection(self):
+        """Default policy: strict.  Nothing is sent to a host whose key was never trusted; the error says how to establish trust."""
+        with self.assertRaises(HostKeyUnknown) as cm:
+            transport.ssh_base({"host": "h.example", "user": "u", "port": 2222})
+        msg = str(cm.exception)
+        self.assertIn("[h.example]:2222", msg)
+        self.assertIn("gisstack ssh-trust h.example --port 2222", msg)
+        self.assertIn("GISSTACK_SSH_TOFU=1", msg)
 
-    def test_strict_mode_removes_trust_on_first_use(self):
-        with mock.patch.dict(os.environ, {"GISSTACK_SSH_STRICT": "1"}):
-            cmd = transport.ssh_base({"host": "h.example", "user": "u"})
+    def test_strict_options_and_own_known_hosts_file(self):
+        own = Path(self.td) / "known_hosts_adhoc"
+        pub = subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(Path(self.td) / "k")], capture_output=True)
+        self.assertEqual(pub.returncode, 0)
+        key = (Path(self.td) / "k.pub").read_text().split()
+        own.write_text(f"h.example {key[0]} {key[1]}\n")
+        cmd = transport.ssh_base({"host": "h.example", "user": "u"})                                # trusted now: allowed
         self.assertIn("StrictHostKeyChecking=yes", cmd)
+        opt = [c for c in cmd if c.startswith("UserKnownHostsFile=")]
+        self.assertEqual(len(opt), 1)
+        self.assertTrue(opt[0].startswith(f"UserKnownHostsFile={own}"))
         self.assertNotIn("StrictHostKeyChecking=accept-new", cmd)
 
+    def test_trust_on_first_use_is_an_explicit_opt_in_and_strict_wins(self):
+        with mock.patch.dict(os.environ, {"GISSTACK_SSH_TOFU": "1"}):
+            cmd = transport.ssh_base({"host": "h.example", "user": "u"})
+            self.assertIn("StrictHostKeyChecking=accept-new", cmd)
+            self.assertEqual(transport.adhoc_policy(), "tofu")
+            with mock.patch.dict(os.environ, {"GISSTACK_SSH_STRICT": "1"}):
+                self.assertEqual(transport.adhoc_policy(), "strict")
+                with self.assertRaises(HostKeyUnknown):
+                    transport.ssh_base({"host": "h.example", "user": "u"})
+        self.assertEqual(transport.adhoc_policy(), "strict")                                        # the default
+
+    def test_server_profiles_do_not_need_prior_trust_to_be_saved_or_validated(self):
+        transport.ssh_base({"host": "h.example", "user": "u"}, check_trust=False)                   # syntax only
+
     def test_a_home_path_that_cannot_be_quoted_falls_back_to_ssh_defaults(self):
-        with mock.patch.dict(os.environ, {"GISSTACK_HOME": str(Path(self.td) / "has space")}):
+        with mock.patch.dict(os.environ, {"GISSTACK_HOME": str(Path(self.td) / "has space"), "GISSTACK_SSH_TOFU": "1"}):
             cmd = transport.ssh_base({"host": "h.example", "user": "u"})
         self.assertIn("StrictHostKeyChecking=accept-new", cmd)
         self.assertFalse([c for c in cmd if c.startswith("UserKnownHostsFile")])
+
+    def test_ssh_trust_errors_are_translated_from_sshs_own_messages(self):
+        changed = "@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@\nHost key verification failed."
+        e = transport.diagnose(changed, {"host": "h.example", "port": 2222})
+        self.assertIsInstance(e, HostKeyChanged)
+        self.assertIn("CHANGED", str(e))
+        self.assertIn("--replace", str(e))
+        unknown = "No ED25519 host key is known for [h.example]:22 and you have requested strict checking.\nHost key verification failed."
+        self.assertIsInstance(transport.diagnose(unknown, {"host": "h.example"}), HostKeyUnknown)
+        self.assertIsNone(transport.diagnose("Permission denied (publickey).", {"host": "h.example"}))             # other failures keep ssh's own text
 
     def test_missing_known_hosts_file_fails_closed(self):
         with self.assertRaises(DeployError):
@@ -290,32 +322,90 @@ class RealSshTests(Home):
     def adhoc(self, port):
         return {"host": "127.0.0.1", "port": port, "user": USER, "key": str(self.client_key)}
 
-    def test_adhoc_first_use_is_recorded_in_our_own_file_not_the_users(self):
+    def own(self):
+        return Path(self.td) / "known_hosts_adhoc"
+
+    def test_adhoc_unknown_host_is_refused_with_a_clear_message_and_nothing_runs(self):
+        marker = Path(self.td) / "should-not-exist"
+        with self.assertRaises(HostKeyUnknown) as cm:
+            transport.run("ssh", self.adhoc(self.ports[0]), f"touch {marker}", timeout=60)
+        self.assertIn("ssh-trust", str(cm.exception))
+        self.assertFalse(marker.exists())
+        self.assertFalse(self.own().exists())                                                       # and nothing was recorded
+
+    def test_adhoc_explicit_trust_with_the_right_fingerprint_then_connection_works(self):
+        from gisstack import sshtrust
+        port = self.ports[0]
+        shown = sshtrust.scan("127.0.0.1", port)
+        self.assertEqual(shown[0]["fingerprint"], self.fp("s0"))
+        with self.assertRaises(DeployError) as cm:                                                  # a wrong fingerprint is NOT trusted
+            sshtrust.trust("127.0.0.1", port, expected=self.fp("s1"))
+        self.assertIn("NOT trusted", str(cm.exception))
+        with self.assertRaises(DeployError):
+            sshtrust.trust("127.0.0.1", port, expected="abc")                                       # not even in the SHA256: form
+        self.assertFalse(self.own().exists())
+        res = sshtrust.trust("127.0.0.1", port, expected=self.fp("s0"))
+        self.assertFalse(res["already"])
+        self.assertEqual(stat.S_IMODE(self.own().stat().st_mode), 0o600)
+        self.assertEqual(transport.run("ssh", self.adhoc(port), "echo trusted-ok", timeout=60).strip(), "trusted-ok")
+        self.assertTrue(sshtrust.trust("127.0.0.1", port, expected=self.fp("s0"))["already"])      # idempotent
+        # the other server (different key) is still unknown
+        with self.assertRaises(HostKeyUnknown):
+            transport.run("ssh", self.adhoc(self.ports[1]), "echo no", timeout=60)
+
+    def test_adhoc_changed_host_key_is_refused_with_a_clear_message_and_replace_is_deliberate(self):
+        from gisstack import sshtrust
+        port = self.ports[0]
+        other = (self.dir / "s1" / "host_ed25519.pub").read_text().split()                          # a DIFFERENT key claimed for the same address
+        self.own().write_text(f"[127.0.0.1]:{port} {other[0]} {other[1]}\n")
+        marker = Path(self.td) / "should-not-exist"
+        with self.assertRaises(HostKeyChanged) as cm:
+            transport.run("ssh", self.adhoc(port), f"touch {marker}", timeout=60)
+        self.assertIn("CHANGED", str(cm.exception))
+        self.assertFalse(marker.exists())
+        with self.assertRaises(HostKeyChanged):                                                     # trust() will not overwrite it unless told to
+            sshtrust.trust("127.0.0.1", port, expected=self.fp("s0"))
+        res = sshtrust.trust("127.0.0.1", port, expected=self.fp("s0"), replace=True)
+        self.assertTrue(res["replaced"])
+        self.assertEqual(transport.run("ssh", self.adhoc(port), "echo replaced-ok", timeout=60).strip(), "replaced-ok")
+
+    def test_adhoc_trust_on_first_use_is_an_explicit_opt_in_and_is_recorded_in_our_file(self):
         users = Path.home() / ".ssh" / "known_hosts"
         before = users.stat().st_mtime_ns if users.exists() else None
-        out = transport.run("ssh", self.adhoc(self.ports[0]), "echo adhoc-ok", timeout=60)
-        self.assertEqual(out.strip(), "adhoc-ok")
-        found = subprocess.run(["ssh-keygen", "-F", f"[127.0.0.1]:{self.ports[0]}", "-f", str(Path(self.td) / "known_hosts_adhoc")], capture_output=True, text=True)
-        self.assertEqual(found.returncode, 0, found.stderr)                                       # looked up with ssh-keygen: the entry may be hashed (HashKnownHosts)
+        with mock.patch.dict(os.environ, {"GISSTACK_SSH_TOFU": "1"}):
+            out = transport.run("ssh", self.adhoc(self.ports[0]), "echo tofu-ok", timeout=60)
+        self.assertEqual(out.strip(), "tofu-ok")
+        found = subprocess.run(["ssh-keygen", "-F", f"[127.0.0.1]:{self.ports[0]}", "-f", str(self.own())], capture_output=True, text=True)
+        self.assertEqual(found.returncode, 0, found.stderr)                                         # hashed entries are looked up with ssh-keygen
         self.assertIn(self.pubkey(0), found.stdout)
         self.assertEqual(users.stat().st_mtime_ns if users.exists() else None, before)             # the user's own known_hosts was not touched
 
-    def test_adhoc_changed_host_key_is_refused(self):
-        own = Path(self.td) / "known_hosts_adhoc"
-        other_pub = (self.dir / "s1" / "host_ed25519.pub").read_text().split()           # a DIFFERENT key for the same address
-        own.write_text(f"[127.0.0.1]:{self.ports[0]} {other_pub[0]} {other_pub[1]}\n")
-        with self.assertRaises(DeployError):
-            transport.run("ssh", self.adhoc(self.ports[0]), "echo should-not-run", timeout=60)
-        self.assertNotIn(other_pub[1], (self.dir / "s0" / "host_ed25519.pub").read_text())
+    def test_ssh_trust_command_scan_trust_and_refusals(self):
+        import contextlib
+        import io
 
-    def test_adhoc_strict_mode_refuses_unknown_hosts_until_the_key_is_trusted(self):
-        with mock.patch.dict(os.environ, {"GISSTACK_SSH_STRICT": "1"}):
-            with self.assertRaises(DeployError):
-                transport.run("ssh", self.adhoc(self.ports[0]), "echo should-not-run", timeout=60)
-            scan = subprocess.run(["ssh-keyscan", "-p", str(self.ports[0]), "-t", "ed25519", "127.0.0.1"], capture_output=True, text=True, timeout=30).stdout
-            self.assertIn("ssh-ed25519", scan)
-            (Path(self.td) / "known_hosts_adhoc").write_text(scan)                              # the operator compared the fingerprint, then trusted it
-            self.assertEqual(transport.run("ssh", self.adhoc(self.ports[0]), "echo trusted", timeout=60).strip(), "trusted")
+        from gisstack import cli
+        port = str(self.ports[0])
+
+        def run(*argv):
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = cli.main(["ssh-trust", "127.0.0.1", "--port", port, *argv])
+            return rc, out.getvalue(), err.getvalue()
+        rc, out, _ = run("--scan-only")
+        self.assertEqual(rc, 0)
+        self.assertIn(self.fp("s0"), out)
+        self.assertFalse(self.own().exists())                                                       # scanning trusts nothing
+        rc, _, err = run()                                                                           # no fingerprint and no terminal
+        self.assertEqual(rc, 2)
+        self.assertIn("--fingerprint", err)
+        rc, _, err = run("--fingerprint", self.fp("s1"))
+        self.assertEqual(rc, 1)
+        self.assertIn("NOT trusted", err)
+        rc, out, _ = run("--fingerprint", self.fp("s0"))
+        self.assertEqual(rc, 0)
+        self.assertIn("trusted", out)
+        self.assertEqual(transport.run("ssh", self.adhoc(self.ports[0]), "echo cli-ok", timeout=60).strip(), "cli-ok")
 
     def test_scan_pin_probe(self):
         self.profile("one", self.ports[0])
