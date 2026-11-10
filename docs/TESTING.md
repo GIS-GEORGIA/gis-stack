@@ -31,7 +31,7 @@ Containers are privileged and use the host cgroup namespace (needed by systemd);
 
 ## What is not covered
 
-Podman: on GitHub the rootful job of `podman.yml` passed (Podman 4.9.3, 11 tests); the rootless job failed on rootless Podman 4.9's pod cgroup limitation, fixed by `x-podman: {in_pod: false}` in the generated Compose file (see `docs/IMPLEMENTATION-STATUS.md`); a rootless run on a real host with the fix is still outstanding.
+Podman: on GitHub the rootful job of `podman.yml` passed twice (Podman 4.9.3, 11 tests). The rootless job failed twice: first on rootless Podman 4.9's pod-cgroup limitation (fixed by `x-podman: {in_pod: false}` in the generated Compose file), then because `podman compose` preferred the Docker Compose plugin, which needs the Podman API socket a rootless session does not run. The workflow now pins `PODMAN_COMPOSE_PROVIDER=podman-compose` for that job (verified locally, not yet on GitHub). On a machine with both Docker Compose and podman-compose installed, set `PODMAN_COMPOSE_PROVIDER=podman-compose` (or run `systemctl --user enable --now podman.socket`) before using `runtime: podman`.
 
 
 The `kind` job and the rpm package test have only run in CI, not on the author's machine. The browser flow stops at the bundle download: a real deployment is the installer suite's job. Only PostGIS is installed by the installer suite; GeoServer, MapProxy, Caddy and QGIS Server steps are covered by their own manager tests against real software but not by a full `install.sh` run.

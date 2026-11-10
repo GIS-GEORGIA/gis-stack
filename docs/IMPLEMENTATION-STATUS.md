@@ -12,6 +12,34 @@ Statuses (used consistently):
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
 
+## 000. GitHub Actions results for commit `01eed90` (the `in_pod: false` fix) - verified from the run logs
+
+| Workflow / run | Result |
+|---|---|
+| `tests` (push) | **success** |
+| `codeql` (push) | **success** |
+| `integration` | the **nightly scheduled** run (event `schedule`, run 42793204046, 09:44 UTC) executed on `main` = `01eed90` and **passed**; I did not dispatch it (instructed not to) and it is not a duplicate |
+| `podman` (dispatched once, run 42825518065, `headSha` = `01eed905a11e...` - verified) | **FAILURE: `podman (rootful)` success, `podman (rootless)` failure** |
+
+**podman (rootful): success, 11/11** on GitHub (Podman 4.9.3, overlay, systemd; `podman-compose` 1.6.0 installed): gis-stack's own `up.sh` deployment verified healthy + status + record (1), PostgreSQL create / verify / restore / corrupted archive / unrestorable dump / failed health check / interrupted restore / encryption / stopped workload / interrupted backup (9), GeoServer data directory backup and restore (1). Which compose provider `podman compose` used in this job is **not visible in the log** (a successful deployment prints no provider line); the runner also has the Docker Compose plugin.
+
+**podman (rootless): failure again, 0 tests ran - but a DIFFERENT cause, now visible** because the test keeps the deployment output: on the runner `podman compose` selected the **Docker Compose plugin** (`/usr/libexec/docker/cli-plugins/docker-compose`) as its provider (Podman prefers it over podman-compose), and that provider needs the Podman API socket, which a rootless session does not run: *"unable to get image 'docker.io/postgis/postgis:17-3.5': Cannot connect to the Docker daemon at unix:///run/user/1001/podman/podman.sock"*. The earlier `in_pod: false` fix was therefore never reached in CI; my earlier local reproduction used an image **without** the Docker Compose plugin, so it exercised `podman-compose` only - **that local reproduction was incomplete, and my claim that the first rootless failure was "almost certainly" the pod-cgroup problem was not confirmed by CI** (the pod-cgroup problem is real and reproduced, but it is a second, separate problem).
+
+**Reproduced locally with the runner's actual configuration** (Ubuntu 24.04, distribution Podman 4.9.3, `podman-compose` 1.6.0, Docker Compose plugin installed, non-root user, systemd user session):
+
+| Case | Result |
+|---|---|
+| as the runner does it | **fails with the exact GitHub error** (`Cannot connect to the Docker daemon at unix:///run/user/1001/podman/podman.sock`) |
+| `PODMAN_COMPOSE_PROVIDER=podman-compose` | `podman compose` uses podman-compose; deployment starts; **rootless Podman backup/restore suite 11/11 passed** (deployment + status + PostgreSQL 9 cases + GeoServer data directory; run twice for PostgreSQL / GeoServer with the earlier container, once as a whole with the Docker Compose plugin present) |
+
+**Fix (LOCAL, not pushed): `.github/workflows/podman.yml` pins `PODMAN_COMPOSE_PROVIDER: podman-compose` for the rootless job** (rootful job unchanged: it is green). **Until it is pushed and the workflow is re-run, the rootless job on GitHub is RED and rootless Podman is verified only on the CI-equivalent container, not in GitHub Actions.**
+
+**Rootless validation details (local, real engine, as an unprivileged user with a systemd user session):** startup and permissions - containers run as the user, storage under the user's home, no root; backup creation and integrity verification - checksums, manifest, `pg_restore --list`, archive scan; restore - scratch database, staged and swapped, pre-restore backup kept, the previous data retained, health verified; PostgreSQL/PostGIS data (table + GiST index) preserved; GeoServer workspace configuration preserved (workspace created before the backup, one created after it removed by the restore, replaced data kept); failure handling - corrupted / missing / extra files refused before any change, unrestorable dump fails before the swap, failed health check after the swap undone, interrupted restore recovered and recovery repeatable, wrong/missing key refused, stopped workload fails the backup cleanly, interrupted backup leaves no valid backup; cleanup - containers and volumes removed by the test.
+
+**Skipped / unavailable:** nothing skipped in the rootful job; the rootless job ran no tests on GitHub. Not run anywhere: Podman rollback, Podman with the Docker Compose provider + rootless API socket, a real (non-container) rootless host.
+
+**Remaining issues:** (1) the pinned-provider workflow fix is unpushed; (2) gis-stack itself does not detect that `podman compose` resolved to the Docker Compose provider without a running Podman API socket - it fails with the provider's message; a preflight check or `up.sh` fallback to `podman-compose` would make this friendlier (not implemented); (3) the items in sections 00 and 0.
+
 ## 00. GitHub Actions results for commit `38d0005` (verified from the run logs)
 
 *`38d0005` is the Podman / hardening / backups-GUI commit, pushed to `main`. One verified failure was found by CI and its fix is **local only (not pushed, awaiting your approval)** - see the last table.*
@@ -21,7 +49,7 @@ Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, 
 | `tests` | **success** |
 | `codeql` | **success** |
 | `integration` (dispatched once, run 42776843410, `headSha` = `38d00057e0de...`) | **success - all 9 jobs green on the first attempt, no re-run needed** |
-| `podman` (dispatched once, run 42778339424, `headSha` = `38d00057e0de...`) | **FAILURE: `podman (rootful)` success, `podman (rootless)` failure** |
+| `podman` (dispatched once, run 42778339424, `headSha` = `38d00057e0de...`) | **FAILURE: `podman (rootful)` success, `podman (rootless)` failure** (see section 000 for the later run) |
 
 **integration jobs (test counts from the logs):** gate ok; **kubernetes (kind)** managers 4/4, deploy-failed-upgrade-rollback 1/1, **stack backup/restore 10/10**; **compose (real Docker)** smoke 1/1, rollback 1/1, managers 28/28, **stack backup/restore 10/10**; **browser (Playwright)** 7/7 + backup page 1/1 (waitress installed in that job); **installers** ubuntu-22.04, ubuntu-24.04, debian-12, rocky-9, alma-9: installer test ok and package test ok on all five, which includes the new check that the packaged `gisstack-web` service starts, is not root, uses waitress, keeps its token out of the journal and restarts after `kill -9` - **on Rocky 9 and Alma 9 (the RPM variant) this ran for the first time and passed**. Skipped / unavailable: none in these jobs.
 
@@ -56,9 +84,9 @@ Podman is **not installed on this machine and I have no root** to install it. I 
 | Podman deployment through gis-stack (`up.sh` with `RUNTIME=podman`), status, deployment record | **COMPLETE** on the nested rootful engine | real: deploy verified healthy by gis-stack itself |
 | Podman backup, verify, restore (staging, swap, undo), recovery, encryption, corrupted / interrupted cases - PostgreSQL | **COMPLETE** on the nested rootful engine | real: 10/10 (deployment/status + the 9 shared cases), twice (also via `run_podman_tests.sh` with the final code: 11/11 with GeoServer) |
 | Podman GeoServer data-directory backup and restore | **COMPLETE** on the nested rootful engine | real: 1/1 |
-| Rootless Podman | **PARTIAL**: fails on GitHub (pod cgroup, fix pending push); passes locally on the CI-equivalent container with the fix | local real runs |
+| Rootless Podman | **PARTIAL**: red on GitHub (provider selection, fix pending push); 11/11 locally on the CI-equivalent container (Ubuntu 24.04, Podman 4.9.3, podman-compose, Docker Compose plugin present) | local real runs |
 | Podman deploy -> failed upgrade -> rollback; Podman monitoring script; `docker-compose` as Podman's compose provider | **IMPLEMENTED BUT NOT VERIFIED** | not run |
-| CI workflow `.github/workflows/podman.yml` | rootful job **COMPLETE** (11/11 on GitHub, run 42778339424); rootless job **BROKEN on GitHub** until the local `in_pod: false` fix (section 00) is pushed and the workflow re-run | GitHub Actions |
+| CI workflow `.github/workflows/podman.yml` | rootful job **COMPLETE** (11/11 on GitHub, runs 42778339424 and 42825518065); rootless job **BROKEN on GitHub** (two causes: pod cgroup - fixed and pushed in `01eed90`; Docker Compose provider without a Podman socket - fixed locally by pinning `PODMAN_COMPOSE_PROVIDER`, not pushed; sections 000 / 00) | GitHub Actions |
 
 ### Security hardening
 

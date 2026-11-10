@@ -53,4 +53,8 @@ jobs:
       - name: Backup / restore cases on Podman (rootless)
         env:
           GISSTACK_TEST_PODMAN: "1"
+          # The runner has the Docker Compose plugin, which `podman compose` prefers over podman-compose. That provider talks to the Podman API socket,
+          # which a rootless session does not run ("Cannot connect to the Docker daemon at unix:///run/user/1001/podman/podman.sock"). Pin the
+          # provider we install (this is the combination verified on Ubuntu 24.04 + Podman 4.9.3 + podman-compose 1.6.0).
+          PODMAN_COMPOSE_PROVIDER: podman-compose
         run: python -W error::ResourceWarning -m unittest discover -s tests -p 'test_stack_backup_podman.py' -v
