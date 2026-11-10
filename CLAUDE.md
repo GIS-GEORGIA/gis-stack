@@ -187,7 +187,7 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 ## ალერტების მენეჯერი და განთავსების ჩანაწერები
 - წესები: `monitoring/rulestore.py` (ბლოკი + `revision`, ატომური ჩაწერა, ჩაშენებული წესი არ იშლება), ვალიდაცია `alerts.custom_rule/check_text/KNOWN_METRICS`. ახალი მეტრიკა = დაამატე `KNOWN_METRICS`-ში (ტესტი ამოწმებს ნაგულისხმევ წესებს). შეცდომის ტექსტში ბილიკი არ ჩაწერო (`p.name`).
 - განთავსების ჩანაწერი: `deployments.py` + კაუკი `deploy.deploy()`-ში (ყველა UI გადის მასზე). უკან დაბრუნება = წინა `ok` ჩანაწერის კონფიგის ხელახლა გამოყენება; **ახლანდელი საიდუმლოები რჩება** (`with_current_secrets`); არასოდეს purge/clean. ახალი გამოსავალი → `OUTCOMES`. ტესტებში `GISSTACK_VERIFY_TIMEOUT=0` დააყენე, თორემ არაჯანმრთელი mock 60 წმ ელოდება.
-- კლასიკური `/` გვერდის `unsafe-inline` ჯერ რჩება (შიგნით ინლაინ სკრიპტი/სტილი, იხ. `docs/AUDIT-2026-11.md`); ძველი `/api/*` რჩება სანამ ეს გვერდი არ გაქრება.
+- კლასიკური `/` გვერდი ახლა მკაცრი CSP-ით მუშაობს (კოდი `static/classic/`-ში; `unsafe-inline` აღარ არსებობს — **არ დაამატო** ინლაინ სკრიპტი/სტილი/`on*=`/`style=`, `tests/test_classic_csp.py` ამოწმებს); ძველი `/api/*` რჩება სანამ ეს გვერდი არ გაქრება (`docs/LEGACY-API.md`).
 
 ## ბექაფი Compose/Podman/K8s-ზე (`gisstack/backups/`)
 - `model` (ფორმატი, ids, კომპონენტები, `scan_tar`), `store` (ატომური `.partial`→seal, SHA256SUMS, verify, retention, restore-state), `provider` (ერთი საერთო `BackupProvider` + `Compose/Podman/Kubernetes` ადაპტერები: მხოლოდ `place`, `restart`, `running`). ახალი კომპონენტი = ჩანაწერი `model.COMPONENTS` + `targets.WORKLOADS` + ტესტი.
@@ -198,6 +198,10 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 ## Podman და გამკაცრება
 - Podman: `runtime: podman` → `generate` სურათებს `docker.io/`-ით აკვალიფიცირებს (`reg` ცვლადი შაბლონებში); `providers/compose.py` სტატუსს/ლოგებს/restart-policy-ს `podman ps --filter label=com.docker.compose.project=...`-დან კითხულობს და `_from_podman`-ით ადაპტირებს (health ტექსტი: `(healthy)`, არა `(health: healthy)`). `podman compose` = რომელი provider დგას (podman-compose-ს `ps -a`, `--wait`, `--no-color` არ აქვს). healthcheck-ებს Podman-ში systemd სჭირდება — ტესტები: `tests/integration/run_podman_tests.sh`.
 - ვებ სერვისი: `packaging/gisstack-web.service` (DynamicUser) და `gisstack-web-root.service`; `tests/integration/test_packages.py::web_service` რეალურად უშვებს სერვისს systemd კონტეინერში. ტოკენი stdout-ზე მხოლოდ tty-ზე იბეჭდება.
-- SSH: `transport.adhoc_trust()`; პროფილი = მკაცრი pinned key (უცვლელი).
+- SSH: ad-hoc კავშირი ნაგულისხმევად მკაცრია (უცნობი host key → `hostkey_unknown`, შეცვლილი → `hostkey_changed`); ნდობა ცხადია: `gisstack ssh-trust`; `GISSTACK_SSH_TOFU=1` ნებაყოფლობითია. პროფილი = მკაცრი pinned key. `--mode ssh`-ის ბექაფში ssh-ის 255-ს `backups/provider._fail` გადათარგმნის.
+- Podman: start/stop/restart სკრიპტები პირდაპირ ძრავს იყენებს (`podman-compose -p X stop` compose-ის ფაილს ითხოვს cwd-ში); rootless-ზე სჭირდება lingering + `podman-restart.service` (preflight აფრთხილებს).
+- მონიტორინგი: შეტყობინება, რომელიც ვერ მიეწოდა, `notify.Outbox`-ში რჩება (ექსპონენციალური პაუზა, 24 სთ TTL); `Monitor._deliver`.
+- განახლება პაკეტით: ტოკენს `web.token`-ის წაშლით და სერვისის გადატვირთვით ანახლებ (`--rotate-token` root-ით ტოვებს root-ის ფაილს, რომელსაც უპრივილეგიო სერვისი ვერ კითხულობს).
+- ტესტებში `pulled()` ჯერ ლოკალურ image-ს ამოწმებს (მიუწვდომელი რეგისტრი ტესტს ჩუმად არ გამოტოვებს); ტესტ-სტეკები ფიქსირებულ host პორტებს (8080/8081/8380) არ ხსნიან.
 - `docs/LEGACY-API.md` უნდა ემთხვეოდეს `registry`-ს (`tests/test_legacy_api_doc.py`).
 

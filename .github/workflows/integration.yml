@@ -34,6 +34,8 @@ jobs:
         distro: [ubuntu-22.04, ubuntu-24.04, debian-12, rocky-9, alma-9]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # the upgrade test builds the previous release from its tag
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -50,6 +52,13 @@ jobs:
         run: |
           sudo apt-get install -y rpm
           python -m unittest discover -s tests -p 'test_packages.py' -v
+      - name: Packaged-service upgrade from the previous release (deb) and a real disk-capacity alert
+        if: matrix.distro == 'ubuntu-24.04'
+        env:
+          GISSTACK_TEST_INSTALLER: "1"
+        run: |
+          python -m unittest discover -s tests -p 'test_package_upgrade.py' -v
+          python -m unittest discover -s tests -p 'test_monitoring_disk.py' -v
 
   compose:
     name: compose (real Docker)
@@ -71,6 +80,8 @@ jobs:
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_compose_managers.py' -v
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_stack_backup_compose.py' -v
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_stack_backup_gis.py' -v
+          GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_caddy_acme.py' -v
+          GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_stack_backup_ssh.py' -v
 
   browser:
     name: browser end-to-end (Playwright)

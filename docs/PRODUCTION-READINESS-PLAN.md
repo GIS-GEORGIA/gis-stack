@@ -14,3 +14,7 @@ Written 2026-11-10 from the code and `docs/IMPLEMENTATION-STATUS.md`. Nothing he
 | 8 | **Full real-environment run** of every suite, docs, final report | closes the loop | exact counts from this machine and from GitHub |
 
 Order of work = order above. Stages that cannot be finished with real evidence in the available time are reported as PARTIAL / NOT VERIFIED, never as COMPLETE.
+
+## Follow-up audit (2026-11-10) - outcome
+
+Stages 1-8 above were executed (results: `docs/IMPLEMENTATION-STATUS.md`, sections 00000 - 000000). The follow-up audit of `b4213fb` (section 0000000, findings in `docs/SECURITY-REVIEW-2026-11.md`) closed the "never verified" list: rootless Podman lifecycle (verified, with the linger / `podman-restart.service` requirement), packaged-service upgrade (deb), alert delivery and disk alerts, Caddy ACME backup/restore (Pebble), `--mode ssh`. It also found and fixed two high-impact defects (lost alert notifications; Podman start/stop/restart under podman-compose). Still open before an externally exposed deployment: S-1 (token after upgrade), S-2 (services published on all interfaces without Caddy), S-3 (custom `HTTPS_PORT`), S-4 (container hardening), S-5, S-7.
