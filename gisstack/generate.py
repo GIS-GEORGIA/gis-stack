@@ -13,7 +13,7 @@ from typing import Any, Iterable
 
 import jinja2
 
-from . import __version__, catalog, fsutil, pins
+from . import __version__, catalog, fsutil, pins, podman_guard
 
 PKG_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = PKG_DIR / "templates"
@@ -168,6 +168,7 @@ def build_context(cfg: dict[str, Any], target: str) -> dict[str, Any]:
         "domain": domain,
         "tls": tls,
         "runtime": cfg["runtime"],
+        "podman_guard": podman_guard.GUARD,
         "reg": "docker.io/" if cfg["runtime"] == "podman" else "",      # Podman refuses short image names when several registries are configured and there is no TTY
         "tuning": pg_tuning(pg),
         "preload": preload,

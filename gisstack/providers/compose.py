@@ -6,6 +6,7 @@ import json
 import re
 from typing import Any, Callable
 
+from .. import podman_guard
 from ..core.errors import DeployError
 from . import common, native
 
@@ -147,6 +148,8 @@ def control_script(cfg: dict[str, Any], action: str, order: list[str]) -> str:
             svcs.append(s)
     names = " ".join(svcs)
     if action in ("start", "stop", "restart"):
+        if rt == "podman":
+            lines += [podman_guard.GUARD, "gs_podman_provider_guard || exit $?"]
         lines.append(f"{rt} compose -p {p} {action} {names}")
     else:
         pol = "unless-stopped" if action == "enable" else "no"

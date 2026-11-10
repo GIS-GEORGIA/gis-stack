@@ -10,7 +10,7 @@
  "compose/postgis/Dockerfile": "a32e8262b0226e5eb98cc35e2757b403f366602fbe5566d443a92be5ae1e31d1",
  "compose/postgis/init/01-extensions.sql": "45262192416174d4ecd9c150105c39f8b3819ebf525b263d3b435bfe1c5446f1",
  "compose/qgis/projects/README.txt": "3b4dd843e692536f8c30c50b3141455e9fde01c22df7cd06eff80098406921a1",
- "compose/up.sh": "d435d29d1f8d9ca8f9643946f09d8341afd0f93d19f17acf323e24d46090417d",
+ "compose/up.sh": "bc7c8d010ffde7041bc21041e183cb2ae820289e63fa40d16402bd59d8d21d95",
  "compose/webmap/app.js": "827e7d643f43b28be76bef8a49638b204bedb7e4945777e25c8a1fb6aca8721b",
  "compose/webmap/config.js": "1a850ec519b5c6bacbffa666e5470427f384e7fdb920ada7d5382c943c6aaac2",
  "compose/webmap/index.html": "da3fb701cd74c3dfa4f87545c3e8b7cc6ed02a53866ea79b0e5fa8fd81a8413d",

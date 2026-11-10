@@ -5,7 +5,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 RUNTIME="${RUNTIME:-{{ runtime | shdw }}}"
 if [ "$RUNTIME" = podman ]; then
-  if podman compose version >/dev/null 2>&1; then COMPOSE="podman compose"
+  if podman compose version >/dev/null 2>&1; then
+    COMPOSE="podman compose"
+{{ podman_guard }}
+    gs_podman_provider_guard || exit $?
   elif command -v podman-compose >/dev/null; then COMPOSE="podman-compose"
   else echo "install podman-compose (or the compose plugin for podman)" >&2; exit 1; fi
 else
