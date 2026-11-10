@@ -71,6 +71,13 @@ def script(cfg: dict[str, Any], target: str) -> str:
     domain, tls = str(cfg.get("domain", "")), cfg.get("tls", "none")
     if tls != "none" and _DOMAIN_RE.match(domain) and domain != "localhost" and not re.fullmatch(r"[0-9.]+", domain):
         lines.append(f'echo "dns={shlex.quote(domain)}=$(getent hosts {shlex.quote(domain)} 2>/dev/null | awk \'{{print $1; exit}}\')"')
+    if target == "compose" and cfg.get("runtime") == "podman":
+        # rootless Podman has no daemon: containers live in the user's systemd manager, which stops with the last session unless lingering is on
+        lines += [
+            'echo "podman_rootless=$(podman info --format \'{{.Host.Security.Rootless}}\' 2>/dev/null)"',
+            'echo "podman_linger=$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)"',
+            'echo "podman_restart_unit=$(systemctl --user is-enabled podman-restart.service 2>/dev/null || echo disabled)"',
+        ]
     return "\n".join(lines) + "\n"
 
 
@@ -160,6 +167,15 @@ def evaluate(cfg: dict[str, Any], target: str, facts: dict[str, str]) -> list[di
                 out.append(_c("dns", OK, "დომენის სახელი ითარგმნება IP-ად", f"{cfg.get('domain')} -> {ip}"))
             else:
                 out.append(_c("dns", WARN, "დომენის სახელი ჯერ არ ითარგმნება IP-ად (HTTPS სერტიფიკატი ვერ გაიცემა)", str(cfg.get("domain"))))
+    if facts.get("podman_rootless") == "true":
+        if facts.get("podman_linger") != "yes":
+            out.append(_c("podman_linger", WARN, "Rootless Podman: მომხმარებლის სესიის დასრულებისას კონტეინერები გაჩერდება (lingering გამორთულია)",
+                          "loginctl enable-linger $USER"))
+        elif facts.get("podman_restart_unit") != "enabled":
+            out.append(_c("podman_restart", WARN, "Rootless Podman: სერვერის გადატვირთვის შემდეგ კონტეინერები თავისით არ ამოვა (podman-restart.service გამორთულია)",
+                          "systemctl --user enable podman-restart.service"))
+        else:
+            out.append(_c("podman_persistence", OK, "Rootless Podman: კონტეინერები გადარჩება სესიის დასრულებას და გადატვირთვას"))
     return out
 
 

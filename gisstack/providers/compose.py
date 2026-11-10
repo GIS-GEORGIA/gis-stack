@@ -6,7 +6,6 @@ import json
 import re
 from typing import Any, Callable
 
-from .. import podman_guard
 from ..core.errors import DeployError
 from . import common, native
 
@@ -147,9 +146,16 @@ def control_script(cfg: dict[str, Any], action: str, order: list[str]) -> str:
         if s not in svcs:
             svcs.append(s)
     names = " ".join(svcs)
-    if action in ("start", "stop", "restart"):
-        if rt == "podman":
-            lines += [podman_guard.GUARD, "gs_podman_provider_guard || exit $?"]
+    if action in ("start", "stop", "restart") and rt == "podman":
+        # `podman-compose -p NAME stop` needs a compose file in the current directory ("no compose.yaml ... found", exit 255) and the Docker Compose provider
+        # needs the Podman socket.  The engine itself answers with every provider (the same reason status/logs/enable use it), so no provider is involved.
+        lines.append("rc=0")
+        for s in svcs:
+            lines.append(f'ids=$(podman ps -a -q {_project_filter(cfg)} --filter "label=com.docker.compose.service={s}")\n'
+                         f'if [ -n "$ids" ]; then podman {action} $ids >/dev/null || rc=1; echo "{s}: {action} done"; '
+                         f'elif [ "{action}" = stop ]; then echo "{s}: not running (nothing to stop)"; else echo "{s}: container not found" >&2; rc=1; fi')
+        lines.append("exit $rc")
+    elif action in ("start", "stop", "restart"):
         lines.append(f"{rt} compose -p {p} {action} {names}")
     else:
         pol = "unless-stopped" if action == "enable" else "no"

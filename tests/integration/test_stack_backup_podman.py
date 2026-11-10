@@ -33,7 +33,12 @@ def podman_ready() -> bool:
 
 
 def pulled(image: str) -> bool:
-    return podman_ready() and subprocess.run(["podman", "pull", "-q", image], capture_output=True).returncode == 0
+    """The image is available: already present locally, or pulled now (a registry that is unreachable must not silently skip a test whose image is cached)."""
+    if not podman_ready():
+        return False
+    if subprocess.run(["podman", "image", "inspect", image], capture_output=True).returncode == 0:
+        return True
+    return subprocess.run(["podman", "pull", "-q", image], capture_output=True).returncode == 0
 
 
 def free_port() -> int:

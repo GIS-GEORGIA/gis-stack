@@ -88,8 +88,7 @@ class GuardTests(unittest.TestCase):
         self.assertLess(up.index("gs_podman_provider_guard || exit $?"), up.index('$COMPOSE --env-file .env up -d'))
         self.assertEqual(subprocess.run(["bash", "-n", str(d / "compose" / "up.sh")], capture_output=True).returncode, 0)
         ctl = compose.control_script(cfg_for(), "restart", ["postgis"])
-        self.assertIn("gs_podman_provider_guard || exit $?", ctl)
-        self.assertLess(ctl.index("gs_podman_provider_guard || exit $?"), ctl.index("podman compose -p demo restart"))
+        self.assertNotIn("gs_podman_provider_guard", ctl)                                       # start/stop/restart use the engine: no compose provider to check
         self.assertEqual(subprocess.run(["bash", "-n"], input=ctl, capture_output=True, text=True).returncode, 0)
         self.assertNotIn("gs_podman_provider_guard", compose.control_script(cfg_for("docker"), "restart", ["postgis"]))       # Docker is untouched
 

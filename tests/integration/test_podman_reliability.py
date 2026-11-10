@@ -28,7 +28,9 @@ IMAGES = ("docker.io/postgis/postgis:17-3.5", "docker.io/postgis/postgis:16-3.5"
 
 
 def pulled() -> bool:
-    return ENABLED and all(subprocess.run(["podman", "pull", "-q", i], capture_output=True).returncode == 0 for i in IMAGES)
+    """Every image is present locally or can be pulled now (a registry that is unreachable must not silently skip a test whose images are cached)."""
+    return ENABLED and all(subprocess.run(["podman", "image", "exists", i], capture_output=True).returncode == 0
+                           or subprocess.run(["podman", "pull", "-q", i], capture_output=True).returncode == 0 for i in IMAGES)
 
 
 def free_port() -> int:
@@ -142,6 +144,36 @@ class PodmanRollback(Base):
         again = services.rollback_plan(cfg2, "local", None, "compose", rec1["id"])
         self.assertFalse(again["eligible"])
         self.assertIn("nothing to do", again["reason"])
+
+
+@unittest.skipUnless(pulled(), "GISSTACK_TEST_PODMAN=1, podman with a compose provider and the PostGIS images needed")
+class PodmanLifecycle(Base):
+    def states(self, cfg):
+        from gisstack import ops
+        return {r["id"]: r["state"] for r in ops.status(cfg, "local", None, "compose")["rows"]}
+
+    def wait_state(self, cfg, want, seconds=90):
+        end = time.time() + seconds
+        while time.time() < end:
+            if self.states(cfg).get("postgis") == want:
+                return True
+            time.sleep(2)
+        return False
+
+    def test_stop_start_restart_through_gis_stack_from_any_directory(self):
+        """`podman-compose -p NAME stop` fails with "no compose.yaml found" outside the bundle directory; the control scripts use the engine instead."""
+        from gisstack import ops
+        cfg = cfg_for(self.project)
+        self.deploy(cfg)
+        self.assertTrue(self.wait_state(cfg, "running"), self.states(cfg))
+        cwd = os.getcwd()
+        os.chdir("/")                                                                              # not the bundle directory
+        self.addCleanup(os.chdir, cwd)
+        for action, want in (("stop", "stopped"), ("start", "running"), ("restart", "running")):
+            lines = list(ops.control(cfg, "local", None, action, None, "compose"))
+            self.assertIn("postgis: " + action + " done", "\n".join(lines))
+            self.assertTrue(self.wait_state(cfg, want), (action, self.states(cfg)))
+        self.assertEqual(provider.PodmanBackupProvider(cfg).psql("select 1", db=cfg["postgres"]["db"]), "1")     # and the database answers after the cycle
 
 
 @unittest.skipUnless(pulled(), "GISSTACK_TEST_PODMAN=1, podman with a compose provider and the PostGIS images needed")

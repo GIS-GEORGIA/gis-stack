@@ -74,6 +74,26 @@ class EvaluateTests(unittest.TestCase):
 
 
 class ScriptTests(unittest.TestCase):
+    def test_rootless_podman_warns_when_containers_would_not_survive_logout_or_reboot(self):
+        pc = cfg(targets=["compose"], deploy_target="compose", runtime="podman")
+        base = {**GOOD, "podman_rootless": "true"}
+        r = by_id(preflight.evaluate(pc, "compose", {**base, "podman_linger": "no"}))
+        self.assertEqual((r["podman_linger"]["status"], r["podman_linger"]["detail"]), ("warn", "loginctl enable-linger $USER"))
+        r = by_id(preflight.evaluate(pc, "compose", {**base, "podman_linger": "yes", "podman_restart_unit": "disabled"}))
+        self.assertEqual((r["podman_restart"]["status"], r["podman_restart"]["detail"]), ("warn", "systemctl --user enable podman-restart.service"))
+        r = by_id(preflight.evaluate(pc, "compose", {**base, "podman_linger": "yes", "podman_restart_unit": "enabled"}))
+        self.assertEqual(r["podman_persistence"]["status"], "ok")
+        self.assertEqual(preflight.blocking(preflight.evaluate(pc, "compose", {**base, "podman_linger": "no"})), [])         # a warning, never a blocker
+        self.assertNotIn("podman_linger", by_id(preflight.evaluate(pc, "compose", {**GOOD, "podman_rootless": "false"})))      # rootful Podman: nothing to say
+        self.assertNotIn("podman_linger", by_id(preflight.evaluate(cfg(), "native", {**GOOD})))
+
+    def test_podman_facts_are_collected_only_for_podman_and_read_only(self):
+        s = preflight.script(cfg(targets=["compose"], deploy_target="compose", runtime="podman"), "compose")
+        for key in ("podman_rootless=", "podman_linger=", "podman_restart_unit="):
+            self.assertIn(key, s)
+        self.assertNotIn("enable ", s.replace("is-enabled", ""))
+        self.assertNotIn("podman_linger=", preflight.script(cfg(targets=["compose"], deploy_target="compose", runtime="docker"), "compose"))
+
     def test_script_is_read_only_and_collects_the_facts(self):
         s = preflight.script(cfg(), "native")
         for key in ("os_id=", "arch=", "mem_mb=", "disk_", "ntp=", "reach_github.com"):

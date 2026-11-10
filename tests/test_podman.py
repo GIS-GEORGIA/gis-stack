@@ -124,9 +124,36 @@ class PodmanScriptTests(unittest.TestCase):
         self.assertNotIn("ps -a -q \"$s\"", s)
         self.assertIn("compose -p demo ps -a -q", compose.control_script(cfg_for("docker"), "enable", ["postgis"]))
 
-    def test_start_stop_restart_keep_using_compose(self):
+    def test_docker_start_stop_restart_keep_using_compose_and_podman_uses_the_engine(self):
         for action in ("start", "stop", "restart"):
-            self.assertIn(f"podman compose -p demo {action} postgis", compose.control_script(cfg_for("podman"), action, ["postgis"]))
+            self.assertIn(f"docker compose -p demo {action} postgis", compose.control_script(cfg_for("docker"), action, ["postgis"]))
+            s = compose.control_script(cfg_for("podman"), action, ["postgis"])
+            self.valid_bash(s)
+            self.assertNotIn("compose", s.replace("com.docker.compose", ""))                 # no compose provider involved (podman-compose needs a compose file in the cwd)
+            self.assertIn(f"podman {action} $ids", s)
+
+    def test_podman_control_script_runs_against_the_engine_and_reports_missing_containers(self):
+        import os
+        import shutil
+        import stat
+        import subprocess
+        import tempfile
+        from pathlib import Path
+        td = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, td, True)
+        (td / "podman").write_text('#!/usr/bin/env bash\necho "podman $*" >> "$FAKE_LOG"\n'
+                                   'if [ "$1" = ps ]; then case "$*" in *service=postgis*) [ -z "$FAKE_NONE" ] && echo abc123; esac; fi\nexit 0\n')
+        (td / "podman").chmod(0o755 | stat.S_IEXEC)
+        env = {**os.environ, "PATH": f"{td}:{os.environ['PATH']}", "FAKE_LOG": str(td / "log")}
+        for action in ("start", "stop", "restart"):
+            r = subprocess.run(["bash", "-c", compose.control_script(cfg_for("podman"), action, ["postgis"])], capture_output=True, text=True, env=env, cwd="/", timeout=30)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn(f"podman {action} abc123", (td / "log").read_text())
+        r = subprocess.run(["bash", "-c", compose.control_script(cfg_for("podman"), "start", ["postgis"])], capture_output=True, text=True, env={**env, "FAKE_NONE": "1"}, cwd="/", timeout=30)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("container not found", r.stderr)
+        r = subprocess.run(["bash", "-c", compose.control_script(cfg_for("podman"), "stop", ["postgis"])], capture_output=True, text=True, env={**env, "FAKE_NONE": "1"}, cwd="/", timeout=30)
+        self.assertEqual(r.returncode, 0)                                                       # stopping what is not there is not an error
 
     def test_logs_use_the_engine_and_no_unsupported_flag(self):
         s = compose.logs_script(cfg_for("podman"), "postgis", 50, True)
