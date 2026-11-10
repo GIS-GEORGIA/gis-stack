@@ -92,6 +92,7 @@ class StackBackupBrowserTests(unittest.TestCase):
         page.fill("#sb-note", "browser test")
         page.click("#dlg button.primary")
         page.wait_for_selector("pre.log:has-text('sealed')")
+        self.assertIn("NOT encrypted", page.inner_text("pre.log"))               # unencrypted + sensitive data: the operator is told in the live log
         page.wait_for_selector("tbody tr")
         row = page.locator("tbody tr").first
         self.assertIn("Verified", row.inner_text())
@@ -103,6 +104,8 @@ class StackBackupBrowserTests(unittest.TestCase):
         row.locator("button:has-text('Details')").click()
         page.wait_for_selector("#dlg[open] >> text=browser test")
         self.assertIn("compose", page.inner_text("#dlg"))
+        page.click("#dlg summary")                                               # the operation log of this backup is part of the details
+        page.wait_for_selector("#dlg pre.log:has-text('sealed')")
         page.click("#dlg button.primary")
         page.wait_for_selector("#dlg:not([open])", state="attached")
         row.locator("button:has-text('Check')").click()

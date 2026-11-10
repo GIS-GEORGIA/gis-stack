@@ -1,18 +1,38 @@
 [Unit]
-Description=GIS Stack web installer (localhost only)
+Description=GIS Stack web administration (localhost only, unprivileged)
+Documentation=https://github.com/GIS-GEORGIA/gis-stack
 After=network.target
 
 [Service]
-# Runs as root on purpose: "install on this machine" needs it. It only listens on
-# 127.0.0.1 and requires a secret token; reach it with an SSH tunnel:
-#   ssh -L 8765:127.0.0.1:8765 user@server      then open the URL from `gisstack web --help`
-#   token: /var/lib/gisstack-installer/web.token
+# Runs WITHOUT root: a transient, unprivileged system user created by systemd (DynamicUser). It can manage container and Kubernetes stacks it has
+# access to, remote servers over SSH, monitoring, backups of container stacks, and everything else except installing software on THIS machine.
+# To let it control local Docker/Podman: systemctl edit gisstack-web  ->  [Service] SupplementaryGroups=docker   (or run it as a named user).
+# To install on this machine from the web GUI use gisstack-web-root.service (the previous behaviour), or run `sudo gisstack web` yourself.
+# Reach it with an SSH tunnel:  ssh -L 8765:127.0.0.1:8765 user@server    The access token is in /var/lib/gisstack-installer/web.token (root can read it);
+# it is never written to the journal.
 Type=simple
-Environment=GISSTACK_HOME=/var/lib/gisstack-installer
+DynamicUser=yes
+StateDirectory=gisstack-installer
+StateDirectoryMode=0700
+Environment=GISSTACK_HOME=/var/lib/gisstack-installer HOME=/var/lib/gisstack-installer
 ExecStart=/usr/bin/gisstack web --host 127.0.0.1 --port 8765
 Restart=on-failure
-NoNewPrivileges=false
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
 PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

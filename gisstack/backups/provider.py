@@ -33,6 +33,7 @@ DB_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,40}$")
 OPS_ID = {"postgres": "postgis", "geoserver": "geoserver", "caddy": "caddy", "qgis": "qgis_server", "mapproxy_config": "mapproxy", "mapproxy_cache": "mapproxy"}
 CFG_ENABLED = {"postgres": "postgis", "geoserver": "geoserver", "caddy": "caddy", "qgis": "qgis_server", "mapproxy_config": "mapproxy", "mapproxy_cache": "mapproxy"}
 DEADLINE = 6 * 3600
+SENSITIVE = {"geoserver": "GeoServer's own credential hashes", "caddy": "TLS private keys", "qgis": "QGIS projects can contain database credentials"}
 
 
 def pg_major(version: str) -> int:
@@ -213,6 +214,10 @@ class BackupProvider:
                     yield self.emit(f"-- {name}")
                     entry[name] = self._backup_component(name, part)
                     yield self.emit(f"   {name}: {sum(f['bytes'] for f in entry[name]['files'])} bytes, verified")
+                sensitive = [n for n in comps if n in SENSITIVE]
+                if sensitive and not self.encryption:
+                    yield self.emit("!! this backup is NOT encrypted and holds sensitive data (" + "; ".join(SENSITIVE[n] for n in sensitive)
+                                    + ") - keep the folder private or encrypt (--encrypt-to / --passphrase-file)")
                 manifest = {"schema": model.SCHEMA, "id": bid, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "kind": kind, "note": note,
                             "gisstack_version": __version__, "project": self.cfg.get("project", ""), "target": self.kind, "family": self.family, "host": host,
                             "encrypted": bool(self.encryption), "encryption": self._enc_meta(), "components": entry, "versions": self._versions(comps)}
@@ -279,9 +284,13 @@ class BackupProvider:
         return self.store.list()
 
     def inspect(self, bid: str) -> dict[str, Any]:
-        m = self.store.read(bid)
-        m = dict(m)
+        m = dict(self.store.read(bid))
         m["integrity"] = self.store.verify(bid, structure=False)
+        log = self.store.path(bid) / LOG
+        try:
+            m["log"] = log.read_text(encoding="utf-8", errors="replace").splitlines()[-60:] if log.is_file() else []      # written through the redactor: no secrets
+        except OSError:
+            m["log"] = []
         return m
 
     def verify(self, bid: str) -> dict[str, Any]:

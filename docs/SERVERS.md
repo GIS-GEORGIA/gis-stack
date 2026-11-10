@@ -29,7 +29,7 @@ The scan and the pin are two separate connections; the typed fingerprint is what
 
 ## Using a server
 
-**Use** makes the dashboard talk to that server: every request carries `"server": "<id>"` and the profile's credentials replace the `ssh` fields. Over the API, any route that takes `mode`/`ssh` also accepts `server` (with `mode: "ssh"`); the `ssh` object sent in the same body is ignored. Without `server` the behaviour is unchanged (`ssh` with `accept-new`).
+**Use** makes the dashboard talk to that server: every request carries `"server": "<id>"` and the profile's credentials replace the `ssh` fields. Over the API, any route that takes `mode`/`ssh` also accepts `server` (with `mode: "ssh"`); the `ssh` object sent in the same body is ignored. Without `server`, `ssh` is an ad-hoc connection: trust on first use (`accept-new`), new hosts recorded in `~/.gisstack/known_hosts_adhoc` (keys already trusted in `~/.ssh/known_hosts` still count), a changed key is always refused, and `GISSTACK_SSH_STRICT=1` refuses every host whose key is not already trusted. Pin the key (a profile) for anything important.
 
 ## Health, comparison, history
 

@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+### Podman და გამკაცრება
+- Podman (რეალურ Podman 5.8-ზე ნაპოვნი ორი შეცდომა): (1) გენერირებული Compose-ისა და Dockerfile-ების სურათების სახელები `runtime: podman`-ზე სრულია (`docker.io/postgis/postgis:...`) — Podman TTY-ს გარეშე მოკლე სახელს არ იღებს; Docker-ის ბანდლები უცვლელია. (2) სტატუსი/ავტოგაშვება/ლოგები Podman-ზე ძრავიდან იკითხება (`podman ps --filter label=...`), რადგან `podman-compose`-ს `ps -a` არ აქვს და ყოველი სტატუსი „კონტეინერი არ არის" იყო. ახალი ტესტები რეალურ Podman-ზე (`GISSTACK_TEST_PODMAN=1`, `tests/integration/run_podman_tests.sh`) და CI workflow `podman.yml`.
+- `gisstack web` ნაგულისხმევად (`--server auto`) იყენებს waitress-ს, თუ დაყენებულია (pip-ის დამოკიდებულებაა; deb/rpm `Recommends`), სხვაგვარად Flask-ის სატესტო სერვერს გაფრთხილებით. წვდომის ტოკენი ჟურნალში/ფაილში აღარ იწერება — მხოლოდ ტერმინალში (`GISSTACK_PRINT_TOKEN=1` გადაფარავს).
+- **მიგრაცია:** პაკეტის `gisstack-web.service` ახლა **როოტის გარეშე** მუშაობს (`DynamicUser`, sandbox). ადგილობრივად (ამავე მანქანაზე) ინსტალაციისთვის ვებიდან გამოიყენე ახალი `gisstack-web-root.service` (წინა ქცევა): `systemctl disable --now gisstack-web && systemctl enable --now gisstack-web-root`; ან `sudo gisstack web`. Docker/Podman-ის ადგილობრივი მართვა: `systemctl edit gisstack-web` → `SupplementaryGroups=docker`.
+- SSH ad-hoc კავშირები: ახალი ჰოსტები იწერება `~/.gisstack/known_hosts_adhoc`-ში (შენი `~/.ssh/known_hosts` ისევ მოქმედებს), შეცვლილი გასაღები ყოველთვის უარყოფილია; `GISSTACK_SSH_STRICT=1` ქრობს „პირველი გამოყენების ნდობას".
+- ძველი `/api/*` მარშრუტების გაუქმების გეგმა და ცხრილი: `docs/LEGACY-API.md` (ტესტი ამოწმებს კოდთან თანხვედრას). დაუშიფრავი ბექაფი GeoServer/Caddy/QGIS-ის მონაცემებით ახლა გაფრთხილებას აჩვენებს; ბექაფის დეტალებში ჩანს ოპერაციის ლოგი.
+
 ### ბექაფი და აღდგენა: Docker Compose, Podman, Kubernetes
 - ახალი `gisstack/backups/` (ერთი საერთო რეალიზაცია + ხელსაწყო-სპეციფიკური `ComposeBackupProvider`, `PodmanBackupProvider`, `KubernetesBackupProvider`): PostgreSQL (`pg_dump -Fc`), GeoServer-ის მონაცემები, Caddy, QGIS, MapProxy (კონფიგურაცია; ქეში — არჩევით). ბექაფი ითვლება მხოლოდ მაშინ, როცა ყველა ფაილი თავიდან წაიკითხა, არქივები შემოწმდა, `pg_restore --list` წაიკითხა და `manifest.json` + `SHA256SUMS` ჩაიწერა; ჩავარდნისას რჩება `<id>.FAILED`, არასდროს ბექაფი.
 - აღდგენა: ვალიდაცია → აუცილებელი დადასტურება → ავტომატური დადასტურებული წინა ბექაფი → staging (PostgreSQL scratch ბაზაში, ფაილები — იმავე volume-ში) → შექცევადი გაცვლა → ჯანმრთელობის შემოწმება; ნებისმიერი ჩავარდნისას ავტომატური უკან დაბრუნება; წინა მონაცემები არასდროს იშლება; შეწყვეტილი აღდგენა — `recover`. არჩევითი gpg დაშიფვრა (გასაღები არასდროს ინახება), retention (უახლესი ბექაფი არასდროს იშლება).

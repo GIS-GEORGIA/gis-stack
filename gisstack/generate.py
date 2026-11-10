@@ -168,6 +168,7 @@ def build_context(cfg: dict[str, Any], target: str) -> dict[str, Any]:
         "domain": domain,
         "tls": tls,
         "runtime": cfg["runtime"],
+        "reg": "docker.io/" if cfg["runtime"] == "podman" else "",      # Podman refuses short image names when several registries are configured and there is no TTY
         "tuning": pg_tuning(pg),
         "preload": preload,
         "deb_pkgs": pg_packages(cfg, "deb"),

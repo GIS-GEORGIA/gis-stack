@@ -693,7 +693,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
     return app
 
 
-def main(host: str = "127.0.0.1", port: int = 8765, server: str = "werkzeug", allow_hosts: tuple[str, ...] = (),
+def main(host: str = "127.0.0.1", port: int = 8765, server: str = "auto", allow_hosts: tuple[str, ...] = (),
          rotate: bool = False) -> None:
     with contextlib.suppress(AttributeError, ValueError):
         getattr(sys.stdout, "reconfigure")(line_buffering=True)          # the URL must reach the journal / a pipe at once  # noqa: B009
@@ -705,19 +705,31 @@ def main(host: str = "127.0.0.1", port: int = 8765, server: str = "werkzeug", al
     print(f"gisstack web installer {__version__}")
     if rotate:
         print("  access token rotated: all earlier links and sessions are now invalid")
-    print(f"  open:  http://{host}:{port}/?token={token}")
+    if sys.stdout.isatty() or os.environ.get("GISSTACK_PRINT_TOKEN") == "1":
+        print(f"  open:  http://{host}:{port}/?token={token}")
+    else:                                              # a service / pipe: the journal and log files must never receive the access token
+        where = "$GISSTACK_TOKEN" if os.environ.get("GISSTACK_TOKEN") else str(paths.token_file())
+        print(f"  open:  http://{host}:{port}/   (access token not printed because stdout is not a terminal; it is in {where})")
     if host in ("127.0.0.1", "localhost"):
         print(f"  remote server? tunnel first:  ssh -L {port}:127.0.0.1:{port} user@server")
     else:
         print("  WARNING: listening beyond localhost over plain HTTP - put it behind TLS or use an SSH tunnel.")
         if not extra:
             print("  Host names other than localhost are rejected; allow yours with --allow-host NAME (or GISSTACK_ALLOWED_HOSTS).")
+    if server == "auto":                                  # production server whenever it is there; never silently the development one
+        try:
+            import waitress  # noqa: F401
+            server = "waitress"
+        except ImportError:
+            server = "werkzeug"
+            print("  WARNING: waitress is not installed - using the Flask development server. Install it for long-running use: pip install waitress")
     if server == "waitress":
         try:
             import waitress
         except ImportError:
             raise SystemExit("waitress is not installed: pip install waitress  (or use --server werkzeug)") from None
+        print("  (waitress production server)")
         waitress.serve(app, host=host, port=port, threads=8, max_request_body_size=app.config["MAX_CONTENT_LENGTH"])
         return
-    print("  (development server; for long-running use: gisstack web --server waitress)")
+    print("  (Flask development server, selected with --server werkzeug or because waitress is missing)")
     app.run(host=host, port=port, threaded=True)

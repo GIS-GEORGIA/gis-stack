@@ -43,7 +43,7 @@ class BrowserTests(unittest.TestCase):
     def setUpClass(cls):
         cls.home = tempfile.mkdtemp()
         cls.port = _free_port()
-        env = {**os.environ, "GISSTACK_HOME": cls.home, "GISSTACK_FEATURES": "dashboard,monitoring", "PYTHONPATH": str(ROOT)}
+        env = {**os.environ, "GISSTACK_HOME": cls.home, "GISSTACK_FEATURES": "dashboard,monitoring", "GISSTACK_PRINT_TOKEN": "1", "PYTHONPATH": str(ROOT)}
         cls.proc = subprocess.Popen([sys.executable, "-m", "gisstack", "web", "--port", str(cls.port)], cwd=ROOT, env=env,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         cls.url = ""

@@ -91,6 +91,8 @@ If the process is killed mid-restore, a state file remains; new restores refuse 
 |---|---|---|---|---|
 | Compose | yes | yes (PostgreSQL + GeoServer, 10 tests) | - | - |
 | Kubernetes | yes | - | yes (PostgreSQL + GeoServer, 10 tests) | - |
-| Podman | yes (shared code path) | - | - | **not tested** (no Podman available in the development environment) |
+| Podman | yes (shared code path, Podman status/log/control scripts, qualified image names) | - | - | yes: PostgreSQL + GeoServer + gis-stack deployment/status, **rootful Podman 5.8.9 with podman-compose 1.6.0 in a privileged systemd container**; a rootless host install is **not** verified (CI workflow `podman.yml` has a rootless job that had not run when this was written) |
+
+On Podman the generated Compose files use fully qualified image names (`docker.io/...`) because Podman refuses short names without a terminal when several registries are configured; status, restart policy and logs read the Podman engine directly (the `podman-compose` provider has no `ps -a`). Docker bundles are unchanged.
 
 Not covered by real-environment tests: Caddy and QGIS data, the MapProxy cache, `--mode ssh`, restore over a very large database, concurrent writes during a backup.

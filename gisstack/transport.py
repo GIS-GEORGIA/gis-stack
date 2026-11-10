@@ -14,10 +14,27 @@ from pathlib import Path
 from typing import Any, Iterator, Optional
 
 from . import runner
+from .core import paths
 from .core.errors import DeployError
 
 _HOST_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$|^\[[0-9a-fA-F:]+\]$")
 _USER_RE = re.compile(r"^[a-z_][a-z0-9_\-]{0,31}$")
+
+
+def adhoc_trust() -> list[str]:
+    """Host-key policy of an ad-hoc connection (no saved server profile, so nothing is pinned).
+
+    Default (compatible with earlier versions): trust a host on first use (`accept-new`) - but a host whose key CHANGED is always refused by ssh.
+    New hosts are recorded in gis-stack's own `known_hosts_adhoc` (first in the list, so it is where ssh writes) instead of silently growing the user's
+    ~/.ssh/known_hosts, while keys the user already trusts there still count.  `GISSTACK_SSH_STRICT=1` removes trust-on-first-use altogether: an unknown host
+    is refused until its key is in one of those files (check the fingerprint on the server console, then `ssh-keyscan -p PORT HOST >> known_hosts_adhoc`,
+    or - better - save the server as a profile, which pins the key)."""
+    strict = os.environ.get("GISSTACK_SSH_STRICT") == "1"
+    mode = ["-o", f"StrictHostKeyChecking={'yes' if strict else 'accept-new'}"]
+    own = str(paths.home() / "known_hosts_adhoc")
+    if any(c in own for c in " \t\"',\n"):                  # ssh splits the option on spaces: a path that cannot be quoted safely falls back to ssh's default files
+        return mode
+    return mode + ["-o", f"UserKnownHostsFile={own} ~/.ssh/known_hosts"]
 
 
 def ssh_base(ssh: dict[str, Any]) -> list[str]:
@@ -38,7 +55,7 @@ def ssh_base(ssh: dict[str, Any]) -> list[str]:
     if kh and (not isinstance(kh, str) or not Path(kh).is_file() or any(c in kh for c in ",\n")):
         raise DeployError("known_hosts ფაილი ვერ მოიძებნა")
     trust = (["-o", "StrictHostKeyChecking=yes", "-o", f"UserKnownHostsFile={kh}", "-o", "GlobalKnownHostsFile=/dev/null"] if kh
-             else ["-o", "StrictHostKeyChecking=accept-new"])
+             else adhoc_trust())
     cmd = ["ssh", "-p", str(port), "-o", "BatchMode=yes", *trust,
            "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4"]   # a dead link ends in ~1 min, not never
     key = ssh.get("key")

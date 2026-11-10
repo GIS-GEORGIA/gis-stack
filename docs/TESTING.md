@@ -20,10 +20,18 @@ These install real software in throw-away containers, so they are opt-in and run
 | `tests/e2e/test_browser.py` | `GISSTACK_TEST_E2E=1`, `pip install playwright && playwright install chromium` | real `gisstack web` + Chromium: token authentication, configure, preview, bundle download, dashboard pages, language switch |
 | `tests/integration/test_compose_managers.py` | `GISSTACK_TEST_INTEGRATION=1` | PostGIS, GeoServer and MapProxy managers against real Compose stacks (MapProxy image is built from the generated Dockerfile: needs network once); the same managers through a **`kubectl` shim** that forwards to those containers (fast check of the `kubectl exec` commands; the real cluster test is below) |
 | `tests/integration/test_k8s_managers.py` | `GISSTACK_TEST_K8S=1` + `kubectl` with a working context | the generated Kubernetes bundle (PostGIS, GeoServer, MapProxy) applied into a throw-away namespace, then the three managers through real `kubectl exec` (run locally on kind v0.33 / Kubernetes v1.37 and in the `kubernetes` CI job). **Never point it at a cluster that matters.** |
+| `tests/integration/test_stack_backup_compose.py` | `GISSTACK_TEST_INTEGRATION=1` | backup / restore of a real Compose stack (PostgreSQL + GeoServer data): create, verify, restore with staging and swap, corrupted and incomplete backups, failed health check, interrupted restore, encryption, stopped workload |
+| `tests/integration/test_stack_backup_k8s.py`, `test_deploy_rollback_k8s.py` | `GISSTACK_TEST_K8S=1` | the same backup cases and deploy / failed upgrade / rollback on a real kind cluster |
+| `tests/integration/test_stack_backup_podman.py` | `GISSTACK_TEST_PODMAN=1`, `podman` + a compose provider (`podman-compose`) | gis-stack's own deployment with `runtime: podman`, status, and the same backup cases on a **real Podman engine**. Healthchecks need systemd. No Podman? `tests/integration/run_podman_tests.sh` runs them against a rootful Podman 5 in a privileged systemd container (needs Docker). CI: `.github/workflows/podman.yml` (rootful and rootless jobs) |
+| `tests/e2e/test_browser_backup.py` | `GISSTACK_TEST_E2E=1` | the Backups page in Chromium: create, details with operation log, verify, export, restore with typed confirmation and live log, delete, KA/EN, phone width, console clean |
+| `tests/integration/test_packages.py` (service part) | same as above | the packaged `gisstack-web` service starts, is **not root**, is served by waitress, keeps its token out of the journal and restarts after `kill -9` |
 | CI job `kubernetes` | CI only | PostGIS manifests applied to a kind cluster, then the manager test above |
 
 Containers are privileged and use the host cgroup namespace (needed by systemd); images are cached as `gisstack-it-<distro>:1`.
 
 ## What is not covered
+
+Podman: the CI workflow `podman.yml` (rootless job in particular) and a rootless host install had not run when this was written; the Podman results in `docs/IMPLEMENTATION-STATUS.md` are from a rootful engine in a systemd container. The RPM variant of the service test needs `rpmbuild` (CI only).
+
 
 The `kind` job and the rpm package test have only run in CI, not on the author's machine. The browser flow stops at the bundle download: a real deployment is the installer suite's job. Only PostGIS is installed by the installer suite; GeoServer, MapProxy, Caddy and QGIS Server steps are covered by their own manager tests against real software but not by a full `install.sh` run.

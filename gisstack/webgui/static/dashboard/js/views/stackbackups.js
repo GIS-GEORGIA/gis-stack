@@ -73,7 +73,8 @@ export default {
       const files = Object.entries(m.components).map(([n, c]) => [t(NAMES[n] || n), c.files.map((f) => `${f.name} (${bytes(f.bytes)})`).join(", "), String(Object.entries(c.meta || {}).filter(([k]) => k !== "path").map(([k, v]) => `${k}=${v}`).join(" "))]);
       await modal({ title: b.id, body: h("div", { class: "stack" }, kv([["სახეობა", m.kind], ["შექმნილია", m.created], ["სამიზნე", m.target], ["gis-stack", m.gisstack_version], ["დაშიფრულია", m.encrypted ? `${m.encryption.method} ${(m.encryption.recipients || []).join(", ")}` : "არა"],
         ["PostgreSQL", (m.versions || {}).postgres], ["შენიშვნა", m.note], ["მთლიანობა", m.integrity.ok ? "✔" : m.integrity.problems.join("; ")]]),
-        table(["კომპონენტი", "ფაილები", "დეტალები"], files, { caption: "კომპონენტები" })), actions: [{ label: "დახურვა", value: true, kind: "primary" }] });
+        table(["კომპონენტი", "ფაილები", "დეტალები"], files, { caption: "კომპონენტები" }),
+        m.log && m.log.length ? h("details", {}, h("summary", {}, "ოპერაციის ლოგი"), h("pre", { class: "log", tabindex: "0" }, m.log.join("\n"))) : null), actions: [{ label: "დახურვა", value: true, kind: "primary" }] });
     }
 
     async function restoreFlow(b) {

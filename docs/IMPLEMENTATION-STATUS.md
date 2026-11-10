@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-10 with the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-10: section 0 is the newest, UNCOMMITTED Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -11,6 +11,60 @@ Statuses (used consistently):
 * **BROKEN** - implemented but failing. *Nothing is currently BROKEN.*
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
+
+## 0. Podman, hardening and Backups GUI phase (2026-11-10) - LOCAL, NOT COMMITTED, NOT PUSHED
+
+*Your request ended in the middle of "PHASE 5 - Production reliability: Review: Service startup and recovery, Health checks" with nothing after it; I covered what those two items name (service start/recovery and health verification, below) and did not guess the rest.*
+
+### Podman
+Podman is **not installed on this machine and I have no root** to install it. I ran a **real Podman 5.8.9 engine** (rootful, overlay storage, `podman-compose` 1.6.0, systemd as PID 1 so healthchecks run) inside a privileged container (`tests/integration/run_podman_tests.sh`, `tests/integration/podman-runner.Dockerfile`). That is a genuine Podman, but **nested and rootful** - not a rootless host installation.
+
+| Finding on real Podman | Fix | Regression tests |
+|---|---|---|
+| Generated Compose files used short image names (`postgis/postgis:...`); Podman refuses them without a terminal when several registries are configured ("short-name resolution enforced but cannot prompt without a TTY") - the deployment did not start | with `runtime: podman` every pulled image and Dockerfile `FROM` is `docker.io/...`; Docker bundles are byte-identical (only the Podman golden changed, 3 files) | `tests/test_podman.py::ImageNameTests`, golden |
+| `podman compose ps -a --format json` does not exist with `podman-compose` (`unrecognized arguments: -a`), so gis-stack reported "container not created" for a running stack | status, restart policy and logs read the Podman engine (`podman ps --filter label=com.docker.compose.project=...`), converted to the shape the parser already used; Podman's health wording `(healthy)`/`(starting)` is understood | `tests/test_podman.py` on a **recorded real** `podman ps --format json` (`tests/fixtures/podman/`) |
+| Podman healthchecks never ran in a container without systemd (stack stayed `(starting)` forever) | not a gis-stack bug - the test runner now runs systemd; documented in `docs/TESTING.md` | - |
+
+| Podman component | Status | Evidence |
+|---|---|---|
+| Podman deployment through gis-stack (`up.sh` with `RUNTIME=podman`), status, deployment record | **COMPLETE** on the nested rootful engine | real: deploy verified healthy by gis-stack itself |
+| Podman backup, verify, restore (staging, swap, undo), recovery, encryption, corrupted / interrupted cases - PostgreSQL | **COMPLETE** on the nested rootful engine | real: 10/10 (deployment/status + the 9 shared cases), twice (also via `run_podman_tests.sh` with the final code: 11/11 with GeoServer) |
+| Podman GeoServer data-directory backup and restore | **COMPLETE** on the nested rootful engine | real: 1/1 |
+| Rootless Podman on a real host; Podman deploy -> failed upgrade -> rollback; Podman monitoring script; `docker-compose` as Podman's compose provider | **IMPLEMENTED BUT NOT VERIFIED** | not run |
+| CI workflow `.github/workflows/podman.yml` (rootful + rootless jobs, manual / weekly) | **IMPLEMENTED BUT NOT VERIFIED** - written, YAML-valid, **never run on GitHub**; the rootless job in particular may need adjustment | - |
+
+### Security hardening
+
+| Item | Status | What was done / evidence |
+|---|---|---|
+| Production WSGI server by default | **COMPLETE** | `gisstack web --server auto` (default) uses waitress when installed, else the development server **with a warning**; waitress is now a pip dependency and a deb/rpm `Recommends`. Unit tests; browser suite 7/7 passed under waitress; the packaged service log shows "waitress production server" (Debian 12, Ubuntu 22.04, Ubuntu 24.04) |
+| Packaged web service not running as root | **COMPLETE for deb**, **IMPLEMENTED BUT NOT VERIFIED for rpm** | `gisstack-web.service` = systemd `DynamicUser`, `ProtectSystem=strict`, `NoNewPrivileges`, no capabilities, `UMask=0077`. Real systemd containers (Debian 12, Ubuntu 22.04, Ubuntu 24.04): the service starts, answers, runs as a non-zero uid, state dir 0700, token file 0600, **no token in the journal**, serves with waitress, is back after `kill -9`. The previous root behaviour is the opt-in `gisstack-web-root.service` (**migration note in CHANGELOG**: installing on the machine itself from the web GUI needs it). The RPM variant needs `rpmbuild` (CI only) |
+| Access token no longer written to logs | **COMPLETE** | printed only to a terminal or with `GISSTACK_PRINT_TOKEN=1`; unit-tested and checked in the real journal |
+| Ad-hoc SSH host keys | **PARTIAL (improved, not strict by default)** | default is still trust-on-first-use (compatibility), but new hosts are recorded in gis-stack's own `known_hosts_adhoc` instead of silently growing `~/.ssh/known_hosts`, a changed key is always refused, and `GISSTACK_SSH_STRICT=1` refuses unknown hosts. Real `sshd` tests: first use recorded (user's file untouched), changed key refused, strict mode refuses until the key is trusted. Pinned profiles unchanged |
+| `unsafe-inline` on the classic page `/` | **NOT IMPLEMENTED** (deliberately) | the page has 2 inline scripts, 1 style block, 13 `style=` attributes and more inline styles in JavaScript-built HTML; it cannot be removed without retiring/rewriting that page and testing every one of its workflows. Plan in `docs/LEGACY-API.md`; the dashboard keeps its strict CSP |
+| Legacy `/api/*` retirement | **PARTIAL** (plan + guard, not removed) | `docs/LEGACY-API.md`: every legacy route with its replacement, what still uses it, and the timeline; `tests/test_legacy_api_doc.py` fails if it drifts from the code. Routes still work, deprecated with headers |
+| Backup encryption / secret handling review | **PARTIAL** | new warning when an unencrypted backup holds GeoServer credential hashes, Caddy TLS private keys or QGIS projects (live log, `operation.log`, dashboard); archives re-scanned before extraction (earlier); keys never stored. Not done: encryption at rest by default, scheduled/off-site encrypted shipping |
+| Audit logging / access control | **COMPLETE for what exists** | all `stack_backup.*`, `monitor.rule.*`, `deploy.*` events audited; scope matrix test covers every route. Not added: auditing of read-only calls |
+
+### Backups GUI (Chromium, real API, local stand-in workload) - **COMPLETE**
+Create (with live log and the unencrypted-data warning), history table with status/kind/size/encryption, details with manifest summary, integrity and **operation log**, verify, export, restore with validation, typed `RESTORE` confirmation, live progress log and the post-restore health line, delete with typed confirmation, recover banner, KA/EN, phone width, no console errors: `tests/e2e/test_browser_backup.py` (passes). Combined with real containers only through the API tests; the page was not driven end to end against a real Compose stack.
+
+### Production reliability (what the cut-off request named)
+Service startup and recovery: **verified** for the packaged web service (start, answer, `kill -9`, restart) on three Debian-family distributions. Health checks: the post-deployment verification now handles Podman's wording and Compose's empty `Health` field (earlier phase) - verified on real Compose, Kubernetes and Podman.
+
+### Results of this phase
+
+| Run | Result |
+|---|---|
+| Default suite | **925 run: 832 passed, 93 skipped, 0 failed**; ruff, mypy (91 files), bandit -ll (0 findings), JS 10/10 |
+| Real Podman (nested, rootful) `test_stack_backup_podman` | **11/11** |
+| Real Docker Compose: `test_stack_backup_compose` + `test_compose` + `test_deploy_rollback` | **12/12** (re-run on the final code) |
+| Chromium: `test_browser` + `test_browser_backup` | **8/8** (7/7 of `test_browser` also under waitress) |
+| Package service test (deb) on debian-12, ubuntu-22.04, ubuntu-24.04 | **passed** |
+| Real sshd ad-hoc trust tests / legacy-doc drift test / startup tests | **passed** |
+| Kubernetes (kind) | **not re-run in this phase** (cluster not recreated); the shared backup code it uses changed only by the warning line and the `inspect` log, both covered by unit and Compose/Podman real tests - the last real kind result is run 42766456604 |
+
+**Not verified / not done in this phase:** rootless Podman; the Podman CI workflow; RPM variant of the service (CI-only builder); Caddy / QGIS / MapProxy backup components on real workloads; the CI `integration` workflow on this phase's changes (nothing is pushed); removal of `unsafe-inline` and of the legacy routes (planned, not done); anything in the cut-off "Phase 5" after the two named items.
 
 ## 1. GitHub Actions results (verified, not assumed)
 
@@ -51,7 +105,7 @@ Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, 
 | Caddy data, QGIS projects, MapProxy configuration, MapProxy cache | **IMPLEMENTED BUT NOT VERIFIED** (same tar code path as GeoServer; no real Caddy/QGIS/MapProxy backup was run) | unit (local stand-in) only |
 | Docker Compose provider | **PARTIAL** (PostgreSQL + GeoServer verified real; the rest above) | real Compose locally **and on GitHub Actions** (run 42766456604, 10/10) |
 | Kubernetes provider | **PARTIAL** (same scope) | real kind v1.37 locally **and on GitHub Actions** (run 42766456604, 10/10) |
-| Podman provider | **IMPLEMENTED BUT NOT VERIFIED** (Compose code with `podman`; Podman is not installed here) | unit (class selection, format) |
+| Podman provider | **COMPLETE on a nested rootful Podman 5.8.9** (see section 0); rootless host **not verified** | real Podman (local, not CI) |
 | `--mode ssh` (commands over SSH, backup stored locally) | **IMPLEMENTED BUT NOT VERIFIED** | not run |
 | API `/api/v1/stack-backups/*` (list, inspect, verify, check, create, restore, recover, delete, prune, export), scopes, validation, audit, no secrets/paths in responses | **COMPLETE** | unit (7 tests, contract-checked, scope matrix test updated) |
 | Dashboard Backups page (create, details, verify, export, restore with typed confirmation + live log, delete, retention, recover banner, KA/EN, phone width, console clean) | **COMPLETE** for UI behaviour | real Chromium against the real API with a local stand-in workload (`test_browser_backup.py`; passed locally and on GitHub Actions); UI + real containers together were **not** tested end to end |
@@ -86,7 +140,7 @@ One existing test was changed on purpose: `tests/test_targets.py::test_unknown_c
 | Security page, Alert Rules manager | **COMPLETE** | unit + real Chromium (browser suite 7/7 locally and on GitHub Actions run 42766456604; the `test_6` race fix is verified on CI) |
 | Deployment records, health verification (with settle period), manual rollback | **COMPLETE** on Compose and Kubernetes | real (previous phase; CI integration jobs passed on GitHub for `696076f`) |
 | Native-host deployment rollback | **IMPLEMENTED BUT NOT VERIFIED** | unit only |
-| Podman deploy/rollback | **IMPLEMENTED BUT NOT VERIFIED** | - |
+| Podman deploy | **COMPLETE on a nested rootful Podman** (section 0); Podman rollback **IMPLEMENTED BUT NOT VERIFIED** | real Podman for deploy/status |
 | Automatic rollback on failure | **NOT IMPLEMENTED** (deliberate) | - |
 | Web map (scale, coordinates, layers, WMS/tiles, KA/EN) | **COMPLETE** for what exists; legend, identify, search, WFS, GeoJSON, fullscreen, CRS info **NOT IMPLEMENTED** | real Chromium |
 | GeoServer manager (read + workspaces) | **COMPLETE**; datastore/layer/style/layer-group editing **NOT IMPLEMENTED** | unit + real |
@@ -95,7 +149,7 @@ One existing test was changed on purpose: `tests/test_targets.py::test_unknown_c
 | SSH host-key verification | **PARTIAL** (pinned for saved profiles; ad-hoc `--ssh` trusts on first use) | real sshd |
 | CSP of the classic page `/` | **PARTIAL** (`unsafe-inline` remains) | unit |
 | Legacy `/api/*` | **PARTIAL** (28 routes, 27 deprecated with headers, none removed) | unit |
-| Production WSGI server | **PARTIAL** (`--server waitress` exists; the packaged service uses the development server as root) | - |
+| Production WSGI server | **COMPLETE** (waitress by default when installed; packaged service unprivileged) - see section 0 | real systemd containers (deb) |
 
 ## 4. Exact test results (this phase)
 
@@ -115,17 +169,17 @@ Environment: Linux, Python 3.12 venv (Flask, Jinja2, PyYAML, Playwright), Docker
 
 ## 5. What could not be tested, and why
 
-* **Podman** - not installed in the development environment; backup, restore, deploy and rollback on Podman are untested.
+* **Rootless Podman on a real host** - Podman is not installed here and I have no root; the real engine used is a nested rootful one (section 0). Podman rollback is untested.
 * **`--mode ssh`** for backups - no SSH-to-Docker environment set up for this phase.
 * **Caddy, QGIS and MapProxy** backup/restore against real workloads - not run (time); same code path as GeoServer.
 * **A real native host** for deployment rollback; **Python 3.9-3.13** matrix; the **installer/package suites**, **MapProxy script tests** and **shellcheck** (tools/prerequisites missing locally).
-* **Podman jobs in GitHub Actions** - none exist; the runners used have no Podman set up.
+* **The Podman CI workflow** (`podman.yml`) - written but never run.
 
 ## 6. Remaining limitations and security issues
 
 1. The one image-build failure of ubuntu-22.04 (section 1) went away on retry; its cause is unproven. The retry/diagnostics helper is meant to make a recurrence tolerated and self-explaining.
 2. Container-target backups: no scheduling, no off-site shipping, not encrypted at rest unless requested; roles/passwords are not restored (by design); GeoServer data is copied live.
-3. Classic page `/` still needs `unsafe-inline`; 28 legacy `/api/*` routes remain; ad-hoc SSH trusts the host key on first use; the packaged web service uses the development server as root.
+3. Classic page `/` still needs `unsafe-inline`; the legacy `/api/*` routes remain (plan: `docs/LEGACY-API.md`); ad-hoc SSH is still trust-on-first-use by default (strict mode is opt-in). *(The development server / root service items from the earlier version of this list are fixed - section 0.)*
 4. Native backups on the server are unencrypted; rollback snapshots hold secrets (0600, never returned by an API).
 5. Web map, GeoServer editing and PostGIS tooling gaps listed in section 3.
 
@@ -135,8 +189,8 @@ No release was created. The new Compose/kind/browser backup jobs pass on GitHub 
 
 ## 8. Recommended next 5 tasks
 
-1. Run the `integration` workflow once on the commit that contains the image-builder retry to confirm it stays green without a manual re-run.
-2. Real-environment tests for Caddy, QGIS and MapProxy components and for `--mode ssh`; run the whole backup suite on Podman where available.
+1. Approve committing / pushing section 0's work, then run the `integration` workflow **and** `podman.yml` on GitHub (neither has run for these changes) and fix what CI shows, especially the rootless Podman job and the RPM service test.
+2. Real-environment tests for Caddy, QGIS and MapProxy backup components and for `--mode ssh`; rootless Podman on a real host; Podman rollback.
 3. Scheduled backups and off-site shipping (encrypted) for container targets, reusing the store/retention code.
-4. Production serving: waitress in the packaged service and dependencies; consider dropping root.
-5. Retire the classic page, then remove `unsafe-inline` and the legacy `/api/*` aliases in one documented release; make ad-hoc SSH pinning explicit.
+4. Retire the classic page (move deploy / clean / projects / existing-programs into the dashboard), then drop `unsafe-inline`, the legacy routes and the classic page in one documented release (`docs/LEGACY-API.md`).
+5. Make strict SSH host-key checking the default for ad-hoc connections (with a documented migration), and add encryption at rest / scheduled encrypted off-site copies for container-target backups.

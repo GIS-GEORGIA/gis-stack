@@ -83,7 +83,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: |
-          pip install flask jinja2 pyyaml playwright
+          pip install flask jinja2 pyyaml playwright waitress
           playwright install --with-deps chromium
       - env:
           GISSTACK_TEST_E2E: "1"

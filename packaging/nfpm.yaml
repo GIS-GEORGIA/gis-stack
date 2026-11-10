@@ -18,6 +18,8 @@ contents:
     file_info: { mode: 0755 }
   - src: ${STAGE}/lib/systemd/system/gisstack-web.service
     dst: /lib/systemd/system/gisstack-web.service
+  - src: ${STAGE}/lib/systemd/system/gisstack-web-root.service
+    dst: /lib/systemd/system/gisstack-web-root.service
   - src: ${STAGE}/usr/share/doc/gisstack-installer/README.md
     dst: /usr/share/doc/gisstack-installer/README.md
 overrides:

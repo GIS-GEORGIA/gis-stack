@@ -1,0 +1,78 @@
+[
+  {
+    "AutoRemove": false,
+    "Command": [
+      "postgres",
+      "-c",
+      "shared_buffers=2048MB",
+      "-c",
+      "effective_cache_size=4915MB",
+      "-c",
+      "work_mem=20MB",
+      "-c",
+      "maintenance_work_mem=512MB",
+      "-c",
+      "max_connections=100"
+    ],
+    "CreatedAt": "About a minute ago",
+    "CIDFile": "",
+    "Exited": false,
+    "ExitedAt": -62135596800,
+    "ExitCode": 0,
+    "ExposedPorts": {
+      "5432": [
+  "tcp"
+]
+    },
+    "Id": "d6cf952f659662c581b8278e0e8254380022f541ac349c0972c61eeda8b88bdc",
+    "Image": "docker.io/postgis/postgis:17-3.5",
+    "ImageID": "2ed748fc602dd3031c6724db8cb289e1578c2deb552a4f6e291f6f7e5e6e4f69",
+    "IsInfra": false,
+    "Labels": {
+      "PODMAN_SYSTEMD_UNIT": "podman-compose@gspp.service",
+      "com.docker.compose.container-number": "1",
+      "com.docker.compose.project": "gspp",
+      "com.docker.compose.project.config_files": "docker-compose.yml",
+      "com.docker.compose.project.working_dir": "/tmp/tmpxln_r3wb/compose",
+      "com.docker.compose.service": "postgis",
+      "io.podman.compose.config-hash": "ee480f81918e40d39c1e819faeb3830a51dd83710a9982fa7390d414099d3284",
+      "io.podman.compose.project": "gspp",
+      "io.podman.compose.service": "postgis",
+      "io.podman.compose.version": "1.6.0",
+      "maintainer": "PostGIS Project - https://postgis.net",
+      "org.opencontainers.image.description": "PostGIS 3.5.2+dfsg-1.pgdg110+1 spatial database extension with PostgreSQL 17 bullseye",
+      "org.opencontainers.image.source": "https://github.com/postgis/docker-postgis"
+    },
+    "Mounts": [
+      "/docker-entrypoint-initdb.d",
+      "/var/lib/postgresql/data"
+    ],
+    "Names": [
+      "gspp_postgis_1"
+    ],
+    "Namespaces": {
+      
+    },
+    "Networks": [
+      "gspp_default"
+    ],
+    "Pid": 538,
+    "Pod": "70d006ae51fb5d8fee2f829f9a9834708c280c896cbdea3e43c804e418a59786",
+    "PodName": "",
+    "Ports": [
+      {
+        "host_ip": "127.0.0.1",
+        "container_port": 5432,
+        "host_port": 45353,
+        "range": 1,
+        "protocol": "tcp"
+      }
+    ],
+    "Restarts": 0,
+    "Size": null,
+    "StartedAt": 1794293854,
+    "State": "running",
+    "Status": "Up About a minute (healthy)",
+    "Created": 1794293854
+  }
+]

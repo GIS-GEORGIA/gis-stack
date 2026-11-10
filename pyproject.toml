@@ -7,7 +7,7 @@ name = "gisstack-installer"
 version = "0.1.7"
 description = "One-click GIS server stack: PostGIS, GeoServer, Tomcat, MapProxy, QGIS Server, Caddy, web & mobile maps"
 requires-python = ">=3.9"
-dependencies = ["Flask>=3.0", "Jinja2>=3.1", "PyYAML>=6.0"]
+dependencies = ["Flask>=3.0", "Jinja2>=3.1", "PyYAML>=6.0", "waitress>=3.0"]
 license = { text = "MIT" }
 readme = "README.md"
 classifiers = [

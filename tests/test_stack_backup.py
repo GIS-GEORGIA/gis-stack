@@ -580,3 +580,21 @@ class CliStackBackupTests(CliBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SensitiveAndLogTests(Env):
+    def test_an_unencrypted_backup_with_sensitive_data_says_so_and_an_encrypted_one_does_not(self):
+        p = self.prov()
+        lines = list(p.create(["geoserver"]))
+        self.assertTrue(any(x.startswith("!!") and "NOT encrypted" in x and "credential hashes" in x for x in lines), lines)
+        self.assertIn("NOT encrypted", (self.store.path(p.result["id"]) / "operation.log").read_text())
+        if __import__("shutil").which("gpg"):
+            q = self.prov(encryption=backup_crypto.Spec(passphrase="correct horse battery staple"))
+            self.assertFalse([x for x in q.create(["geoserver"]) if "NOT encrypted" in x])
+
+    def test_inspect_returns_the_operation_log_without_secrets(self):
+        p, bid = self.make()
+        ins = p.inspect(bid)
+        self.assertTrue(any("sealed" in x for x in ins["log"]), ins["log"])
+        self.assertNotIn("gs-secret-value-1", json.dumps(ins))
+        self.assertNotIn(str(self.store.root), json.dumps(ins["log"]))

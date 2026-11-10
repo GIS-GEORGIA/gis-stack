@@ -11,6 +11,7 @@ Requires:       python3 >= 3.9
 Requires:       python3-flask
 Requires:       python3-jinja2
 Requires:       python3-pyyaml
+Recommends:     python3-waitress
 Recommends:     python3-tkinter
 Recommends:     openssh-clients
 %global debug_package %{nil}
@@ -34,10 +35,11 @@ cp -a usr lib %{buildroot}/
 
 %post
 systemctl daemon-reload >/dev/null 2>&1 || :
-echo "gisstack installed. Start the web GUI:  gisstack web   (or: systemctl enable --now gisstack-web)"
+echo "gisstack installed. Start the web GUI:  gisstack web   (or the unprivileged service: systemctl enable --now gisstack-web; installing on THIS machine from the GUI needs gisstack-web-root)"
 
 %files
 /usr/lib/gisstack
 /usr/bin/gisstack
 /lib/systemd/system/gisstack-web.service
+/lib/systemd/system/gisstack-web-root.service
 %doc /usr/share/doc/gisstack-installer/README.md

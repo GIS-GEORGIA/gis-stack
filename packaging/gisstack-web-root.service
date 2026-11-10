@@ -1,0 +1,20 @@
+[Unit]
+Description=GIS Stack web administration (localhost only, runs as root)
+Documentation=https://github.com/GIS-GEORGIA/gis-stack
+After=network.target
+Conflicts=gisstack-web.service
+
+[Service]
+# The previous behaviour of gisstack-web.service, for people who install software on THIS machine from the web GUI ("install on this computer" needs
+# root). It only listens on 127.0.0.1 and needs a secret token; reach it with an SSH tunnel:  ssh -L 8765:127.0.0.1:8765 user@server
+# Token: /var/lib/gisstack-installer/web.token (never written to the journal).  Prefer gisstack-web.service unless you need local installation.
+Type=simple
+Environment=GISSTACK_HOME=/var/lib/gisstack-installer
+ExecStart=/usr/bin/gisstack web --host 127.0.0.1 --port 8765
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

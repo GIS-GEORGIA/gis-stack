@@ -23,8 +23,21 @@ def service(comp: str) -> str:
     return _COMPOSE_SVC.get(comp, comp)
 
 
+def _project_filter(cfg: dict[str, Any]) -> str:
+    return f"--filter label=com.docker.compose.project={cfg['project']}"
+
+
 def status_script(cfg: dict[str, Any], checks: list[dict[str, Any]]) -> str:
     rt, p = runtime(cfg), cfg["project"]
+    if rt == "podman":
+        # `podman compose ps` is whatever compose provider is installed: podman-compose rejects `-a` and prints no JSON.  The engine itself answers the same
+        # question with every provider (both set the com.docker.compose.* labels), so ask it.
+        flt = _project_filter(cfg)
+        return (f"podman ps -a {flt} --format json 2>&1\n"
+                "echo '@@inspect'\n"
+                f"for id in $(podman ps -a -q {flt} 2>/dev/null); do "
+                "podman inspect -f '{{.Config.Labels}}|{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' $id 2>/dev/null; done\n"
+                + common.probe_script(checks))
     return (f"{rt} compose -p {p} ps -a --format json 2>&1\n"
             "echo '@@inspect'\n"
             f"for id in $({rt} compose -p {p} ps -a -q 2>/dev/null); do "
@@ -49,6 +62,16 @@ def _json_items(text: str) -> list[dict[str, Any]]:
         return items
 
 
+def _from_podman(it: dict[str, Any]) -> dict[str, Any]:
+    """One `podman ps --format json` object in the shape `docker compose ps --format json` has (Service / State / Status / Publishers)."""
+    labels = it.get("Labels") or {}
+    pubs = [{"URL": p.get("host_ip", ""), "TargetPort": p.get("container_port"), "PublishedPort": p.get("host_port"), "Protocol": p.get("protocol", "tcp")}
+            for p in (it.get("Ports") or []) if isinstance(p, dict)]
+    status = str(it.get("Status", ""))
+    return {"Service": labels.get("com.docker.compose.service") or labels.get("io.podman.compose.service", ""), "State": str(it.get("State", "")).lower(),
+            "Status": status, "RunningFor": status, "Publishers": pubs, "Health": ""}
+
+
 def parse(out: str) -> dict[str, Any]:
     head, _, rest = out.partition("@@inspect")
     ips: dict[str, str] = {}
@@ -62,7 +85,8 @@ def parse(out: str) -> dict[str, Any]:
             if m and ip.strip():
                 ips[m.group(1)] = ip.split()[0]
     http = native.parse("\n".join(probe_lines))["http"]
-    return {"items": _json_items(head), "ips": ips, "http": http}
+    items = [_from_podman(i) if "Service" not in i and "Labels" in i else i for i in _json_items(head)]
+    return {"items": items, "ips": ips, "http": http}
 
 
 def rows(cfg: dict[str, Any], ids: list[str], parsed: dict[str, Any], checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -78,7 +102,8 @@ def rows(cfg: dict[str, Any], ids: list[str], parsed: dict[str, Any], checks: li
             st, health = str(it.get("State", "")), str(it.get("Health", ""))
             text = str(it.get("Status", ""))
             if not health:                                  # right after `up` the Health field is empty but Status already says "(health: starting)"
-                health = "starting" if "(health: starting)" in text else "unhealthy" if "(unhealthy)" in text else ""
+                m = re.search(r"\((?:health: )?(starting|healthy|unhealthy)\)", text)        # Docker: "(health: starting)"; Podman: "(starting)"
+                health = m.group(1) if m else ""
             r["state"] = {"running": "running", "exited": "stopped", "created": "stopped", "dead": "failed",
                           "restarting": "starting", "paused": "stopped"}.get(st, "unknown")
             if st == "running" and health == "starting":
@@ -125,13 +150,19 @@ def control_script(cfg: dict[str, Any], action: str, order: list[str]) -> str:
         lines.append(f"{rt} compose -p {p} {action} {names}")
     else:
         pol = "unless-stopped" if action == "enable" else "no"
-        lines.append(f'for s in {names}; do for id in $({rt} compose -p {p} ps -a -q "$s"); do '
+        ids = (f'{rt} ps -a -q {_project_filter(cfg)} --filter "label=com.docker.compose.service=$s"' if rt == "podman"
+               else f'{rt} compose -p {p} ps -a -q "$s"')                       # podman-compose has no `ps -a -q`
+        lines.append(f'for s in {names}; do for id in $({ids}); do '
                      f'{rt} update --restart {pol} "$id" >/dev/null && echo "$s: restart policy = {pol}"; done; done')
     return "\n".join(lines) + "\n"
 
 
 def logs_script(cfg: dict[str, Any], comp: str, n: int, follow: bool) -> str:
     f = " -f" if follow else ""
+    if runtime(cfg) == "podman":                                        # podman-compose has no --no-color; the engine's own `logs` works with every provider
+        return (f'id=$(podman ps -a -q {_project_filter(cfg)} --filter label=com.docker.compose.service={service(comp)} | head -n1)\n'
+                f'[ -n "$id" ] || {{ echo "{service(comp)}: container not found" >&2; exit 1; }}\n'
+                f'podman logs --tail {n}{f} "$id"\n')
     return f"{runtime(cfg)} compose -p {cfg['project']} logs --no-color --tail {n}{f} {service(comp)}\n"
 
 

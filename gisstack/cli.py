@@ -572,8 +572,9 @@ def main(argv: list[str] | None = None) -> int:
     w = sub.add_parser("web", help="start the web installer")
     w.add_argument("--host", default="127.0.0.1")
     w.add_argument("--port", type=int, default=8765)
-    w.add_argument("--server", choices=["werkzeug", "waitress"], default="werkzeug",
-                   help="werkzeug = built-in development server (default); waitress = production WSGI server (pip install waitress)")
+    w.add_argument("--server", choices=["auto", "waitress", "werkzeug"], default="auto",
+                   help="auto = the waitress production WSGI server when it is installed, else the Flask development server with a warning (default); "
+                        "waitress = require it; werkzeug = the development server")
     w.add_argument("--allow-host", action="append", default=[], metavar="NAME", help="accept this Host header too (repeatable)")
     w.add_argument("--rotate-token", action="store_true", help="create a new access token (invalidates old links and sessions)")
 

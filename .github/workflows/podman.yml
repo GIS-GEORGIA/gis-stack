@@ -1,0 +1,56 @@
+name: podman
+
+# Real Podman: deploy a stack through gis-stack with runtime=podman, then run the backup / restore cases (same cases as Docker Compose and Kubernetes).
+# Manual or weekly - it pulls the PostGIS and GeoServer images.  Two jobs: rootful (system Podman, as root) and rootless (the runner user).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 3 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  rootful:
+    name: podman (rootful)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install flask jinja2 pyyaml podman-compose
+      - name: Podman version and info
+        run: |
+          podman --version
+          sudo podman info --format '{{.Host.Security.Rootless}} {{.Store.GraphDriverName}} {{.Host.CgroupManager}}'
+          podman-compose --version
+      - name: Backup / restore cases on Podman (as root)
+        env:
+          GISSTACK_TEST_PODMAN: "1"
+        run: sudo -E env "PATH=$PATH" python -W error::ResourceWarning -m unittest discover -s tests -p 'test_stack_backup_podman.py' -v
+
+  rootless:
+    name: podman (rootless)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install flask jinja2 pyyaml podman-compose
+      - name: User session for rootless Podman healthchecks (systemd --user)
+        run: |
+          sudo loginctl enable-linger "$USER"
+          echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+          sleep 3
+      - name: Podman version and info
+        run: |
+          podman --version
+          podman info --format '{{.Host.Security.Rootless}} {{.Store.GraphDriverName}} {{.Host.CgroupManager}}'
+      - name: Backup / restore cases on Podman (rootless)
+        env:
+          GISSTACK_TEST_PODMAN: "1"
+        run: python -W error::ResourceWarning -m unittest discover -s tests -p 'test_stack_backup_podman.py' -v

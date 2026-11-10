@@ -126,6 +126,8 @@ refusal. A signature that is present and wrong always refuses. Release v0.1.5 is
 
 Out of scope: a compromised operator machine, a compromised root account on the target, and denial of service against the local GUI.
 
+**Hardening of the web service (Podman/backup/hardening phase).** The packaged `gisstack-web.service` runs **unprivileged** (systemd `DynamicUser`, `ProtectSystem=strict`, `NoNewPrivileges`, empty capability set, `UMask=0077`); installing software on the machine itself needs the opt-in `gisstack-web-root.service` (the previous behaviour) or `sudo gisstack web`. `gisstack web` uses the waitress production server whenever it is installed (`--server auto`, the default; `werkzeug` only when forced or when waitress is missing, with a warning). The access token is printed only to a terminal (or with `GISSTACK_PRINT_TOKEN=1`), never into the journal. Ad-hoc SSH connections record new hosts in `~/.gisstack/known_hosts_adhoc` and refuse changed keys; `GISSTACK_SSH_STRICT=1` removes trust-on-first-use. Legacy `/api/*` retirement plan: `docs/LEGACY-API.md`. Backups of container stacks: `docs/BACKUP-RESTORE.md` (a backup with GeoServer / Caddy / QGIS data is warned about when it is not encrypted).
+
 **Not covered yet (see `docs/ROADMAP.md`):** the CSP
 still allows inline scripts (S-07), SSH host keys are trust-on-first-use unless you use a server profile with a pinned host key (S-08; `docs/SERVERS.md`, flag `multi_server`), rollback after a failed upgrade and a
 `restore` command (R-03, Phase 7; native backups are done), and the Tk desktop GUI is not part of the automated coverage figure.

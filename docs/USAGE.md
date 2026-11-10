@@ -269,7 +269,7 @@ gisstack rotate-credentials geoserver --password-file ~/new.pw       # საკ
 ოპერაციების ჟურნალი: `~/.gisstack/journal.jsonl`; ვებ GUI-ის აუდიტი: `~/.gisstack/audit.log`. გრძელი ოპერაციის ვადა: `GISSTACK_DEADLINE` (წამი, ნაგულისხმევი 3600),
 უმოქმედობის ლიმიტი: `GISSTACK_IDLE_TIMEOUT` (900); `0` — ლიმიტის გარეშე.
 
-ვებ GUI: `gisstack web --allow-host gis.example.ge` (სხვა Host სახელი), `--rotate-token` (ახალი წვდომის ტოკენი), `--server waitress` (production სერვერი).
+ვებ GUI: `gisstack web --allow-host gis.example.ge` (სხვა Host სახელი), `--rotate-token` (ახალი წვდომის ტოკენი), `--server auto|waitress|werkzeug` (ნაგულისხმევი `auto`: waitress, თუ დაყენებულია, სხვაგვარად Flask-ის სატესტო სერვერი გაფრთხილებით). წვდომის ტოკენი ეკრანზე მხოლოდ ტერმინალში იწერება (`GISSTACK_PRINT_TOKEN=1` — ყოველთვის); სერვისი არ ბეჭდავს მას ჟურნალში.
 
 ### ვებ დაფა (feature flag)
 

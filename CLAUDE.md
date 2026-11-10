@@ -195,3 +195,9 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - ტესტები: `tests/test_stack_backup.py` (ლოკალური დირექტორია ცვლის volume-ს: `LocalProvider._argv`), `tests/test_stack_backup_api.py`, რეალური: `tests/integration/test_stack_backup_{compose,k8s}.py` (საერთო ქეისები `stackbackup_cases.py`), ბრაუზერი `tests/e2e/test_browser_backup.py`. `kubectl exec` workload-ზე 0 რეპლიკით ელოდება pod-ს ~1 წუთი — `running()` ჯერ readyReplicas-ს ამოწმებს.
 - `statefulset` pod-ის „forced rollback" პრობლემა — იხ. `apply.sh` `replace_stale_pod`.
 
+## Podman და გამკაცრება
+- Podman: `runtime: podman` → `generate` სურათებს `docker.io/`-ით აკვალიფიცირებს (`reg` ცვლადი შაბლონებში); `providers/compose.py` სტატუსს/ლოგებს/restart-policy-ს `podman ps --filter label=com.docker.compose.project=...`-დან კითხულობს და `_from_podman`-ით ადაპტირებს (health ტექსტი: `(healthy)`, არა `(health: healthy)`). `podman compose` = რომელი provider დგას (podman-compose-ს `ps -a`, `--wait`, `--no-color` არ აქვს). healthcheck-ებს Podman-ში systemd სჭირდება — ტესტები: `tests/integration/run_podman_tests.sh`.
+- ვებ სერვისი: `packaging/gisstack-web.service` (DynamicUser) და `gisstack-web-root.service`; `tests/integration/test_packages.py::web_service` რეალურად უშვებს სერვისს systemd კონტეინერში. ტოკენი stdout-ზე მხოლოდ tty-ზე იბეჭდება.
+- SSH: `transport.adhoc_trust()`; პროფილი = მკაცრი pinned key (უცვლელი).
+- `docs/LEGACY-API.md` უნდა ემთხვეოდეს `registry`-ს (`tests/test_legacy_api_doc.py`).
+
