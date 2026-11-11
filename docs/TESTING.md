@@ -37,6 +37,17 @@ These install real software in throw-away containers, so they are opt-in and run
 
 Containers are privileged and use the host cgroup namespace (needed by systemd); images are cached as `gisstack-it-<distro>:1`.
 
+## Container images and registry outages
+
+`tests/integration/images.py` decides whether a test that needs a registry image can run, and says why not:
+
+```bash
+python -m tests.integration.images [--engine docker|podman] [--expect-digest sha256:...] IMAGE...
+# exit 0 ok | 10 REGISTRY UNAVAILABLE | 11 IMAGE PULL FAILED | 12 IMAGE DIGEST MISMATCH
+```
+
+An image already present locally is used without touching the network; otherwise it is pulled with bounded retries (`GISSTACK_IMAGE_PULL_ATTEMPTS`, default 3, back-off `GISSTACK_IMAGE_PULL_BACKOFF`, default 5 s). On a developer machine an unavailable image **skips** the dependent tests (the reason is printed); with `GISSTACK_REQUIRE_IMAGES=1` (CI) it **fails** them with the classification, so an outage is never a green run. The GeoServer image guarded by the tests is the one a default stack deploys (`images.geoserver_image()`), not a hand-written tag. Digests of the image used for a verification run are recorded in `docs/IMPLEMENTATION-STATUS.md`.
+
 ## What is not covered
 
 Podman: on GitHub the rootful job of `podman.yml` passed twice (Podman 4.9.3, 11 tests). The rootless job failed twice: first on rootless Podman 4.9's pod-cgroup limitation (fixed by `x-podman: {in_pod: false}` in the generated Compose file), then because `podman compose` preferred the Docker Compose plugin, which needs the Podman API socket a rootless session does not run. The workflow now pins `PODMAN_COMPOSE_PROVIDER=podman-compose` for that job (verified locally, not yet on GitHub). On a machine with both Docker Compose and podman-compose installed, set `PODMAN_COMPOSE_PROVIDER=podman-compose` (or run `systemctl --user enable --now podman.socket`) before using `runtime: podman`.

@@ -26,7 +26,7 @@ entities is refused; one failing listing never hides the others; the preview nev
 
 **Tests.** `tests/test_geoserver.py`: fake gateway (JSON quirks, error mapping, hostile XML, parameter validation), the real curl script against a loopback
 HTTP server (credentials, binary bodies, special characters, failures), API scopes/contracts, and **a real GeoServer container**
-(`docker.osgeo.org/geoserver:2.28.6`; runs when the image is present, `GISSTACK_TEST_DOCKER=1` pulls it - CI does on one matrix entry).
+(the default-channel image, `docker.osgeo.org/geoserver:3.0.2`; the tests use the cached image or pull it with bounded retries; with `GISSTACK_REQUIRE_IMAGES=1`, as in CI, an unobtainable image FAILS the test instead of skipping it - see `docs/TESTING.md`).
 GeoServer 3.0 is not covered by an automated test yet.
 
 ## Targets (native, Compose, Kubernetes)

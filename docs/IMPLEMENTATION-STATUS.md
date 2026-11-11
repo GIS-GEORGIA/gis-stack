@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-11: section 00000000 is the newest (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-11: section 000000000 is the newest (GeoServer image availability investigation, **uncommitted** working tree, local evidence only); section 00000000 is (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -11,6 +11,70 @@ Statuses (used consistently):
 * **BROKEN** - implemented but failing. *Nothing is currently BROKEN.*
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
+
+## 000000000. GeoServer image availability and the blocked suites (2026-11-11) - working tree, NOT committed, NOT run on GitHub
+
+**Correction first.** Earlier sections name `docker.osgeo.org/geoserver:2.28.6` as the image the blocked tests need. That is wrong: no integration test selects a GeoServer channel, so a default stack deploys the catalog's default channel, **`docker.osgeo.org/geoserver:3.0.2`**; the tests' pull guard checked the stale tag `2.28.6` instead. The guard now derives the image from the configuration (`tests/integration/images.py: geoserver_image()`, pinned by a unit test).
+
+### Evidence about the outage (what is proven and what is not)
+
+| Observation | Where | Proven? |
+|---|---|---|
+| `https://docker.osgeo.org/v2/` and `.../manifests/<tag>` answer **HTTP 502 Bad Gateway** (`nginx/1.18.0 (Ubuntu)`); TCP/TLS connect in 0.2 s; `nexus.osgeo.org` (same IP 140.211.15.30) also 502; `www.osgeo.org` 200, Docker Hub reachable | this machine, 2026-11-11 08:41 UTC, 3 of 3 attempts | **yes - a server-side outage of the OSGeo registry backend** |
+| earlier the same registry **timed out** (`i/o timeout` on `https://docker.osgeo.org/v2/`, 3 retries) | this machine, 2026-11-10 ~19:10 UTC | yes |
+| GeoServer pod `ImagePullBackOff`, 10 min, in `kubernetes (kind)`; compose/podman GeoServer tests skipped because `pull` failed | GitHub runs 42886353470 (2026-11-10 19:3x UTC) and 42986249439 (2026-11-11 08:3x UTC) | yes that the pull failed on the runners; the **HTTP status seen by the runners was not captured** (logs only show `ImagePullBackOff`), so "the same 502 on the runners" is **likely but not proven** |
+| the same image pulled fine on GitHub on 2026-11-10 (integration 42864612991, podman 42864604580) | earlier runs | yes: the outage is intermittent / time-bound, not a removed image |
+
+### Options evaluated
+
+| Option | Result |
+|---|---|
+| A. wait for the registry | still down (502) at the time of the investigation; cannot be relied on |
+| B. officially supported mirror | **none found**: the `osgeo` Docker Hub organisation lists `proj, proj-docs, gdal, grass-gis` only (no GeoServer); `geoserver` on Docker Hub: 0 repositories; third-party images (e.g. `kartoza/*`) are not acceptable (provenance) |
+| C. controlled mirror of the exact digest | **not done** (needs publishing to a registry of the organisation: requires explicit approval). Procedure and ownership proposal below |
+| adopted (no publishing): exact-image **cache** | verified locally: the image already present in the local Docker / Podman stores was used by every rerun below, with the digest recorded; proposed for CI: `actions/cache` of the saved image (below, uncommitted) |
+
+Exact image (as cached on this machine; tags on `docker.osgeo.org` are mutable, so the digest is recorded, not assumed):
+
+| Tag | Index digest | linux/amd64 manifest | Image (config) id | Created |
+|---|---|---|---|---|
+| `geoserver:3.0.2` (used by every blocked test) | `sha256:5a372d4988116e8f62c71ae5ff6eb8d433967697670fb1dec15379bf476721fe` | `sha256:2da4103f1071a7b9e470dde5e547b851b1b3fa0d492427e803979cb2eaf0ccca` | `sha256:ccad6724f9525a8a0e14ebb6c942293f2021bc5564364e996a57bbd711578f9c` | 2026-10-17 02:55 UTC |
+| `geoserver:2.28.6` (maintenance channel, not used by these tests) | `sha256:d38f2bcae4e64516d49f7d8006384fc46708877a3ec0b386e7fa12fc525bf76c` | `sha256:9f3b93ce6bfeff0f560a3867eeb76d5b5b46afacde8712ad4a793c27fd773a85` | `sha256:7d96a0eba5a63ef7b90ceb838931b8d3968128a84470d558d426434db172b8f4` | 2026-10-18 06:16 UTC |
+
+I cannot prove that the image pulled by the GitHub runs of 2026-11-10 had these digests; the tag may have been republished in between.
+
+### Reruns of the blocked suites (LOCAL, with the exact cached image, `GISSTACK_REQUIRE_IMAGES=1` so a missing image would FAIL, not skip)
+
+Environment: this development machine (Linux, Docker with containerd image store, Python 3.12 venv). Podman: Fedora 44 privileged systemd container, Podman 5.8.9, rootful and a rootless user session; the rootless storage got the image from the rootful one by `podman save --format oci-archive | podman load` (same image id). Kubernetes: `kind v0.33.0` (checksum verified), node **Kubernetes v1.37.0** (CI uses whatever `helm/kind-action@v1` installs), image preloaded with `docker save --platform linux/amd64 | ctr images import` (plain `kind load docker-image` fails on this multi-arch image: `content digest ... not found`).
+
+| Suite | Run / ok / failed / skipped | Time | Runner |
+|---|---|---|---|
+| kind: `test_k8s_managers` | 4 / 4 / 0 / 0 | 82 s | local kind |
+| kind: `test_deploy_rollback_k8s` (deploy, failed upgrade, rollback) | 1 / 1 / 0 / 0 | 354 s | local kind |
+| kind: `test_stack_backup_k8s` (PostgreSQL + GeoServer backup/restore) | 10 / 10 / 0 / 0 | 233 s | local kind |
+| kind: `test_stack_backup_k8s_gis` (Caddy, MapProxy, QGIS, monitoring) | 4 / 4 / 0 / 0 | 423 s | local kind |
+| Compose: `test_compose_managers` (includes the 6 GeoServer tests) | 28 / 28 / 0 / **0** | 203 s | local Docker |
+| Compose: `test_stack_backup_compose` (includes the GeoServer backup test) | 10 / 10 / 0 / **0** | 211 s | local Docker |
+| Podman rootful: `test_stack_backup_podman` (GeoServer backup test ran and passed) | 11 / 11 / 0 / 0 | 144 s | nested Podman |
+| Podman rootless: `test_stack_backup_podman` (same) | 11 / 11 / 0 / 0 | 145 s | nested Podman |
+| regression: `tests/test_images.py` (classification, bounded retries, CI fail-vs-skip, guarded image = deployed image) | 10 / 10 | 2 s | unit |
+| regression: full unit suite (`discover -s tests`) | 998 run / 0 failed / 111 skipped (opt-in suites) | 196 s | venv |
+| `ruff`, `mypy` | clean, 93 files | - | - |
+
+Failure classification used from now on (`python -m tests.integration.images`, exit codes): **10 REGISTRY UNAVAILABLE** (registry answers 5xx / times out / refuses), **11 IMAGE PULL FAILED** (registry alive, pull refused or not found), **12 DIGEST MISMATCH**; an application start-up failure or a test assertion failure is reported by the tests themselves and is never mixed with these. Verified against the real, currently broken registry: `REGISTRY UNAVAILABLE: docker.osgeo.org does not answer (HTTP 502); pull of ... failed after N attempts: ...502 Bad Gateway`.
+
+### Changes proposed in the working tree (uncommitted)
+
+* `tests/integration/images.py` (+ `tests/test_images.py`): presence check before any pull (a cached image needs no network), bounded retries with back-off (default 3 attempts, 5 s, 10 s), classification, `require()` that **skips on a developer machine and FAILS when `GISSTACK_REQUIRE_IMAGES=1`** (CI) - an outage can no longer end as a green run that skipped the tests; GeoServer-dependent tests call it from `setUpClass`.
+* `integration.yml`: workflow-level `GISSTACK_REQUIRE_IMAGES=1`; a named pre-step in the `compose` job and in the kind job that ends with the exit code above; in the kind job an `actions/cache` copy of the saved image (key includes the image name; bump `-v1` to refresh), a preload into kind with a warning fallback, and a `failure()` step that keeps pod status, events, describe and logs. `podman.yml`: the same pre-step per job and `GISSTACK_REQUIRE_IMAGES=1`. **None of this has run on GitHub** (nothing was pushed); YAML parses.
+* Controlled mirror (needs approval, not done): copy by digest into the organisation's registry, e.g. `docker buildx imagetools create --tag ghcr.io/gis-georgia/mirror/geoserver:3.0.2 docker.osgeo.org/geoserver@sha256:5a372d4988116e8f62c71ae5ff6eb8d433967697670fb1dec15379bf476721fe`, verify with `imagetools inspect` that the index digest is unchanged, owner = the GIS-GEORGIA organisation (package visibility public, write access by the maintainers only), refresh only by an explicit commit that records the new digest. The deployments and CI would use the same override: `geoserver.image` in the configuration (already supported) and the same string in `images.py`.
+
+### What is still unverified
+
+* **GitHub**: the blocked suites have **not** run green on GitHub since the registry outage (the last green GitHub runs are `5ea1c29`: kind 4 + 1 + 10, compose 28 + 10 without skips, podman 11 + 11). The new workflow steps (cache, preload, diagnostics, pre-steps) are untested there.
+* whether the GitHub runners saw the same HTTP 502 (not captured).
+* that the images of the earlier GitHub runs had the digests above.
+* the CI kind version / Kubernetes version (this machine ran Kubernetes v1.37.0).
 
 ## 00000000. Audit commits and GitHub results (head `ae78b67`, verified from the run logs)
 
