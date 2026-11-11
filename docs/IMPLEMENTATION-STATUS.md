@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-11: section 000000000 is the newest (GeoServer image availability investigation, **uncommitted** working tree, local evidence only); section 00000000 is (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-11: section 0000000000 is the newest (GitHub results on `7ffdd83` after the registry recovered, and one new defect); section 000000000 is the GeoServer image investigation; section 00000000 is (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -12,7 +12,28 @@ Statuses (used consistently):
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
 
-## 000000000. GeoServer image availability and the blocked suites (2026-11-11) - working tree, NOT committed, NOT run on GitHub
+## 0000000000. GitHub results on `7ffdd83` (registry recovered) - verified from the run logs
+
+Commits: `912fc14` (image guard + `images.py`), `4b763ae` (workflow steps), `7ffdd83` (docs). `tests` 43003743805 and `codeql` 43003743545 on `7ffdd83`: **success**. `docker.osgeo.org` answered again (manifest 200) before the dispatches.
+
+Image used by the runs (printed by the new pre-steps): `docker.osgeo.org/geoserver:3.0.2`, index digest **`sha256:5a372d4988116e8f62c71ae5ff6eb8d433967697670fb1dec15379bf476721fe`**, image id `sha256:ccad6724f9525a8a0e14ebb6c942293f2021bc5564364e996a57bbd711578f9c` (kind and compose jobs; Docker); Podman jobs: platform manifest `sha256:2da4103f1071...` plus the same index digest. **Identical to the digest cached on the development machine**, so the local reruns and the GitHub runs used the same image.
+
+| Workflow | Run | Result |
+|---|---|---|
+| `integration` (dispatched once) | 43004672156 | **success - all 10 jobs, no skipped tests** |
+| `podman` (dispatched once) | 43004665884 | **failure: `podman (rootful)`**; `podman (rootless)` success |
+
+`integration` details (runner: GitHub `ubuntu-24.04`, image pre-step `ok` in the kind and compose jobs): kubernetes (kind) managers **4/4**, deploy/failed-upgrade/rollback **1/1**, PostgreSQL + GeoServer backup/restore **10/10**; kubernetes-gis **4/4**; compose smoke 1, rollback 1, managers **28/28**, stack backup **10/10**, GIS backup 4, Caddy ACME 1, `--mode ssh` 1; browser 7 + 1 + 2; installers on 5 distributions ok (ubuntu-24.04 also the package upgrade and the disk alert). This closes the gap of section 00000000: the previously blocked kind, Compose and GeoServer tests **ran and passed on GitHub**.
+
+`podman` details: rootful - backup suite **11/11 ok** (GeoServer test ran), reliability **4 run, 3 ok, 1 FAILED, 1 skipped** (the provider-diagnostic test, skipped as before in the rootful job); rootless - backup **11/11**, reliability **4/4** (diagnostic test ran and passed).
+
+**The failure is a real defect, not infrastructure:** `PodmanMonitoring.test_collection_on_a_real_podman_stack` expected the `backup_failed` alert after a real failed backup and got none. Cause: backup ids have second resolution plus a random suffix (`YYYYMMDDTHHMMSSZ-xxxx`); the monitor decided whether a failed attempt was newer than the last good backup by comparing the whole id, so a failure made within the same second as the good backup lost the comparison about half of the time (the runner is fast; on the development machine the two were always more than a second apart). It passed in rootless, in the earlier rootful run and locally by luck of timing. In production the effect would be one missed `backup_failed` alert when a failure follows a good backup within one second - unlikely, but a genuine ordering bug.
+
+Fix (working tree, **uncommitted**): ids are compared by their time part only, and a same-second failure counts as newer (conservative: an alert one backup too eager rather than a failure nobody hears about) - `gisstack/monitoring/collect.py`, regression tests in `tests/test_monitoring_container.py` (both suffix orders, and the earlier-second case). Verified locally: monitoring unit tests 88/88; rootful Podman `PodmanMonitoring` ok (`podman stats` rows: 0 in the nested engine, as before). **Not yet verified on GitHub**: needs a push and one more `podman` run.
+
+Remaining unverified: the `podman` workflow is red on `7ffdd83` until the fix is pushed and re-run; the new workflow cache / preload / diagnostics steps were exercised only on the success path (the image was obtainable), their failure path (outage) was verified only through the unit tests and the real CLI against the broken registry; the kind cache path (hit/miss) not observed.
+
+## 000000000. GeoServer image availability and the blocked suites (2026-11-11) - local evidence; committed in `912fc14`..`7ffdd83`, GitHub results in section 0000000000
 
 **Correction first.** Earlier sections name `docker.osgeo.org/geoserver:2.28.6` as the image the blocked tests need. That is wrong: no integration test selects a GeoServer channel, so a default stack deploys the catalog's default channel, **`docker.osgeo.org/geoserver:3.0.2`**; the tests' pull guard checked the stale tag `2.28.6` instead. The guard now derives the image from the configuration (`tests/integration/images.py: geoserver_image()`, pinned by a unit test).
 
