@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # an image that cannot be obtained FAILS the tests that need it (named as such), it never silently skips them
+  GISSTACK_REQUIRE_IMAGES: "1"
+
 jobs:
   gate:
     runs-on: ubuntu-24.04
@@ -72,6 +76,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install flask jinja2 pyyaml
+      - name: GeoServer image (bounded pull; exit 10 = REGISTRY UNAVAILABLE, 11 = pull failed, 12 = digest mismatch - never a test failure)
+        env:
+          GISSTACK_IMAGE_PULL_BACKOFF: "20"
+        run: python -m tests.integration.images "$(python -c 'from tests.integration import images; print(images.geoserver_image())')"
       - env:
           GISSTACK_TEST_DOCKER: "1"
         run: |
@@ -116,7 +124,26 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install flask jinja2 pyyaml
+      - id: gsimg
+        run: echo "image=$(python -c 'from tests.integration import images; print(images.geoserver_image())')" >> "$GITHUB_OUTPUT"
+      - name: Cached copy of the GeoServer image (survives a registry outage; bump the -v1 suffix to refresh it)
+        uses: actions/cache@v4
+        with:
+          path: /tmp/geoserver-image.tar
+          key: geoserver-image-${{ steps.gsimg.outputs.image }}-v1
       - uses: helm/kind-action@v1
+      - name: Make the GeoServer image available (exit 10 = REGISTRY UNAVAILABLE, 11 = pull failed, 12 = digest mismatch - reported here, not as a test failure)
+        env:
+          GISSTACK_IMAGE_PULL_BACKOFF: "20"
+          IMG: ${{ steps.gsimg.outputs.image }}
+        run: |
+          if [ -f /tmp/geoserver-image.tar ]; then docker load -i /tmp/geoserver-image.tar; fi
+          python -m tests.integration.images "$IMG"
+          docker image inspect --format 'GeoServer image: {{.Id}} {{.RepoDigests}}' "$IMG"
+          [ -f /tmp/geoserver-image.tar ] || docker save -o /tmp/geoserver-image.tar "$IMG"
+          # preload into kind so the pods do not depend on the registry; if that fails the pods pull it themselves (and the diagnostics below say why)
+          docker save --platform linux/amd64 "$IMG" | docker exec -i chart-testing-control-plane ctr --namespace=k8s.io images import --snapshotter=overlayfs - \
+            || echo "::warning::could not preload the image into kind; the pods will pull it themselves"
       - name: PostGIS, GeoServer and MapProxy managers against the kind cluster (real kubectl exec)
         env:
           GISSTACK_TEST_K8S: "1"
@@ -129,6 +156,13 @@ jobs:
         env:
           GISSTACK_TEST_K8S: "1"
         run: python -m unittest discover -s tests -p 'test_stack_backup_k8s.py' -v
+      - name: Diagnostics (pod status, events, describe, logs) - kept for every failure
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide || true
+          kubectl get events -A --sort-by=.lastTimestamp | tail -80 || true
+          kubectl describe pods -A | grep -B2 -A25 -E "^Events:" | tail -150 || true
+          kubectl get pods -A --no-headers -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name | grep -vE '^(kube-system|local-path-storage)' | while read ns pod; do echo "== $ns/$pod"; kubectl -n "$ns" logs "$pod" --all-containers --tail=40 2>&1 | head -60; done || true
 
   kubernetes-gis:
     name: kubernetes-gis (kind)

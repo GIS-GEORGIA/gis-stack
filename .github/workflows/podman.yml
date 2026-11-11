@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+env:
+  # an image that cannot be obtained FAILS the tests that need it (named as such), it never silently skips them
+  GISSTACK_REQUIRE_IMAGES: "1"
+
 jobs:
   rootful:
     name: podman (rootful)
@@ -26,6 +30,10 @@ jobs:
           podman --version
           sudo podman info --format '{{.Host.Security.Rootless}} {{.Store.GraphDriverName}} {{.Host.CgroupManager}}'
           podman-compose --version
+      - name: GeoServer image (bounded pull; exit 10 = REGISTRY UNAVAILABLE, 11 = pull failed - never a test failure) (as root)
+        env:
+          GISSTACK_IMAGE_PULL_BACKOFF: "20"
+        run: sudo -E env "PATH=$PATH" python -m tests.integration.images --engine podman "$(python -c 'from tests.integration import images; print(images.geoserver_image())')"
       - name: Backup / restore cases on Podman (as root)
         env:
           GISSTACK_TEST_PODMAN: "1"
@@ -55,6 +63,10 @@ jobs:
         run: |
           podman --version
           podman info --format '{{.Host.Security.Rootless}} {{.Store.GraphDriverName}} {{.Host.CgroupManager}}'
+      - name: GeoServer image (bounded pull; exit 10 = REGISTRY UNAVAILABLE, 11 = pull failed - never a test failure) (rootless)
+        env:
+          GISSTACK_IMAGE_PULL_BACKOFF: "20"
+        run: python -m tests.integration.images --engine podman "$(python -c 'from tests.integration import images; print(images.geoserver_image())')"
       - name: Backup / restore cases on Podman (rootless)
         env:
           GISSTACK_TEST_PODMAN: "1"
