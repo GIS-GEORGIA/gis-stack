@@ -16,6 +16,7 @@ import uuid
 from pathlib import Path
 from unittest import mock
 
+from . import images
 from gisstack import config, generate
 from gisstack.core.errors import DeployError
 from gisstack.geoserver import gateway as gs_gateway
@@ -27,7 +28,7 @@ from gisstack.postgis import manager as pgm
 from gisstack.postgis.server import ScriptGateway
 
 IMAGE = "postgis/postgis:17-3.5"
-GS_IMAGE = "docker.osgeo.org/geoserver:2.28.6"
+GS_IMAGE = images.geoserver_image()      # what the stack deploys by default (the catalog's default channel), not a hand-written tag
 
 
 def available() -> bool:
@@ -38,7 +39,7 @@ def available() -> bool:
     return subprocess.run(["docker", "pull", "-q", IMAGE], capture_output=True).returncode == 0
 
 
-GS_AVAILABLE = os.environ.get("GISSTACK_TEST_INTEGRATION") == "1" and shutil.which("docker") is not None and subprocess.run(["docker", "pull", "-q", GS_IMAGE], capture_output=True).returncode == 0
+GS_AVAILABLE = os.environ.get("GISSTACK_TEST_INTEGRATION") == "1" and shutil.which("docker") is not None            # the image itself is checked in setUpClass (images.require): an outage is a FAILURE in CI, never a silent skip
 
 
 def free_port() -> int:
@@ -188,6 +189,7 @@ class GeoServerBase:
 
     @classmethod
     def setUpClass(cls):
+        images.require("docker", GS_IMAGE)
         if port_busy(8080):                                           # the generated Compose file publishes GeoServer on host port 8080 when there is no Caddy
             raise unittest.SkipTest("host port 8080 is in use")
         cls.t = unittest.TestCase()

@@ -18,10 +18,11 @@ from unittest import mock
 from gisstack import config, generate
 from gisstack.backups import provider
 
+from . import images
 from .stackbackup_cases import GeoServerCases, PostgresCases
 
 PG_IMAGE = "postgis/postgis:17-3.5"
-GS_IMAGE = "docker.osgeo.org/geoserver:2.28.6"
+GS_IMAGE = images.geoserver_image()      # what the stack deploys by default (the catalog's default channel), not a hand-written tag
 ENABLED = os.environ.get("GISSTACK_TEST_INTEGRATION") == "1" and shutil.which("docker") is not None
 
 
@@ -100,9 +101,14 @@ class PostgresBackupRestore(PostgresCases, StackBase):
         subprocess.run([*self.base, "up", "-d", "--wait", "--wait-timeout", "120"], capture_output=True, timeout=200)
 
 
-@unittest.skipUnless(pulled(PG_IMAGE) and pulled(GS_IMAGE), "GISSTACK_TEST_INTEGRATION=1, docker and the PostGIS + GeoServer images needed")
+@unittest.skipUnless(pulled(PG_IMAGE), "GISSTACK_TEST_INTEGRATION=1, docker and the PostGIS image needed")
 class GeoServerFilesBackupRestore(GeoServerCases, StackBase):
     components = {"geoserver": True}
+
+    @classmethod
+    def setUpClass(cls):
+        images.require("docker", GS_IMAGE)                      # outage = failure in CI (GISSTACK_REQUIRE_IMAGES=1), skip on a developer machine
+        super().setUpClass()
 
     def gs_exec(self, args):
         ctr = subprocess.run(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={self.project}", "--filter", "label=com.docker.compose.service=geoserver"],

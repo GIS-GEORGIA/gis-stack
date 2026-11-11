@@ -20,10 +20,11 @@ from unittest import mock
 from gisstack import config, deploy, deployments, generate
 from gisstack.backups import provider
 
+from . import images
 from .stackbackup_cases import GeoServerCases, PostgresCases
 
 PG_IMAGE = "docker.io/postgis/postgis:17-3.5"
-GS_IMAGE = "docker.osgeo.org/geoserver:2.28.6"
+GS_IMAGE = images.geoserver_image()      # what the stack deploys by default (the catalog's default channel), not a hand-written tag
 
 
 def podman_ready() -> bool:
@@ -123,9 +124,14 @@ class PostgresBackupRestoreOnPodman(PostgresCases, PodmanStackBase):
         self.assertIn("docker.io/postgis/postgis", images)
 
 
-@unittest.skipUnless(pulled(PG_IMAGE) and pulled(GS_IMAGE), "GISSTACK_TEST_PODMAN=1, podman with a compose provider and the PostGIS + GeoServer images needed")
+@unittest.skipUnless(pulled(PG_IMAGE), "GISSTACK_TEST_PODMAN=1, podman with a compose provider and the PostGIS image needed")
 class GeoServerFilesBackupRestoreOnPodman(GeoServerCases, PodmanStackBase):
     components = {"geoserver": True}
+
+    @classmethod
+    def setUpClass(cls):
+        images.require("podman", GS_IMAGE)                      # outage = failure in CI (GISSTACK_REQUIRE_IMAGES=1), skip on a developer machine
+        super().setUpClass()
 
     def gs_exec(self, args):
         return subprocess.run(["podman", "exec", "-i", self.ctr("geoserver"), *args], capture_output=True, text=True).stdout
