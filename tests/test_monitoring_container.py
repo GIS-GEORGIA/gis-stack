@@ -38,6 +38,13 @@ class StatsTests(unittest.TestCase):
         self.assertEqual(collect.stack_backup_stats([failed, row("20261110T100000Z-aaaa")], NOW)["failed"], 1.0)
         self.assertEqual(collect.stack_backup_stats([row("20261110T130000Z-cccc"), failed, row("20261110T100000Z-aaaa")], NOW)["failed"], 0.0)
 
+    def test_a_failure_in_the_same_second_as_the_newest_good_backup_counts(self):
+        """Found on GitHub: the random id suffix decided the order of two entries made within one second, and the failed attempt sometimes lost."""
+        for suffix in ("0000", "zzzz"):
+            rows = [row("20261110T100000Z-aaaa"), row(f"20261110T100000Z-{suffix}", "failed")]
+            self.assertEqual(collect.stack_backup_stats(rows, NOW)["failed"], 1.0, suffix)
+        self.assertEqual(collect.stack_backup_stats([row("20261110T100001Z-aaaa"), row("20261110T100000Z-zzzz", "failed")], NOW)["failed"], 0.0)   # an earlier second is older
+
     def test_partial_and_damaged_count_pre_restore_backups_do_not_count_as_the_regular_backup(self):
         st = collect.stack_backup_stats([row("20261110T120000Z-pppp", "partial"), row("20261110T110000Z-dddd", "damaged"),
                                          row("pre-20261110T100000Z-eeee", kind="pre-restore")], NOW)
@@ -68,6 +75,8 @@ class NativeBackupTests(unittest.TestCase):
         self.assertEqual((m["count"], m["failed"]), (1, 1))                               # the older failure is behind a good backup
         self.assertAlmostEqual(m["last_age_seconds"], 3600.0, delta=1)
         self.assertEqual(collect.backup_metrics([], NOW), {"count": 0})
+        same = [["backup", c, "complete", "manual", STAMP, "10", "postgres"], ["backup", "20261110T100000Z-0000", "failed", "", "", "0", ""]]
+        self.assertEqual(collect.backup_metrics(same, NOW)["failed"], 1)                    # same second: counted, whatever the random suffix says
         self.assertEqual(collect.backup_metrics([rows[1]], NOW)["failed"], 1)             # only failures: still reported, and no age to hide behind
 
 

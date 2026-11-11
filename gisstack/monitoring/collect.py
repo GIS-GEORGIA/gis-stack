@@ -296,6 +296,12 @@ def probe_metrics(rows: list[list[str]]) -> list[dict[str, Any]]:
     return out
 
 
+def _stamp(backup_id: str) -> str:
+    """The time part of a backup id (`[pre-]YYYYMMDDTHHMMSSZ-xxxx`, second resolution).  The random suffix says nothing about order, so ids are compared by it alone:
+    a failed attempt in the same second as the newest good backup counts as newer (an alert that is one backup too eager beats a failure nobody hears about)."""
+    return backup_id.removeprefix("pre-")[:16]
+
+
 def backup_metrics(rows: list[list[str]], now: float) -> dict[str, Any]:
     """Age of the newest complete manual/scheduled backup and the number of FAILED attempts since it, from `gisstack-backup list` lines
     (`backup <id> <status> <kind> <created> <bytes> <components>`; status complete / partial / failed / damaged)."""
@@ -311,7 +317,7 @@ def backup_metrics(rows: list[list[str]], now: float) -> dict[str, Any]:
             except ValueError:
                 continue
             best = t if best is None or t > best else best
-    failed = sum(1 for r in rows if len(r) >= 3 and r[0] == "backup" and r[2] in ("partial", "failed", "damaged") and (not newest_id or r[1] > newest_id))
+    failed = sum(1 for r in rows if len(r) >= 3 and r[0] == "backup" and r[2] in ("partial", "failed", "damaged") and (not newest_id or _stamp(r[1]) >= _stamp(newest_id)))
     if not count and not failed:
         return {"count": 0}
     return {"count": count, "failed": failed, **({"last_age_seconds": max(0.0, now - best)} if best is not None else {})}
@@ -415,7 +421,7 @@ def stack_backup_stats(store_rows: list[dict[str, Any]], now: float) -> dict[str
     ok = [r for r in store_rows if r.get("status") == "ok" and r.get("kind") in ("manual", "scheduled")]
     out: dict[str, float] = {"count": float(len(ok)), "failed": 0.0}
     newest = ok[0]["id"] if ok else ""
-    out["failed"] = float(sum(1 for r in store_rows if r.get("status") in ("partial", "failed", "damaged") and (not newest or r["id"] > newest)))
+    out["failed"] = float(sum(1 for r in store_rows if r.get("status") in ("partial", "failed", "damaged") and (not newest or _stamp(r["id"]) >= _stamp(newest))))
     for r in ok:
         with contextlib.suppress(ValueError):
             out["last_age_seconds"] = max(0.0, now - (time.mktime(time.strptime(r["created"], "%Y-%m-%dT%H:%M:%SZ")) - time.timezone))
