@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-10: section 0000000 is the newest (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-11: section 00000000 is the newest (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -12,7 +12,42 @@ Statuses (used consistently):
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
 
-## 0000000. Production-readiness audit of `b4213fb` (2026-11-10) - working tree, NOT committed, NOT run on GitHub
+## 00000000. Audit commits and GitHub results (head `ae78b67`, verified from the run logs)
+
+| Commit | Content |
+|---|---|
+| `01dceed` | monitoring: undeliverable alert notifications are kept (outbox) and retried |
+| `315f0e6` | podman: start/stop/restart via the engine; rootless persistence warning |
+| `bb290eb` | backup: ssh host-key errors surface correctly; real tests for `--mode ssh` and Caddy ACME |
+| `808e542` | web: classic `esc()` escapes `'`; packaged-service upgrade test |
+| `ae78b67` | docs, CI: audit results, security review, new CI steps and a kind job |
+
+`main` == `origin/main` == `ae78b67`, nothing unpushed except the commit that records this section.
+
+| Workflow | Run | Result |
+|---|---|---|
+| `tests` (push) | 42885330304 | success |
+| `codeql` (push) | 42885330245 | success |
+| `podman` (dispatched once) | 42886346452 | **success**: rootful and rootless; GeoServer backup test skipped in both (see below); provider-diagnostic test ran and passed in the rootless job, skipped in the rootful job as before; lifecycle, rollback, monitoring ok |
+| `integration` (dispatched, first) | 42886353470 | **failure**: `kubernetes (kind)` only |
+| `integration` (dispatched again with approval, because of the failure) | 42986249439 | **failure**: `kubernetes (kind)` only, same cause |
+
+Result of run 42986249439 (identical shape in 42886353470):
+
+| Job | Result | Tests |
+|---|---|---|
+| gate | success | - |
+| installer ubuntu-22.04 / ubuntu-24.04 / debian-12 / rocky-9 / alma-9 | success (5/5) | native installer and packages ok on all five; on ubuntu-24.04 also the **packaged-service upgrade (v0.1.7 -> tree)** and the **disk-capacity alert**, both ok |
+| compose (real Docker) | success | smoke 1, rollback 1, managers 28 run / **6 skipped** / 0 failed, stack backup 10 run / **1 skipped** / 0 failed, GIS backup 4, **Caddy ACME 1**, **`--mode ssh` 1** - all run ones ok |
+| browser (Playwright) | success | 7 + 1 + 2, ok (includes the strict-CSP test) |
+| kubernetes-gis (kind) | success | **4/4**: Caddy local CA, MapProxy cache, QGIS projects on the PVC, PostgreSQL health + `backup_failed` alert |
+| **kubernetes (kind)** | **failure** | `setUpClass` of `test_k8s_managers`: **0 tests run**; the GeoServer pod stayed in `ImagePullBackOff` for 10 minutes. The next two steps of the job (deploy / failed upgrade / rollback, and PostgreSQL + GeoServer backup/restore on kind) were **skipped as a consequence** |
+
+**Cause and what it means.** The GeoServer image (`docker.osgeo.org/geoserver:2.28.6`) could not be pulled: the registry timed out from this development machine as well (`curl` returned no answer on both days) and was not reachable from the GitHub runners in either run. This is an external registry problem, not a defect found in the code, but it is a **real gap in verification**: on the audited commits the kind managers, kind deploy/rollback and kind PostgreSQL+GeoServer backup tests, the Compose GeoServer manager (6) and GeoServer backup (1) tests, and the Podman GeoServer backup test (2 jobs) **did not run**. They last ran green on `5ea1c29` (integration 42864612991: kubernetes 4 + 1 + 10 tests; compose 28 + 10 with no skips; Podman 11/11 in both jobs). Nothing in the audit commits touches GeoServer code paths, so the risk is low, but it is **not verified** and must not be claimed. Required before a release: one more `integration` and `podman` run when the registry is reachable (or a mirror of the image).
+
+Verified on GitHub by these runs (first time): Caddy ACME backup/restore against Pebble, `--mode ssh` against a real sshd, the deb upgrade test, the disk-capacity alert, the Podman reliability tests (lifecycle, rollback, monitoring) rootful and rootless, and the kind tests for Caddy / MapProxy / QGIS / PostgreSQL monitoring.
+
+## 0000000. Production-readiness audit of `b4213fb` (2026-11-10) - local results; GitHub results are in section 00000000
 
 Baseline (verified): branch `main` == `origin/main` == `b4213fb6c19e634418cc0e61fd328d9e48fdfae1`, clean tree. GitHub: `tests` (run 42867358613) and `codeql` (42867355804) on `b4213fb` green (docs-only commit), `podman` 42864604580 and `integration` 42864612991 on `5ea1c29` green. Details of findings: `docs/SECURITY-REVIEW-2026-11.md`.
 
