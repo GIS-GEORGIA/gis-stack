@@ -377,7 +377,8 @@ class TokenStoreTests(unittest.TestCase):
         self.assertFalse(self.s.revoke(e2["id"]))
         tok3, _ = self.s.create("c", "read")
         head, tid, sec = tok3.split("_", 2)
-        for bad in (f"{head}_{tid}_{sec[:-1]}x", f"{head}_ffffffff_{sec}", f"x_{tid}_{sec}", f"{head}_{tid}_short", "", "gsk_", tok3 + " "):
+        other = "y" if sec[-1] == "x" else "x"                                             # the replacement must differ from the real last character (1 in 64 it did not: flaky)
+        for bad in (f"{head}_{tid}_{sec[:-1]}{other}", f"{head}_ffffffff_{sec}", f"x_{tid}_{sec}", f"{head}_{tid}_short", "", "gsk_", tok3 + " "):
             self.assertIsNone(self.s.verify(bad), bad)
 
     def test_bad_input(self):

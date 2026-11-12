@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-11: section 0000000000 is the newest (GitHub results on `7ffdd83` after the registry recovered, and one new defect); section 000000000 is the GeoServer image investigation; section 00000000 is (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-11: section 00000000000 is the newest (results on `c53b187`); section 0000000000 holds the GitHub results on `7ffdd83` after the registry recovered, and one new defect; section 000000000 is the GeoServer image investigation; section 00000000 is (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -11,6 +11,16 @@ Statuses (used consistently):
 * **BROKEN** - implemented but failing. *Nothing is currently BROKEN.*
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
+
+## 00000000000. Results on `c53b187` (the backup-ordering fix)
+
+| Workflow | Run | Result |
+|---|---|---|
+| `codeql` (push) | on `c53b187` | success |
+| `podman` (dispatched once) | 43008053881 | **success**: rootful backup 11/11 (GeoServer test ran), rootful reliability 4 run / 3 ok / **1 skipped** (provider diagnostic, skipped in the rootful job as before) and `PodmanMonitoring` **ok** (the failure of the previous run is fixed); rootless backup 11/11, reliability 4/4; `podman stats` returned **1 row** per job |
+| `tests` (push) | 43007176371 | **failure in one job: `tests (Python 3.13)`**; 3.9, 3.10, 3.11, 3.12, lint/types, security, build and validation jobs succeeded |
+
+The `tests` failure is **not** caused by the fix: `tests/test_api.py::TokenStoreTests::test_expiry_revocation_and_tampering` "tampered" a token by replacing the last character of its secret with `x`; when the real last character already was `x` (1 in 64) the "tampered" token was the genuine one and verified. The failing run shows `...AVeacFx`. A pre-existing flaky test, found by luck of the random token; fixed in the working tree (the replacement now always differs from the real character; ran 3 times, ok) - **uncommitted, not yet run on GitHub**. Until it is pushed, `tests` on `c53b187` stays red for that reason, and one random run in 64 of the old test would fail again.
 
 ## 0000000000. GitHub results on `7ffdd83` (registry recovered) - verified from the run logs
 
