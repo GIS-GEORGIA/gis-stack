@@ -87,6 +87,13 @@ class PodmanStackBase(unittest.TestCase):
                 cname = name.split()[0]
                 logs = subprocess.run(["podman", "logs", "--tail", "25", cname], capture_output=True, text=True)
                 out += f"--- logs {cname}\n{(logs.stdout + logs.stderr)[-1800:]}\n"
+                for title, cmd in (("health", ["podman", "inspect", "--format", "{{json .State.Health}}", cname]),                     # the output of the failing health checks
+                                   ("state", ["podman", "inspect", "--format", "{{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}} log={{.HostConfig.LogConfig.Type}}", cname]),
+                                   ("processes", ["podman", "top", cname, "user", "pid", "args"]),
+                                   ("pg_isready", ["podman", "exec", cname, "pg_isready", "-h", "127.0.0.1"]),
+                                   ("journal", ["journalctl", "-n", "30", "--no-pager", f"CONTAINER_NAME={cname}"])):
+                    r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                    out += f"--- {title} {cname}\n{(r.stdout + r.stderr)[-1500:]}\n"
         return out
 
     @classmethod
