@@ -71,7 +71,7 @@ class DebUpgradeTests(unittest.TestCase):
         with sysd.Box("ubuntu-24.04") as box:
             box.put(self.old, "/root/old.deb")
             box.put(self.new, "/root/new.deb")
-            box.sh("apt-get update -qq && apt-get install -y -qq /root/old.deb >/dev/null", timeout=900)
+            box.sh("apt-get update -qq && apt-get install -y -qq /root/old.deb python3-waitress >/dev/null", timeout=900)       # waitress is a Recommends: `dpkg -i` of the new package would not pull it
             self.assertIn(self.old_version, box.sh("gisstack --version").stdout)
             box.sh("systemctl start gisstack-web")
             self.assertGreater(self.wait_http(box), 0)
@@ -81,7 +81,7 @@ class DebUpgradeTests(unittest.TestCase):
             # state a real installation has: settings, a saved project, a generated secret
             box.sh(f"GISSTACK_HOME={HOME} gisstack settings --lang en >/dev/null 2>&1 || true")
             box.sh(f"GISSTACK_HOME={HOME} gisstack generate -o /tmp/gen >/dev/null && mkdir -p {HOME}/secrets && umask 077 && echo sekret-marker > {HOME}/secrets/demo.json")
-            before = box.sh(f"cd {HOME} && find . -type f -printf '%P %m\\n' | sort").stdout
+            before_other = box.sh(f"cd {HOME} && find . -type f -not -name web.token -printf '%P %m\\n' | sort").stdout.splitlines()
 
             # --- failure: a truncated package must not damage the working installation
             box.sh("head -c 3000 /root/new.deb > /root/broken.deb")
@@ -90,44 +90,55 @@ class DebUpgradeTests(unittest.TestCase):
             self.assertIn(self.old_version, box.sh("gisstack --version").stdout)                       # old version still installed and runnable
             self.assertTrue(self.api_ok(box, token), "the running service must survive a failed upgrade")
 
-            # --- upgrade
-            box.sh("apt-get install -y -qq /root/new.deb >/dev/null 2>&1 || dpkg -i /root/new.deb >/dev/null", timeout=900)
+            # --- upgrade (the old root service is RUNNING with the old token in memory)
+            old_journal = box.sh("journalctl -u gisstack-web --no-pager", check=False).stdout
+            self.assertIn(token, old_journal, "premise: the previous release printed its token to the journal")
+            t0 = box.sh("date '+%Y-%m-%d %H:%M:%S'").stdout.strip()
+            time.sleep(1)
+            up = box.sh("dpkg -i /root/new.deb 2>&1", timeout=900)
+            self.assertNotIn(token, up.stdout + up.stderr, "the package scripts must never print a token")
             new_version = re.search(r'__version__ = "([^"]+)"', (ROOT / "gisstack" / "__init__.py").read_text()).group(1)
             self.assertIn(new_version, box.sh("gisstack --version").stdout)
             self.assertEqual(box.sh("systemctl cat gisstack-web-root.service >/dev/null && echo yes").stdout.strip(), "yes")      # the opt-in root unit arrives with the upgrade
             self.assertEqual(box.sh(f"cat {HOME}/secrets/demo.json").stdout.strip(), "sekret-marker")                           # data untouched by the package step
-            old_journal = box.sh("journalctl -u gisstack-web --no-pager", check=False).stdout
-            self.assertIn(token, old_journal, "premise: the previous release printed its token to the journal")          # FINDING: it stays valid after the upgrade (see docs)
-            t0 = box.sh("date '+%Y-%m-%d %H:%M:%S'").stdout.strip()
-            time.sleep(1)
-            box.sh("systemctl daemon-reload; systemctl restart gisstack-web")
+            self.assertTrue(box.sh("test -x /usr/lib/gisstack/rotate-token-on-upgrade.sh && echo yes").stdout.strip() == "yes")
+
+            # S-1: the package replaced the token BY ITSELF and restarted the service - no manual step
             self.assertGreater(self.wait_http(box), 0, box.sh("journalctl -u gisstack-web --no-pager | tail -20", check=False).stdout)
             self.assertNotEqual(self.uid_of_service(box), "0", "after the upgrade the service must not run as root")
-            self.assertEqual(box.sh(f"cat {HOME}/web.token").stdout.strip(), token)                                              # same token: existing clients keep working
-            self.assertTrue(self.api_ok(box, token))
-            after = box.sh(f"cd {HOME} && find . -type f -printf '%P %m\\n' | sort").stdout
-            self.assertEqual(sorted(set(before.splitlines()) - set(after.splitlines())), [], "files lost or changed mode in the upgrade")
-            self.assertEqual(box.sh(f"stat -L -c %a {HOME}").stdout.strip(), "700")
-            owner = box.sh(f"stat -c %U {HOME}/web.token").stdout.strip()
-            self.assertNotEqual(owner, "root", "the state must belong to the unprivileged service user after the first start")
-            journal = box.sh(f"journalctl -u gisstack-web --no-pager --since '{t0}'", check=False).stdout
-            self.assertIn("waitress production server", journal)
-            self.assertNotIn(token, journal)                                                                                     # the new release never prints it
-
-            # --- the documented token rotation after the upgrade (docs/USAGE.md, section 10): the old token (printed to the journal by <= 0.1.7) must stop working
-            box.sh("systemctl stop gisstack-web")
-            # NOT `gisstack web --rotate-token` as root: that leaves a root-owned token the unprivileged service cannot read (found by this test) - the service creates a new one itself
-            box.sh(f"rm -f {HOME}/web.token")
-            box.sh("systemctl start gisstack-web")
-            self.assertGreater(self.wait_http(box), 0, box.sh("journalctl -u gisstack-web --no-pager | tail -20", check=False).stdout)
+            self.assertFalse(self.api_ok(box, token), "the old token (readable in the old journal) must be rejected after the upgrade, also by the running service")
             rotated = box.sh(f"cat {HOME}/web.token").stdout.strip()
-            self.assertEqual(box.sh(f"stat -c %a {HOME}/web.token").stdout.strip(), "600")
-            self.assertNotEqual(box.sh(f"stat -c %U {HOME}/web.token").stdout.strip(), "root")
-            self.assertNotEqual(rotated, token, "the token must change")
-            self.assertFalse(self.api_ok(box, token), "the old token (readable in the old journal) must no longer work")
+            self.assertNotEqual(rotated, token)
             self.assertTrue(self.api_ok(box, rotated))
-            self.assertNotEqual(self.uid_of_service(box), "0")
-            token = rotated
+            self.assertEqual(box.sh(f"stat -c %a {HOME}/web.token").stdout.strip(), "600")
+            self.assertNotEqual(box.sh(f"stat -c %U {HOME}/web.token").stdout.strip(), "root", "the new token belongs to the service user")
+            self.assertEqual(box.sh("test -e /etc/gisstack-installer/token-protected && echo yes").stdout.strip(), "yes")
+            after = box.sh(f"cd {HOME} && find . -type f -not -name web.token -printf '%P %m\\n' | sort").stdout
+            self.assertEqual(sorted(set(before_other) - set(after.splitlines())), [], "files lost or changed mode in the upgrade")
+            self.assertEqual(box.sh(f"stat -L -c %a {HOME}").stdout.strip(), "700")
+            journal = box.sh(f"journalctl -u gisstack-web --no-pager --since '{t0}'", check=False).stdout
+            self.assertIn("waitress production server", journal, journal[-1800:])
+            self.assertNotIn(rotated, journal)                                                                                   # the new release never prints it
+            self.assertNotIn(token, journal)
+
+            # no rotation on ordinary restarts, nor when the same package is installed again (later upgrades)
+            box.sh("systemctl restart gisstack-web")
+            self.assertGreater(self.wait_http(box), 0)
+            self.assertEqual(box.sh(f"cat {HOME}/web.token").stdout.strip(), rotated, "a restart must not rotate the token")
+            box.sh("dpkg -i /root/new.deb >/dev/null 2>&1", timeout=300)
+            self.assertGreater(self.wait_http(box), 0)
+            self.assertEqual(box.sh(f"cat {HOME}/web.token").stdout.strip(), rotated, "a later upgrade must not rotate it again")
+            self.assertTrue(self.api_ok(box, rotated))
+
+            # the documented manual recovery path still works (docs/USAGE.md): delete the token, restart
+            box.sh(f"systemctl stop gisstack-web; rm -f {HOME}/web.token; systemctl start gisstack-web")
+            self.assertGreater(self.wait_http(box), 0)
+            manual = box.sh(f"cat {HOME}/web.token").stdout.strip()
+            self.assertNotEqual(manual, rotated)
+            self.assertFalse(self.api_ok(box, rotated))
+            self.assertTrue(self.api_ok(box, manual))
+            self.assertEqual(box.sh(f"stat -c %a {HOME}/web.token").stdout.strip(), "600")
+            token = manual
 
             # --- rollback: install the previous package again; the old root service reads the same state
             box.sh("systemctl stop gisstack-web; dpkg -i /root/old.deb >/dev/null", timeout=300)
@@ -137,6 +148,24 @@ class DebUpgradeTests(unittest.TestCase):
             self.assertEqual(self.uid_of_service(box), "0")
             self.assertEqual(box.sh(f"cat {HOME}/web.token").stdout.strip(), token)
             self.assertTrue(self.api_ok(box, token))
+
+    def test_fresh_install_keeps_its_token_across_restarts_and_reinstalls(self):
+        """The rotation is for upgrades over an exposed token only: a fresh installation's token is never replaced."""
+        with sysd.Box("ubuntu-24.04") as box:
+            box.put(self.new, "/root/new.deb")
+            box.sh("apt-get update -qq && apt-get install -y -qq /root/new.deb >/dev/null", timeout=900)
+            self.assertEqual(box.sh("test -e /etc/gisstack-installer/token-protected && echo yes").stdout.strip(), "yes")
+            box.sh("systemctl start gisstack-web")
+            self.assertGreater(self.wait_http(box), 0)
+            token = box.sh(f"cat {HOME}/web.token").stdout.strip()
+            self.assertGreaterEqual(len(token), 20)
+            self.assertEqual(box.sh(f"stat -c %a {HOME}/web.token").stdout.strip(), "600")
+            self.assertNotEqual(self.uid_of_service(box), "0")
+            for step in ("systemctl restart gisstack-web", "dpkg -i /root/new.deb >/dev/null 2>&1; systemctl try-restart gisstack-web"):
+                box.sh(step, timeout=300)
+                self.assertGreater(self.wait_http(box), 0)
+                self.assertEqual(box.sh(f"cat {HOME}/web.token").stdout.strip(), token)
+                self.assertTrue(self.api_ok(box, token))
 
 
 if __name__ == "__main__":

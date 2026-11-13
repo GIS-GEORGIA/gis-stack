@@ -21,9 +21,11 @@ find "$STAGE" -name '__pycache__' -type d -prune -exec rm -rf {} +   # keep the 
 install -m 755 packaging/gisstack.sh "$STAGE/usr/bin/gisstack"
 install -m 644 packaging/gisstack-web.service "$STAGE/lib/systemd/system/gisstack-web.service"
 install -m 644 packaging/gisstack-web-root.service "$STAGE/lib/systemd/system/gisstack-web-root.service"
+install -m 755 packaging/rotate-token-on-upgrade.sh "$STAGE/usr/lib/gisstack/rotate-token-on-upgrade.sh"
 install -m 644 README.md "$STAGE/usr/share/doc/gisstack-installer/README.md"
 find "$STAGE" -type d -exec chmod 755 {} +
 find "$STAGE/usr/lib/gisstack" -type f -exec chmod 644 {} +
+chmod 755 "$STAGE/usr/lib/gisstack/rotate-token-on-upgrade.sh"      # after the blanket chmod: the post-install step tests -x
 
 build_deb() {
   command -v dpkg-deb >/dev/null || { echo "dpkg-deb not found, skipping deb" >&2; return 1; }
@@ -47,14 +49,7 @@ Description: One-click GIS server stack installer
  Deploys natively (apt/dnf), with Docker/Podman Compose or on Kubernetes, from a web
  GUI, a desktop GUI or the command line.
 EOF
-  cat > "$D/DEBIAN/postinst" <<'EOF'
-#!/bin/sh
-set -e
-command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
-echo "gisstack installed. Start the web GUI:  gisstack web    (or the unprivileged service: systemctl enable --now gisstack-web; installing on THIS machine from the GUI needs gisstack-web-root)"
-exit 0
-EOF
-  chmod 755 "$D/DEBIAN/postinst"
+  install -m 755 packaging/postinstall.sh "$D/DEBIAN/postinst"
   dpkg-deb --root-owner-group --build "$D" "$DIST/gisstack-installer_${VERSION}_all.deb" >/dev/null
   echo "built $DIST/gisstack-installer_${VERSION}_all.deb"
 }

@@ -35,6 +35,7 @@ cp -a usr lib %{buildroot}/
 
 %post
 systemctl daemon-reload >/dev/null 2>&1 || :
+[ -x /usr/lib/gisstack/rotate-token-on-upgrade.sh ] && /usr/lib/gisstack/rotate-token-on-upgrade.sh || :
 echo "gisstack installed. Start the web GUI:  gisstack web   (or the unprivileged service: systemctl enable --now gisstack-web; installing on THIS machine from the GUI needs gisstack-web-root)"
 
 %files
