@@ -34,6 +34,28 @@ jobs:
         env:
           GISSTACK_IMAGE_PULL_BACKOFF: "20"
         run: sudo -E env "PATH=$PATH" python -m tests.integration.images --engine podman "$(python -c 'from tests.integration import images; print(images.geoserver_image())')"
+      - name: "Hardening bisect, as root (diagnostic only - which restriction stops PostGIS here?)"
+        continue-on-error: true
+        run: |
+          sudo podman pull -q docker.io/postgis/postgis:17-3.5 >/dev/null
+          sudo sh -c 'echo "kernel: $(uname -r)  apparmor: $(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)  selinux: $(cat /sys/fs/selinux/enforce 2>/dev/null)"; aa-status 2>/dev/null | head -3 || true'
+          CAPS="--cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER --cap-add SETGID --cap-add SETUID"
+          NNP="--security-opt no-new-privileges"
+          try() {
+            name="$1"; shift
+            sudo podman rm -f gsbis >/dev/null 2>&1
+            sudo podman run -d --name gsbis -e POSTGRES_PASSWORD=x "$@" docker.io/postgis/postgis:17-3.5 >/dev/null 2>&1 || { echo "$name: could not start"; return; }
+            ok=no; for i in $(seq 1 25); do sleep 2; sudo podman exec gsbis pg_isready -h 127.0.0.1 >/dev/null 2>&1 && { ok=yes; break; }; done
+            echo "== $name: pg_ready=$ok"; [ "$ok" = yes ] || { sudo podman top gsbis user pid args 2>&1 | head -4; sudo podman logs --tail 5 gsbis 2>&1 | head -8; }
+          }
+          try baseline
+          try "no-new-privileges only" $NNP
+          try "caps only (drop ALL + 5 adds)" $CAPS
+          try "no-new-privileges + caps (what gis-stack generates)" $NNP $CAPS
+          try "caps + SETPCAP" $CAPS --cap-add SETPCAP
+          try "nnp + caps + apparmor=unconfined" $NNP $CAPS --security-opt apparmor=unconfined
+          try "nnp + caps + seccomp=unconfined" $NNP $CAPS --security-opt seccomp=unconfined
+          sudo podman rm -f gsbis >/dev/null 2>&1 || true
       - name: Backup / restore cases on Podman (as root)
         env:
           GISSTACK_TEST_PODMAN: "1"
