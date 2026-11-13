@@ -4,7 +4,6 @@ import errno
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from unittest import mock
 
 from gisstack import journal
@@ -36,7 +35,7 @@ class UnwritableJournal(unittest.TestCase):
     def test_the_operations_own_error_is_not_replaced_by_the_journal_error(self):
         with self.assertRaises(ZeroDivisionError):
             with journal.Operation("deploy", project="p"):
-                1 / 0
+                raise ZeroDivisionError("the operation's own error")
 
     def test_a_working_journal_still_records(self):
         mock.patch.stopall()
