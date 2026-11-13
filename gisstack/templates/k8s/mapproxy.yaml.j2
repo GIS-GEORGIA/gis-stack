@@ -40,8 +40,10 @@ spec:
       labels:
         app: mapproxy
     spec:
+{{ khard_pod }}
       containers:
         - name: mapproxy
+{{ khard.mapproxy }}
 {% if k8s.mapproxy_image %}
           image: {{ k8s.mapproxy_image | yq }}
           command: ["gunicorn", "--chdir", "/etc/mapproxy", "--workers", "{{ mp.workers }}", "--timeout", "120", "--bind", "0.0.0.0:8081", "app:application"]

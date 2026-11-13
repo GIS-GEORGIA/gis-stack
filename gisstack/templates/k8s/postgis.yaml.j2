@@ -27,8 +27,10 @@ spec:
       labels:
         app: postgis
     spec:
+{{ khard_pod }}
       containers:
         - name: postgis
+{{ khard.postgis }}
           image: {{ (k8s.postgis_image or ('postgis/postgis:' ~ pg_image_tag)) | yq }}
           args:
             - postgres

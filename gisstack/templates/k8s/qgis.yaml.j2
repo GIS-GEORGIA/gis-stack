@@ -42,8 +42,10 @@ spec:
       labels:
         app: qgis
     spec:
+{{ khard_pod }}
       containers:
         - name: qgis
+{{ khard.qgis }}
           image: camptocamp/qgis-server:latest   # pin a release tag for production
           env:
             - name: QGIS_SERVER_LOG_LEVEL

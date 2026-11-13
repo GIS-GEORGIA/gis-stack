@@ -183,10 +183,22 @@ def _layer(v: Any) -> tuple[Any, str | None]:
     return out, None
 
 
+def _bind(v: Any) -> tuple[Any, str | None]:
+    if not isinstance(v, str) or _CTRL.search(v) or len(v) > 45:
+        return v, "must be an IP address such as 127.0.0.1 (this machine only) or 0.0.0.0 (every interface)"
+    try:
+        ipaddress.ip_address(v)
+    except ValueError:
+        return v, "must be an IP address such as 127.0.0.1 (this machine only) or 0.0.0.0 (every interface)"
+    return v, None
+
+
 def schema(basemaps: list[str]) -> dict[str, Check]:
     t = _text
     return {
         "email": lambda v: (v, None) if v == "" else t(254, _EMAIL)(v),
+        "network.bind": _bind,
+        "security.harden_containers": _bool,
         "postgres.ram_gb": _int(1, 4096), "postgres.max_connections": _int(20, 10000),
         "postgres.remote_access": _bool, "postgres.allowed_cidr": _cidr, "postgres.port": _int(1, 65535),
         "tomcat.heap_mb": _int(128, 262144), "tomcat.port": _int(1, 65535),

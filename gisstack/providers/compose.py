@@ -29,6 +29,7 @@ def _project_filter(cfg: dict[str, Any]) -> str:
 
 def status_script(cfg: dict[str, Any], checks: list[dict[str, Any]]) -> str:
     rt, p = runtime(cfg), cfg["project"]
+    prelude = common.public_port_prelude(rt, _project_filter(cfg), cfg.get("tls", "internal") != "none")     # Caddy's real host port, for the public probes (S-3)
     if rt == "podman":
         # `podman compose ps` is whatever compose provider is installed: podman-compose rejects `-a` and prints no JSON.  The engine itself answers the same
         # question with every provider (both set the com.docker.compose.* labels), so ask it.
@@ -37,12 +38,12 @@ def status_script(cfg: dict[str, Any], checks: list[dict[str, Any]]) -> str:
                 "echo '@@inspect'\n"
                 f"for id in $(podman ps -a -q {flt} 2>/dev/null); do "
                 "podman inspect -f '{{.Config.Labels}}|{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' $id 2>/dev/null; done\n"
-                + common.probe_script(checks))
+                + prelude + common.probe_script(checks))
     return (f"{rt} compose -p {p} ps -a --format json 2>&1\n"
             "echo '@@inspect'\n"
             f"for id in $({rt} compose -p {p} ps -a -q 2>/dev/null); do "
             f"{rt} inspect -f '{{{{.Config.Labels}}}}|{{{{range .NetworkSettings.Networks}}}}{{{{.IPAddress}}}} {{{{end}}}}' $id 2>/dev/null; done\n"
-            + common.probe_script(checks))
+            + prelude + common.probe_script(checks))
 
 
 def _json_items(text: str) -> list[dict[str, Any]]:

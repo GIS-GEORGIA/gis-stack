@@ -25,6 +25,7 @@ services:
     image: {{ reg }}postgis/postgis:{{ pg_image_tag }}
 {% endif %}
     restart: unless-stopped
+{{ hard.postgis }}
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -61,6 +62,7 @@ services:
   geoserver:
     image: {{ gs.image | yq }}
     restart: unless-stopped
+{{ hard.geoserver }}
 {% if c.postgis %}
     depends_on:
       postgis:
@@ -81,7 +83,7 @@ services:
       - geoserver_data:/opt/geoserver_data
 {% if not c.caddy %}
     ports:
-      - "8080:8080"
+      - "{{ bind }}:8080:8080"
 {% endif %}
 {% endif %}
 {% if c.tomcat %}
@@ -89,13 +91,14 @@ services:
   tomcat:
     image: {{ reg }}tomcat:{{ '11.0' if tomcat.major == '11' else ('10.1' if tomcat.major == '10.1' else '9.0') }}-jre{{ gs.java }}
     restart: unless-stopped
+{{ hard.tomcat }}
     environment:
       CATALINA_OPTS: "-Xms256m -Xmx{{ tomcat.heap_mb }}m -Djava.awt.headless=true"
     volumes:
       - ./tomcat/webapps:/usr/local/tomcat/webapps{{ Z and (':' ~ Z[1:]) }}
 {% if not c.caddy %}
     ports:
-      - "8081:8080"
+      - "{{ bind }}:8081:8080"
 {% endif %}
 {% endif %}
 {% if c.qgis_server %}
@@ -103,6 +106,7 @@ services:
   qgis:
     image: {{ reg }}camptocamp/qgis-server:latest   # change the tag to pin a QGIS release
     restart: unless-stopped
+{{ hard.qgis }}
     environment:
       QGIS_SERVER_LOG_LEVEL: "1"
       QGIS_SERVER_PARALLEL_RENDERING: "true"
@@ -110,7 +114,7 @@ services:
       - ./qgis/projects:/etc/qgisserver:ro{{ Z }}
 {% if not c.caddy %}
     ports:
-      - "8380:80"
+      - "{{ bind }}:8380:80"
 {% endif %}
 {% endif %}
 {% if c.mapproxy %}
@@ -119,13 +123,14 @@ services:
     build: ./mapproxy
     image: {{ project }}-mapproxy:latest
     restart: unless-stopped
+{{ hard.mapproxy }}
     command: ["gunicorn", "--chdir", "/etc/mapproxy", "--workers", "{{ mp.workers }}", "--timeout", "120", "--bind", "0.0.0.0:8081", "app:application"]
     volumes:
       - ./mapproxy:/etc/mapproxy:ro{{ Z }}
       - mapproxy_cache:/var/lib/mapproxy
 {% if not c.caddy %}
     ports:
-      - "8081:8081"
+      - "{{ bind }}:8081:8081"
 {% endif %}
 {% endif %}
 {% if c.caddy %}
@@ -133,6 +138,7 @@ services:
   caddy:
     image: {{ reg }}caddy:2
     restart: unless-stopped
+{{ hard.caddy }}
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"

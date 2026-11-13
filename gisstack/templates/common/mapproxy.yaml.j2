@@ -44,8 +44,9 @@ caches:
       type: file
 {% endif %}
 {% for l in mp.layers %}
+{# a tile source is a fixed Web Mercator grid: MapProxy cannot reproject it (SRS mismatch -> HTTP 500 on every tile) #}
   {{ l.name }}_cache:
-    grids: {{ mp.grids | tojson_c }}
+    grids: {{ ((['GLOBAL_WEBMERCATOR']) if l.source == 'tiles' else mp.grids) | tojson_c }}
     sources: [{{ l.name }}_src]
 {% if mp.format == 'mixed' %}
     format: mixed

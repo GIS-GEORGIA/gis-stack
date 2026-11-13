@@ -44,9 +44,11 @@ spec:
       labels:
         app: caddy
     spec:
+{{ khard_pod }}
 {% if c.webmap %}
       initContainers:
         - name: unpack-webmap
+{{ khard.init }}
           image: busybox:1.36
           command: ["sh", "-c", "tar xzf /src/webmap.tgz -C /srv/webmap"]
           volumeMounts:
@@ -57,6 +59,7 @@ spec:
 {% endif %}
       containers:
         - name: caddy
+{{ khard.caddy }}
           image: caddy:2
           ports:
             - containerPort: 80

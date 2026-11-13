@@ -13,7 +13,7 @@ from typing import Any, Iterable
 
 import jinja2
 
-from . import __version__, catalog, fsutil, pins, podman_guard
+from . import __version__, catalog, fsutil, hardening, pins, podman_guard
 
 PKG_DIR = Path(__file__).resolve().parent
 TEMPLATE_DIR = PKG_DIR / "templates"
@@ -161,6 +161,10 @@ def build_context(cfg: dict[str, Any], target: str) -> dict[str, Any]:
         "mp": cfg["mapproxy"],
         "wm": wm,
         "k8s": cfg["k8s"],
+        "hard": {svc: hardening.compose_snippet(svc, bool(cfg["security"]["harden_containers"])) for svc in hardening.CAPS},
+        "khard": {svc: hardening.k8s_container_snippet(svc, bool(cfg["security"]["harden_containers"])) for svc in hardening.CAPS},
+        "khard_pod": hardening.k8s_pod_snippet(bool(cfg["security"]["harden_containers"])),
+        "bind": f"[{cfg['network']['bind']}]" if ":" in cfg["network"]["bind"] else cfg["network"]["bind"],       # IPv6 needs brackets in a port mapping
         "target": target,
         "up": up,
         "public": public,

@@ -74,8 +74,13 @@ def checks(cfg: dict[str, Any], target: str, ids: list[str]) -> list[dict[str, A
     if edge:
         for comp in ids:
             if comp in PUBLIC_PATH:
-                out.append({"comp": comp, "label": "public", "kind": "alive" if comp == "qgis_server" else "http",
-                            "url": base + PUBLIC_PATH[comp], "resolve": f"{domain}:{port}:127.0.0.1"})
+                if target == "compose":
+                    # Compose: the host port of Caddy is whatever `.env` (HTTP_PORT / HTTPS_PORT) published - ask the engine, do not assume 80/443 (S-3)
+                    url = f"{base}:@PORT@{PUBLIC_PATH[comp]}"
+                    resolve = f"{domain}:@PORT@:127.0.0.1"
+                else:
+                    url, resolve = base + PUBLIC_PATH[comp], f"{domain}:{port}:127.0.0.1"
+                out.append({"comp": comp, "label": "public", "kind": "alive" if comp == "qgis_server" else "http", "url": url, "resolve": resolve})
     return out
 
 
@@ -91,6 +96,17 @@ def check_ok(kind: str, code: str) -> bool:
     return 200 <= n < 400
 
 
+def public_port_prelude(runtime: str, project_filter: str, tls: bool) -> str:
+    """Shell lines that set GS_PUBLIC_PORT to the host port the running Caddy container really publishes (443/tcp, or 80/tcp without TLS); standard port when
+    it cannot be read.  `project_filter` is the `--filter label=com.docker.compose.project=...` argument."""
+    inner = "443/tcp" if tls else "80/tcp"
+    std = 443 if tls else 80
+    return (f'GS_CADDY="$({runtime} ps -q {project_filter} --filter label=com.docker.compose.service=caddy 2>/dev/null | head -n1)"\n'
+            f'GS_PUBLIC_PORT=""\n'
+            f'[ -z "$GS_CADDY" ] || GS_PUBLIC_PORT="$({runtime} port "$GS_CADDY" {inner} 2>/dev/null | head -n1 | sed \'s/.*://\')"\n'
+            f'case "$GS_PUBLIC_PORT" in ""|*[!0-9]*) GS_PUBLIC_PORT={std} ;; esac\n')
+
+
 def probe_script(checks: list[dict[str, Any]]) -> str:
     lines = [
         "http() { echo \"@@http $1 $(curl -sk -m 5 -o /dev/null -w '%{http_code}' \"${@:2}\" 2>/dev/null)\"; }",
@@ -100,8 +116,12 @@ def probe_script(checks: list[dict[str, Any]]) -> str:
         if c["kind"] == "tcp":
             lines.append(f"tcp {i} {int(c['port'])}")
         else:
-            res = f"--resolve {c['resolve']} " if c.get("resolve") else ""
-            lines.append(f"http {i} {res}'{c['url']}'")
+            if "@PORT@" in c["url"] or "@PORT@" in (c.get("resolve") or ""):         # ports read from the engine: variable expansion, so double quotes (domain / path are validated)
+                res = f'--resolve "{c["resolve"].replace("@PORT@", "${GS_PUBLIC_PORT}")}" ' if c.get("resolve") else ""
+                lines.append(f'http {i} {res}"{c["url"].replace("@PORT@", "${GS_PUBLIC_PORT}")}"')
+            else:
+                res = f"--resolve {c['resolve']} " if c.get("resolve") else ""
+                lines.append(f"http {i} {res}'{c['url']}'")
     return "\n".join(lines) + "\n"
 
 

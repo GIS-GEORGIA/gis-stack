@@ -79,7 +79,7 @@ class K8sGis(unittest.TestCase):
 
 @unittest.skipUnless(cluster_ready(), "GISSTACK_TEST_K8S=1 and a reachable Kubernetes cluster (kubectl) needed")
 class CaddyOnKubernetes(K8sGis):
-    components = {"caddy": True}
+    components = {"caddy": True, "webmap": True}                                      # webmap: also exercises the hardened (all capabilities dropped) init container
     workloads = ("deployment/caddy",)
     ROOT = "/data/caddy/pki/authorities/local/root.crt"
 

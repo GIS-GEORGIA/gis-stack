@@ -21,11 +21,17 @@ def _secrets_path(project: str) -> Path:
     return paths.secrets_file(project)
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 # from_version -> function(raw config) -> raw config of the next version.  Add an entry whenever a key is renamed, moved or
 # changes meaning; old files keep working and new files are refused by older programs instead of being misread.
 MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     0: lambda raw: raw,          # v0 = files written before schema_version existed; same layout
+    # v1 -> v2: `network.bind` (the host address of the ports published WITHOUT Caddy) was introduced; before it those ports were published on ALL
+    # interfaces.  An existing configuration keeps exactly that, now written down explicitly, so a regenerated bundle never changes silently; a new
+    # configuration defaults to loopback (127.0.0.1).
+    # Only a file that says `schema_version: 1` was written by gisstack (saved project, GUI): a file without schema_version is a hand-written minimal
+    # configuration and gets the new, safe default.
+    1: lambda raw: {**raw, "network": {"bind": "0.0.0.0"}} if raw.get("_schema_origin") == 1 and "network" not in raw else raw,  # noqa: S104 - old behaviour, explicit  # nosec B104 - a string compared / written, nothing is bound here
 }
 
 
@@ -38,10 +44,12 @@ def migrate(raw: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
         raise ConfigError(f"schema_version {ver} > {SCHEMA_VERSION}: კონფიგურაცია უფრო ახალი gisstack-ისთვისაა, განაახლე პროგრამა")
     notes: list[str] = []
     cur, start = dict(raw), ver
+    cur["_schema_origin"] = start                      # lets a migration tell "written by gisstack as v1" from "migrated through v1 from v0"
     while ver < SCHEMA_VERSION:
         cur = dict(MIGRATIONS[ver](cur))
         ver += 1
         cur["schema_version"] = ver
+    cur.pop("_schema_origin", None)
     if start and start < SCHEMA_VERSION:
         notes.append(f"schema_version {start} -> {SCHEMA_VERSION}: კონფიგურაცია განახლდა")
     cur["schema_version"] = SCHEMA_VERSION
@@ -71,6 +79,8 @@ def default_config() -> dict[str, Any]:
         "runtime": "docker",  # docker | podman
         "components": {c["id"]: c["default"] for c in catalog.COMPONENTS},
         "tls": "internal",
+        "security": {"harden_containers": True},   # drop all capabilities / no privilege gain for the generated containers (gisstack/hardening.py); false = off
+        "network": {"bind": "127.0.0.1"},   # host address of the ports published when Caddy is off (GeoServer, MapProxy, QGIS, Tomcat); 0.0.0.0 = every interface
         "postgres": {
             "version": "17",
             "db": "gis",
@@ -240,6 +250,9 @@ def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,
     meta_warnings: list[str] = list(v_warnings) + migration_notes
     if not comps["caddy"] and any(comps[c] for c in ("geoserver", "mapproxy", "webmap", "qgis_server")):
         meta_warnings.append("Caddy გამორთულია: სერვისები პირდაპირ პორტებზე იქნება ხელმისაწვდომი")
+        if cfg["network"]["bind"] in ("0.0.0.0", "::"):  # noqa: S104 - a warning about it  # nosec B104 - a string compared / written, nothing is bound here
+            meta_warnings.append("network.bind = 0.0.0.0: სერვისები ყველა ქსელის ინტერფეისზეა გამოქვეყნებული (Docker გვერდს უვლის firewall-ს). "
+                                 "ადგილობრივი წვდომისთვის დააყენე network.bind = 127.0.0.1")
     if comps["geoserver"] and comps["tomcat"] and "native" not in cfg["targets"]:
         meta_warnings.append(
             "Compose/K8s-ში GeoServer თავის image-შია (Tomcat-ით); "
@@ -250,6 +263,11 @@ def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,
             "(compose/postgis/Dockerfile) და k8s.postgis_image-ის მითითებას.")
 
     mp = cfg["mapproxy"]
+    if comps["mapproxy"]:
+        if "GLOBAL_GEODETIC" in mp["grids"]:
+            meta_warnings.append("MapProxy: GLOBAL_GEODETIC (EPSG:4326) WMTS-ით ვერ მოემსახურება (MapProxy-ის შეზღუდვა: მხოლოდ TMS/WMS); ვებ რუკა WMTS REST-ს იყენებს")
+        if any(l.get("source") == "tiles" for l in mp["layers"]) and set(mp["grids"]) - {"GLOBAL_WEBMERCATOR"}:
+            meta_warnings.append("MapProxy: „tiles“ წყაროს ფენა მხოლოდ GLOBAL_WEBMERCATOR-ში მოემსახურება (მზა ფილების გადაპროექცია შეუძლებელია); სხვა ბადეებისთვის გამოიყენე WMS წყარო")
     known_grids = {g["id"] for g in catalog.GRIDS}
     if any(g not in known_grids for g in mp["grids"]):
         errors.append("mapproxy.grids: უცნობი grid")

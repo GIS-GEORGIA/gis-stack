@@ -40,8 +40,10 @@ spec:
       labels:
         app: geoserver
     spec:
+{{ khard_pod }}
       containers:
         - name: geoserver
+{{ khard.geoserver }}
           image: {{ gs.image | yq }}
           env:
             - name: GEOSERVER_ADMIN_USER
