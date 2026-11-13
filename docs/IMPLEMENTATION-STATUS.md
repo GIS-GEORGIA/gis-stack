@@ -12,6 +12,15 @@ Statuses (used consistently):
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
 
+## 000000000000000. GitHub results on `e397a9e` (PostgreSQL no-new-privileges fix) - verified from the run logs
+
+Each workflow dispatched once on `e397a9e`; `tests` and `codeql` (push) also green.
+
+* `podman` run 43421374001: **rootless** - backup 11/11, reliability 7/7, nothing skipped. **Rootful** (Podman 4.9.3, AppArmor) - backup 11/11, reliability 7/7 with **1 skipped**: `ProviderDiagnostic.test_docker_compose_provider_without_a_socket_gets_a_clear_error_and_nothing_is_started` (needs `podman compose` resolving to docker-compose with the Podman socket not running; not the case on that runner, so that check is **unverified** on rootful Podman). `PodmanHardening`, `PodmanExposure` and `PodmanCaddyCustomPorts` passed, so the PostgreSQL fix is **verified** on the failing environment and the other hardened images (GeoServer, MapProxy, Caddy, QGIS) start under rootful Podman + AppArmor.
+* `integration` run 43421378517: gate, compose (real Docker), kubernetes (kind), kubernetes-gis (kind), browser end-to-end and installers (ubuntu-22.04, ubuntu-24.04, debian-12, alma-9, rocky-9) all success. Skip counts of the integration jobs were not inspected.
+
+This supersedes "NOT committed, NOT run on GitHub" in the section below (the fix is committed as `e194752`). Still open: S-12 (Pillow on Ubuntu 22.04), rpm upgrade test, read-only root FS and resource limits, classic page and legacy `/api/*` routes.
+
 ## 00000000000000. Rootful Podman: cause found (2026-11-13) - working tree, NOT committed, NOT run on GitHub
 
 `podman` run 43413925293 (`d4a0468`, diagnostics): PostGIS `running` but PID 1 stuck as `root gosu postgres docker-entrypoint.sh`, no postgres process, empty logs. `podman` run 43416436148 (`83110ac`, bisect step, rootful, kernel 7.0.0-1017-azure, AppArmor enabled): same image, one restriction at a time - baseline **ok**; capabilities only **ok**; **no-new-privileges only BROKEN**; no-new-privileges + capabilities BROKEN; + seccomp unconfined BROKEN; **+ apparmor=unconfined ok**. So the cause is `no-new-privileges` with the container AppArmor profile, not the capability set.
