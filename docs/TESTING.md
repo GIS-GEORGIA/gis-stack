@@ -33,6 +33,12 @@ These install real software in throw-away containers, so they are opt-in and run
 | `tests/integration/test_package_upgrade.py` | `GISSTACK_TEST_INSTALLER=1`, `dpkg-deb`, the git ref of the previous release (`GISSTACK_UPGRADE_FROM`, default `v0.1.7`) | packaged-service upgrade (deb): state, token, ownership, failed upgrade, rollback, token rotation. rpm: not available here |
 | `tests/integration/test_monitoring_disk.py` | `GISSTACK_TEST_INSTALLER=1` | a real disk-capacity alert on a container tmpfs, delivered to a real HTTP receiver, resolved, not duplicated |
 | `tests/test_monitoring_delivery.py` | none (loopback sockets) | alert delivery with a real HTTP receiver that is down / slow / returning 500: outbox, order, back-off, restart, drop |
+| `tests/test_package_scripts.py` | none | the one-time token rotation script (temp dirs, fake systemctl) |
+| `tests/test_network_exposure.py`, `tests/test_hardening.py`, `tests/test_public_port_probe.py`, `tests/test_session_cookie.py`, `tests/test_deployment_secrets.py` | none | S-2 / S-4 / S-3 / S-7 / S-5 generated output and logic |
+| `tests/integration/test_compose_exposure.py` | `GISSTACK_TEST_INTEGRATION=1` | what Docker really publishes and who can reach it (loopback, explicit 0.0.0.0, Caddy only) |
+| `tests/integration/test_hardening.py` | `GISSTACK_TEST_INTEGRATION=1` (+ the GeoServer, QGIS, PostGIS, Caddy images) | a fully hardened Compose stack: gis-stack's own health check, routes through Caddy, kernel CapEff/NoNewPrivs, data across hardening off/on, backup/restore |
+| `tests/integration/test_web_behind_proxy.py` | `GISSTACK_TEST_INTEGRATION=1` | session cookie `Secure` behind a real Caddy + waitress, trusted vs untrusted proxy |
+| `tests/integration/test_podman_reliability.py` (`PodmanExposure`, `PodmanHardening`, `PodmanCaddyCustomPorts`) | `GISSTACK_TEST_PODMAN=1` | the same on real Podman, rootful and rootless |
 | CI job `kubernetes` | CI only | PostGIS manifests applied to a kind cluster, then the manager test above |
 
 Containers are privileged and use the host cgroup namespace (needed by systemd); images are cached as `gisstack-it-<distro>:1`.

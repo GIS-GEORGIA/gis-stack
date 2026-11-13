@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-11: section 00000000000 is the newest (results on `c53b187`); section 0000000000 holds the GitHub results on `7ffdd83` after the registry recovered, and one new defect; section 000000000 is the GeoServer image investigation; section 00000000 is (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-13: section 000000000000 is the newest (security hardening phase on `db30669`, **uncommitted working tree, local evidence only, not run on GitHub**); section 00000000000 is (results on `c53b187`); section 0000000000 holds the GitHub results on `7ffdd83` after the registry recovered, and one new defect; section 000000000 is the GeoServer image investigation; section 00000000 is (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -11,6 +11,47 @@ Statuses (used consistently):
 * **BROKEN** - implemented but failing. *Nothing is currently BROKEN.*
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
+
+## 000000000000. Security hardening phase on `db30669` (2026-11-13) - working tree, NOT committed, NOT run on GitHub
+
+Baseline (verified): `main` == `origin/main` == `db306694d4fdc16d12d6a0d4d3afa8b12abd28bb`, tree clean. GitHub: `tests` 43261388966 (running when this phase began) and `codeql` 43261388847 on `db30669`; `podman` 43008053881 and nightly `integration` 43194246796 on `c53b187` green. Details, root causes and files per finding: `docs/SECURITY-REVIEW-2026-11.md`.
+
+| Id | Finding | Status | Evidence (local) |
+|---|---|---|---|
+| S-1 | token kept by the package upgrade | **FIXED, deb verified** (rpm: script wired into spec/nfpm, upgrade **not tested**) | `test_package_upgrade.py` 2 tests, `test_package_scripts.py` 6 |
+| S-2 | services published on all interfaces without Caddy | **FIXED** (`network.bind`, schema 2) | unit 8; Docker real 3; Podman rootful + rootless real |
+| S-3 | hard-coded Caddy health port | **FIXED** | unit 5; Docker (random HTTP+HTTPS ports, backup/restore), Podman rootful |
+| S-4 | no container hardening | **PARTLY FIXED**: capabilities dropped, no privilege gain, seccomp default; **read-only root FS and resource limits NOT done** | unit 13; Docker full stack incl. QGIS; Podman rootful + rootless; kind 4 + 10 + 4 + 1 |
+| S-5 | credentials in deployment snapshots | **FIXED** (old snapshots scrubbed) | unit 6; real Compose rollback |
+| S-7 | session cookie without `Secure` | **FIXED** | unit 10; real Caddy + waitress |
+| S-12 | Pillow 12.3.0 with 40 CVEs on native Python 3.10 (Ubuntu 22.04) | **OPEN** (documented) | `pip-audit` |
+| S-16 | restore under dropped capabilities (MapProxy cache) | **FIXED** (restore runs as the directory owner) | `MapProxyBackupRestore` |
+| GIS-1 | tile-source layers combined with non-3857 grids: every tile HTTP 500 | **FIXED** (cache limited to GLOBAL_WEBMERCATOR + warning) | `tests/test_mapproxy_real.py` (real MapProxy) |
+| GIS-2 | GLOBAL_GEODETIC cannot be served over WMTS | **WARNING added**, documented MapProxy limitation | real MapProxy |
+
+Real-engine findings that only a real test could make (kept as lessons): QGIS "running" but unable to serve with too few capabilities (`mod_fcgid` socket); `/proc/1/status` of a rootless container shows the nested engine's init; waitress 3 strips `X-Forwarded-*` from every untrusted peer; a corrupted kind image from importing the same archive twice (test environment artefact, fresh cluster fixed it).
+
+### Exact local results of this phase
+
+| Suite | Environment | Result |
+|---|---|---|
+| Python unit/contract/golden/real MapProxy | venv, Python 3.12, `mapproxy` installed | **1064 run, 0 failed, 107 skipped** (opt-in suites), 258 s (final run after the last edit) |
+| ruff / mypy / bandit / JS | - | clean / 94 files clean / 0 medium+high, 27 low / 10 of 10 |
+| Chromium | Playwright | 10 run, 10 ok |
+| Docker Compose | Docker 28 | `test_compose` 1, `test_deploy_rollback` 1, managers 28, stack backup 10, GIS backup 4 (rerun after the fix), Caddy ACME 1, `--mode ssh` 1, exposure 3, hardening 3 (+9 unit), web behind proxy 2 - all ok, 0 skipped |
+| Installer, 5 distros | systemd containers | ok (726 s) |
+| Packages (deb: ubuntu 22.04/24.04, debian 12) / upgrade (2 tests) / disk alert | systemd containers | ok / ok / ok; **rpm: not built here** |
+| Podman rootful (Fedora 44, Podman 5.8.9, nested) | `test_stack_backup_podman` 11 / `test_podman_reliability` 7 (lifecycle, rollback, monitoring, exposure, hardening, custom ports, diagnostic) | 11 ok / 7 ok |
+| Podman rootless (same engine) | same modules | 11 ok / 7 ok |
+| Kubernetes kind v0.33.0 (node Kubernetes v1.37.0), GeoServer 3.0.2 preloaded, hardened manifests | managers 4, backup 10, Caddy+webmap/MapProxy/QGIS/monitoring 4, deploy/failed upgrade/rollback 1 | all ok (110 s, 239 s, 443 s, 353 s) |
+| `pip-audit` | runtime deps (Flask, Jinja2, PyYAML, waitress): clean; MapProxy pin file (py3.11+): clean; **py3.10 pin file: Pillow 12.3.0, 40 known vulnerabilities (S-12)** | - |
+| GitHub Actions | - | **not run for this working tree** (nothing may be pushed); CI steps for the new tests are **not yet added to the workflows** |
+
+### Remaining open or unverified
+
+S-12 (Pillow on Python 3.10); rpm upgrade and `postinstall` on an rpm system; backups read as root without DAC_READ_SEARCH (another user's 0600 files would be missed: documented); read-only root filesystems and resource limits; Podman Caddy/MapProxy-cache restore under hardening; Python 3.9 on this machine; the new tests in CI; whether GitHub runners reproduce the Podman/kind results.
+
+Prioritised backlog: (1) commit in logical stages, add the new tests to `integration.yml` / `podman.yml`, run `tests`, `codeql`, `podman`, `integration` once each; (2) rpm upgrade test on Rocky/Alma where `rpmbuild` exists; (3) S-12: drop native MapProxy on Python 3.10 or provide Python 3.12 there; (4) read-only root filesystems per image; (5) retire the classic page and legacy routes.
 
 ## 00000000000. Results on `c53b187` (the backup-ordering fix)
 

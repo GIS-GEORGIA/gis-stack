@@ -6,7 +6,7 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 და Tkinter (`gisstack desktop`). პაკეტები: `packaging/build.sh deb|rpm`.
 
 ## ბრძანებები
-- ტესტები: `python3 tests/test_gisstack.py` (16 ტესტი; MapProxy-ის ტესტი ითხოვს `pip install mapproxy`)
+- ტესტები: flask-იანი venv-ით `python -m unittest discover -s tests` (ათასამდე ტესტი; opt-in ინტეგრაციულები `GISSTACK_TEST_*` ცვლადებით, იხ. `docs/TESTING.md`; ზუსტი რიცხვები მხოლოდ `docs/IMPLEMENTATION-STATUS.md`-ში იწერება, აქ არა)
 - გენერაცია: `python3 -m gisstack generate -c stack.json -o ./bundle`
 - პაკეტები: `packaging/build.sh deb` / `rpm`
 
@@ -204,4 +204,5 @@ GeoServer, QGIS Server, MapProxy, Caddy, ორენოვანი Leaflet ვ
 - განახლება პაკეტით: ტოკენს `web.token`-ის წაშლით და სერვისის გადატვირთვით ანახლებ (`--rotate-token` root-ით ტოვებს root-ის ფაილს, რომელსაც უპრივილეგიო სერვისი ვერ კითხულობს).
 - ტესტებში `pulled()` ჯერ ლოკალურ image-ს ამოწმებს (მიუწვდომელი რეგისტრი ტესტს ჩუმად არ გამოტოვებს); ტესტ-სტეკები ფიქსირებულ host პორტებს (8080/8081/8380) არ ხსნიან.
 - `docs/LEGACY-API.md` უნდა ემთხვეოდეს `registry`-ს (`tests/test_legacy_api_doc.py`).
-
+- უსაფრთხოების გამკაცრება 2026-11-12 (`docs/SECURITY-REVIEW-2026-11.md`): `network.bind` (კონფიგის სქემა 2; migrate-ი `schema_version: 1`-ს `0.0.0.0`-ს ცხადად უწერს), `security.harden_containers` (`gisstack/hardening.py`: capabilities-ის მინიმუმი თითო image-ზე, **ყოველთვის რეალური სერვისის მოთხოვნით შეამოწმე**, არა `docker ps`-ით), პაკეტის ერთჯერადი ტოკენის ცვლა (`packaging/rotate-token-on-upgrade.sh`), snapshot-ები საიდუმლოების გარეშე (`deployments.strip_secrets`), cookie `Secure` (`GISSTACK_TRUSTED_PROXIES`; waitress 3 წყვეტს `X-Forwarded-*`-ს, ამიტომ `clear_untrusted_proxy_headers=False`), Caddy-ს რეალური პორტი ძრავიდან (`providers/common.public_port_prelude`).
+- Podman rootless-ში `/proc/1/status` კონტეინერის პროცესს არ აჩვენებს — capability-ებს `podman exec ... /proc/self/status`-ით წაიკითხე.

@@ -90,6 +90,9 @@ jobs:
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_stack_backup_gis.py' -v
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_caddy_acme.py' -v
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_stack_backup_ssh.py' -v
+          GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_compose_exposure.py' -v
+          GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_hardening.py' -v
+          GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_web_behind_proxy.py' -v
 
   browser:
     name: browser end-to-end (Playwright)
