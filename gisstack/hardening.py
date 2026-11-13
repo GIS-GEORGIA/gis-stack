@@ -1,6 +1,6 @@
 """Container hardening (audit S-4): what each generated workload is allowed to keep.
 
-Every container starts from "nothing": all Linux capabilities dropped and no privilege gain through setuid binaries (Compose / Podman: `cap_drop: [ALL]`,
+Every container starts from "nothing": all Linux capabilities dropped and (except PostgreSQL, see NO_PRIVILEGE_LOCK) no privilege gain through setuid binaries (Compose / Podman: `cap_drop: [ALL]`,
 `security_opt: no-new-privileges`; Kubernetes: `capabilities.drop: [ALL]`, `allowPrivilegeEscalation: false`, `seccompProfile: RuntimeDefault`).  A workload gets back
 ONLY what its image demonstrably needs - found by starting the real image with everything dropped and adding capabilities one by one (see
 docs/SECURITY-REVIEW-2026-11.md for the experiment):
@@ -27,11 +27,18 @@ CAPS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Workloads that must NOT get no-new-privileges / allowPrivilegeEscalation:false.  The official postgres entrypoint starts as root and hands over with `gosu postgres ...`
+# (an exec): on rootful Podman 4.9.3 + AppArmor (GitHub's ubuntu-24.04 runner, kernel 7.0 azure) that exec never completes when no-new-privileges is set - PID 1 stays
+# `gosu postgres docker-entrypoint.sh`, no postgres process, no output.  Measured by running the same image with each restriction alone (podman.yml bisect step):
+# baseline ok, capabilities alone ok, no-new-privileges alone BROKEN, no-new-privileges + apparmor=unconfined ok.  The capability set is kept.
+NO_PRIVILEGE_LOCK = frozenset({"postgis"})
+
+
 def compose_snippet(service: str, enabled: bool) -> str:
     """The YAML lines (indented for a Compose service) that go below `restart:`; empty when hardening is off."""
     if not enabled:
         return ""
-    lines = ["    security_opt:", "      - no-new-privileges:true", "    cap_drop:", "      - ALL"]
+    lines = ["    cap_drop:", "      - ALL"] if service in NO_PRIVILEGE_LOCK else ["    security_opt:", "      - no-new-privileges:true", "    cap_drop:", "      - ALL"]
     caps = CAPS[service]
     if caps:
         lines += ["    cap_add:"] + [f"      - {c}" for c in caps]
@@ -43,7 +50,7 @@ def k8s_container_snippet(service: str, enabled: bool, indent: int = 10) -> str:
     if not enabled:
         return ""
     pad = " " * indent
-    lines = [f"{pad}securityContext:", f"{pad}  allowPrivilegeEscalation: false", f"{pad}  capabilities:", f"{pad}    drop: [ALL]"]
+    lines = [f"{pad}securityContext:"] + ([] if service in NO_PRIVILEGE_LOCK else [f"{pad}  allowPrivilegeEscalation: false"]) + [f"{pad}  capabilities:", f"{pad}    drop: [ALL]"]
     caps = CAPS[service]
     if caps:
         lines.append(f"{pad}    add: [{', '.join(caps)}]")

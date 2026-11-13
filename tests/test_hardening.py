@@ -26,7 +26,10 @@ class ComposeTests(unittest.TestCase):
         self.assertEqual(sorted(doc["services"]), ["caddy", "geoserver", "mapproxy", "postgis", "qgis", "tomcat"])
         for name, svc in doc["services"].items():
             self.assertEqual(svc["cap_drop"], ["ALL"], name)
-            self.assertEqual(svc["security_opt"], ["no-new-privileges:true"], name)
+            if name in hardening.NO_PRIVILEGE_LOCK:
+                self.assertNotIn("security_opt", svc, name)               # measured: no-new-privileges stops the gosu hand-over of the postgres image (rootful Podman 4.9 + AppArmor)
+            else:
+                self.assertEqual(svc["security_opt"], ["no-new-privileges:true"], name)
             self.assertNotIn("privileged", svc)
 
     def test_each_service_gets_back_exactly_what_it_needs_and_nothing_else(self):
@@ -67,7 +70,10 @@ class KubernetesTests(unittest.TestCase):
             self.assertEqual(spec["securityContext"], {"seccompProfile": {"type": "RuntimeDefault"}}, name)
             for c in spec.get("initContainers", []) + spec["containers"]:
                 sc = c["securityContext"]
-                self.assertIs(sc["allowPrivilegeEscalation"], False, f"{name}/{c['name']}")
+                if c["name"] in hardening.NO_PRIVILEGE_LOCK:
+                    self.assertNotIn("allowPrivilegeEscalation", sc)
+                else:
+                    self.assertIs(sc["allowPrivilegeEscalation"], False, f"{name}/{c['name']}")
                 self.assertEqual(sc["capabilities"]["drop"], ["ALL"])
                 self.assertEqual(sc["capabilities"].get("add", []), want.get(c["name"], []), f"{name}/{c['name']}")
 

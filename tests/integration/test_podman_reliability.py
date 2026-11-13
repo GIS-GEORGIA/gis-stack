@@ -224,7 +224,8 @@ class PodmanHardening(Base):
         cfg = self.up(True, pg_port)
         for service in ("postgis", "geoserver", "mapproxy", "caddy"):
             cid, st = self.status1(service)
-            self.assertEqual(st.get("NoNewPrivs"), "1", service)
+            if service not in hardening.NO_PRIVILEGE_LOCK:                                  # PostgreSQL: see hardening.NO_PRIVILEGE_LOCK
+                self.assertEqual(st.get("NoNewPrivs"), "1", service)
             bits = {"CHOWN": 0, "DAC_OVERRIDE": 1, "FOWNER": 3, "SETGID": 6, "SETUID": 7, "NET_BIND_SERVICE": 10}      # Linux capability numbers
             allowed = sum(1 << bits[c] for c in hardening.CAPS[service])
             eff = int(st["CapEff"], 16)
@@ -233,13 +234,13 @@ class PodmanHardening(Base):
         prov = bprov.PodmanBackupProvider(cfg)
         prov.psql("drop table if exists hardened_t; create table hardened_t(v text); insert into hardened_t values ('kept')", db=cfg["postgres"]["db"])
         cfg = self.up(False, pg_port)                                   # unhardened containers on the same volumes
-        self.assertEqual(self.status1("postgis")[1].get("NoNewPrivs"), "0")
+        self.assertTrue(int(self.status1("postgis")[1]["CapEff"], 16) & (1 << 10), "unhardened PostgreSQL keeps the default capabilities")
         prov = bprov.PodmanBackupProvider(cfg)
         self.assertEqual(prov.psql("select v from hardened_t", db=cfg["postgres"]["db"]), "kept")
         prov.psql("insert into hardened_t values ('unhardened')", db=cfg["postgres"]["db"])
         cfg = self.up(True, pg_port)                                    # and hardened again
         prov = bprov.PodmanBackupProvider(cfg)
-        self.assertEqual(self.status1("postgis")[1].get("NoNewPrivs"), "1")
+        self.assertEqual(int(self.status1("postgis")[1]["CapEff"], 16) & (1 << 10), 0, "hardened PostgreSQL lost NET_BIND_SERVICE again")
         self.assertEqual(prov.psql("select string_agg(v, ',' order by v) from hardened_t", db=cfg["postgres"]["db"]), "kept,unhardened")
 
 

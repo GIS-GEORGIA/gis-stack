@@ -102,9 +102,11 @@ class HardenedStack(unittest.TestCase):
                 continue
             insp = sh("docker", "inspect", "--format", "{{json .HostConfig.CapDrop}} {{json .HostConfig.SecurityOpt}}", self.ctr(service)).stdout
             self.assertIn('["ALL"]', insp, service)
-            self.assertIn("no-new-privileges", insp, service)
+            if service not in hardening.NO_PRIVILEGE_LOCK:
+                self.assertIn("no-new-privileges", insp, service)
             st = self.proc_status(service)
-            self.assertEqual(st.get("NoNewPrivs"), "1", f"{service}: the kernel flag")
+            if service not in hardening.NO_PRIVILEGE_LOCK:                          # PostgreSQL: see hardening.NO_PRIVILEGE_LOCK (gosu hand-over breaks under no-new-privileges + AppArmor)
+                self.assertEqual(st.get("NoNewPrivs"), "1", f"{service}: the kernel flag")
             got, raw = self.caps_of(st["CapEff"])
             self.assertTrue(got <= set(caps) | set(), f"{service} runs with {got}, allowed {caps}")
             self.assertEqual(raw & (1 << 21), 0, f"{service} has CAP_SYS_ADMIN")
@@ -123,10 +125,10 @@ class HardenedStack(unittest.TestCase):
     def test_2_data_survives_switching_hardening_off_and_on(self):
         cfg = self.deploy(False)                                  # containers created WITHOUT restrictions: files on the volume are owned as the old container left them
         self.assertEqual(self.psql(cfg, "select v from hardened_t"), "kept")
-        self.assertEqual(self.proc_status("postgis").get("NoNewPrivs"), "0")
+        self.assertTrue(int(self.proc_status("postgis")["CapEff"], 16) & (1 << 10), "unhardened PostgreSQL keeps the default capabilities (NET_BIND_SERVICE)")
         self.psql(cfg, "insert into hardened_t values ('written-unhardened')")
         cfg = self.deploy(True)                                   # and hardened again, on the same volume
-        self.assertEqual(self.proc_status("postgis").get("NoNewPrivs"), "1")
+        self.assertEqual(int(self.proc_status("postgis")["CapEff"], 16) & (1 << 10), 0, "hardened PostgreSQL lost NET_BIND_SERVICE again")
         self.assertEqual(self.psql(cfg, "select string_agg(v, ',' order by v) from hardened_t"), "kept,written-unhardened")
         self.psql(cfg, "insert into hardened_t values ('written-hardened')")
         self.assertEqual(self.psql(cfg, "select count(*) from hardened_t"), "3")
