@@ -1,6 +1,6 @@
 # GIS Stack - implementation status and verification report
 
-*Updated 2026-11-13: section 000000000000 is the newest (security hardening phase on `db30669`, **uncommitted working tree, local evidence only, not run on GitHub**); section 00000000000 is (results on `c53b187`); section 0000000000 holds the GitHub results on `7ffdd83` after the registry recovered, and one new defect; section 000000000 is the GeoServer image investigation; section 00000000 is (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
+*Updated 2026-11-13: section 0000000000000 is the newest (GitHub results on `6abdb27`: two failures, both being fixed); section 000000000000 is (security hardening phase on `db30669`, **uncommitted working tree, local evidence only, not run on GitHub**); section 00000000000 is (results on `c53b187`); section 0000000000 holds the GitHub results on `7ffdd83` after the registry recovered, and one new defect; section 000000000 is the GeoServer image investigation; section 00000000 is (GitHub results for the audit commits `01dceed`..`ae78b67`); section 0000000 is (production-readiness audit of `b4213fb`, **uncommitted working-tree changes**; when an older section contradicts it, the newest section wins); section 000000 holds (GitHub results for `5ea1c29`); section 00000 (production readiness and security hardening; the local evidence is below, GitHub results are appended in section 000000 when they exist); section 0000 is the newest (Podman workflow fully green on `55bc033`); section 00 holds the verified GitHub results for `38d0005` (and one local, unpushed fix); section 0 is the Podman / hardening phase; sections 1 onward record the verified GitHub Actions results for commit `d1382ac` (Universal Backup & Restore, pushed to `main`). Two small local changes are **not committed and not pushed**: the retrying/diagnosable test-image builder (`tests/integration/sysd.py`, `tests/test_sysd_helper.py`) and this document. Newest release tag: `v0.1.7` (contains none of the work since).*
 
 Statuses (used consistently):
 
@@ -11,6 +11,24 @@ Statuses (used consistently):
 * **BROKEN** - implemented but failing. *Nothing is currently BROKEN.*
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
+
+## 0000000000000. GitHub results on `6abdb27` (the hardening commits) - verified from the run logs
+
+Commits: `0f7d140` (token rotation), `95743a7` (network.bind, hardening, Caddy port, MapProxy grids), `317b281` (snapshots, cookie, restore-as-owner), `6abdb27` (docs, CI). `main` == `origin/main` == `6abdb27`.
+
+| Workflow | Run | Result |
+|---|---|---|
+| `tests` (push) | 43381709742 | **success**: Python 3.9, 3.10, 3.11, 3.12, 3.13, lint/types, security (bandit, pip-audit), validation, build of sdist/wheel/deb/rpm |
+| `codeql` (push) | 43381709747 | success |
+| `integration` (dispatched once) | 43382386512 | **failure: `compose (real Docker)` only** |
+| `podman` (dispatched once) | 43382382713 | **failure: `podman (rootful)` only**; `podman (rootless)` success (backup 11/11, reliability 7/7) |
+
+`integration`: **passed** - kubernetes (kind) managers 4, deploy/failed-upgrade/rollback 1, backup 10 **on the hardened manifests**; kubernetes-gis 4; browser 7 + 1 + 2; all five installers, and on ubuntu-24.04 the packaged-service upgrade (2 tests) and the disk alert. In the compose job everything up to the exposure test passed (smoke 1, rollback 1, managers 28, stack backup 10, GIS backup 4, ACME 1, ssh 1).
+
+Failures (not hidden):
+
+1. **`test_compose_exposure` 3/3 failed on GitHub - a TEST defect.** The runner's Docker Compose prints `Publishers` in a different human format (`[{127.0.0.1 8081 8081 tcp}]`) than my machine (`8081/tcp -> 127.0.0.1:8081`); the assertions matched text. The bindings themselves were correct (the runner output shows `127.0.0.1 8081` for the default and `0.0.0.0 8081` for the explicit choice). Fixed in the working tree: the test parses `compose ps --format json`; passes locally. Because that step aborted the shell block, **`test_hardening` and `test_web_behind_proxy` did not run on GitHub**.
+2. **`podman (rootful)`: `test_stack_backup_podman` setUpClass errors (PostgreSQL and GeoServer classes, 0 tests run): the hardened PostGIS container was reported `unhealthy`** with the Docker Compose plugin as `podman compose` provider on Podman 4.9.3 (rootful). **Cause not found.** Not reproduced in an Ubuntu 24.04 container with Podman 4.9.3, systemd and the same provider (the whole PostgreSQL backup suite passed, 10/10), nor on Podman 5.8.9; rootless on GitHub (podman-compose provider) passes, as does the rootful reliability step (pinned provider). Differences left: the runner's kernel/AppArmor and its Docker daemon. Open question: whether hardening and this provider/runner combination really clash. Diagnostics added to the test (container states and log tails on a failed deployment) so the next run states the reason. **Until that is understood S-4 is NOT verified on GitHub rootful Podman.**
 
 ## 000000000000. Security hardening phase on `db30669` (2026-11-13) - working tree, NOT committed, NOT run on GitHub
 
