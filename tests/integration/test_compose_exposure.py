@@ -80,8 +80,19 @@ class ComposeExposure(unittest.TestCase):
         return base
 
     def bindings(self, base):
-        out = sh(*base, "ps", "--format", "{{.Publishers}}").stdout
-        return out
+        """What the engine publishes, as `address:hostport` words (parsed from the JSON of `compose ps`: the human format differs between Compose versions)."""
+        import json
+        words = []
+        for line in sh(*base, "ps", "--format", "json").stdout.splitlines():
+            line = line.strip()
+            if not line.startswith(("{", "[")):
+                continue
+            data = json.loads(line)
+            for row in data if isinstance(data, list) else [data]:
+                for pub in row.get("Publishers") or []:
+                    if pub.get("PublishedPort"):
+                        words.append(f"{pub.get('URL', '')}:{pub['PublishedPort']}")
+        return " ".join(sorted(set(words)))
 
     def from_another_container(self, port, path="/demo/"):
         r = sh("docker", "run", "--rm", self.ALPINE, "wget", "-q", "-T", "6", "-O", "/dev/null", f"http://{self.gw}:{port}{path}")

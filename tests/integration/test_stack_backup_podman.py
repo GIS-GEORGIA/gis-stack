@@ -67,12 +67,27 @@ class PodmanStackBase(unittest.TestCase):
             for line in deploy.deploy(cls.cfg, cls.out, "compose", "local"):
                 lines.append(line)
         except Exception as e:                                       # keep what the deployment printed: without it a CI log only says "exit 1"
+            info = cls.engine_diagnostics()
             cls.tearDownClass()
-            raise AssertionError(f"deployment on Podman failed: {e}\n--- output ---\n" + "\n".join(lines[-40:])) from e
+            raise AssertionError(f"deployment on Podman failed: {e}\n--- output ---\n" + "\n".join(lines[-40:]) + info) from e
         rec = deployments.records(cls.project)[0]
         if rec["outcome"] != "ok":
+            info = cls.engine_diagnostics()
             cls.tearDownClass()
-            raise AssertionError(f"deployment on Podman is {rec['outcome']}:\n" + "\n".join(lines[-12:]))
+            raise AssertionError(f"deployment on Podman is {rec['outcome']}:\n" + "\n".join(lines[-12:]) + info)
+
+    @classmethod
+    def engine_diagnostics(cls) -> str:
+        """Container states and the last log lines of every container of the project: "postgis: failed" alone says nothing about WHY."""
+        flt = f"label=com.docker.compose.project={cls.project}"
+        ps = subprocess.run(["podman", "ps", "-a", "--filter", flt, "--format", "{{.Names}} {{.Status}}"], capture_output=True, text=True).stdout
+        out = f"\n--- podman ps -a\n{ps}"
+        for name in ps.split("\n"):
+            if name.strip():
+                cname = name.split()[0]
+                logs = subprocess.run(["podman", "logs", "--tail", "25", cname], capture_output=True, text=True)
+                out += f"--- logs {cname}\n{(logs.stdout + logs.stderr)[-1800:]}\n"
+        return out
 
     @classmethod
     def tearDownClass(cls):
