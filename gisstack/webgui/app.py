@@ -72,9 +72,14 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
     app.config["AUDIT"] = audit = security.AuditLog(paths.audit_log)
     hosts = tuple(allowed_hosts) if allowed_hosts is not None else security.allowed_hosts_from_env()
     app.config["ALLOWED_HOSTS"] = hosts
+    app.config["TRUSTED_PROXIES"] = trusted_proxies = security.trusted_proxies_from_env()
+
+    def https_request() -> bool:
+        return security.request_is_https(request.scheme, request.remote_addr or "", request.headers.get("X-Forwarded-Proto", ""), trusted_proxies)
     app.config["TOKENS"] = TokenStore()
     COOKIE = "gs_session"
     app.config["SESSION_COOKIE"] = COOKIE
+    app.config["HTTPS_REQUEST"] = lambda: https_request()
 
     def client_ip() -> str:
         return request.remote_addr or "?"
@@ -124,7 +129,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
             if token_ok(qt):
                 limiter.reset(ip)
                 resp = make_response(redirect(request.path))
-                resp.set_cookie(COOKIE, sessions.create(), httponly=True, samesite="Strict", max_age=sessions.absolute)
+                resp.set_cookie(COOKIE, sessions.create(), httponly=True, samesite="Strict", max_age=sessions.absolute, secure=https_request())
                 audit.write(event="login", ip=ip)
                 return resp
             limiter.fail(ip)
@@ -160,7 +165,7 @@ def create_app(token: str | None = None, allowed_hosts: tuple[str, ...] | None =
     def api_logout() -> Response:
         sessions.revoke(request.cookies.get(COOKIE, ""))
         resp = make_response(jsonify({"ok": True}))
-        resp.delete_cookie(COOKIE)
+        resp.delete_cookie(COOKIE, secure=https_request(), httponly=True, samesite="Strict")
         return resp
 
     @app.after_request
@@ -727,7 +732,9 @@ def main(host: str = "127.0.0.1", port: int = 8765, server: str = "auto", allow_
         except ImportError:
             raise SystemExit("waitress is not installed: pip install waitress  (or use --server werkzeug)") from None
         print("  (waitress production server)")
-        waitress.serve(app, host=host, port=port, threads=8, max_request_body_size=app.config["MAX_CONTENT_LENGTH"])
+        # waitress 3 deletes X-Forwarded-* from every peer that is not its own `trusted_proxy` (one address only); we decide ourselves, per request and only for the
+        # addresses in GISSTACK_TRUSTED_PROXIES (security.request_is_https), so the headers must reach the application
+        waitress.serve(app, host=host, port=port, threads=8, max_request_body_size=app.config["MAX_CONTENT_LENGTH"], clear_untrusted_proxy_headers=False)
         return
     print("  (Flask development server, selected with --server werkzeug or because waitress is missing)")
     app.run(host=host, port=port, threaded=True)

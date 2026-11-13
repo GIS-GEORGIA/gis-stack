@@ -122,6 +122,21 @@ def allowed_hosts_from_env() -> tuple[str, ...]:
     return tuple(x.strip() for x in os.environ.get("GISSTACK_ALLOWED_HOSTS", "").split(",") if x.strip())
 
 
+def trusted_proxies_from_env() -> tuple[str, ...]:
+    """Addresses (exact IPs) of reverse proxies whose `X-Forwarded-Proto` may be believed.  Empty by default: a client-supplied forwarded header is never trusted."""
+    return tuple(x.strip() for x in os.environ.get("GISSTACK_TRUSTED_PROXIES", "").split(",") if x.strip())
+
+
+def request_is_https(scheme: str, remote_addr: str, forwarded_proto: str, trusted: tuple[str, ...]) -> bool:
+    """Is the browser talking HTTPS to us?  Directly (scheme) or through a trusted proxy that says so.  `X-Forwarded-Proto` from anybody else is ignored:
+    otherwise any client could decide whether the session cookie is marked Secure (and a lying header would make the browser drop the cookie)."""
+    if scheme == "https":
+        return True
+    if remote_addr and remote_addr in trusted:
+        return forwarded_proto.split(",")[0].strip().lower() == "https"
+    return False
+
+
 SAFE_BODY_KEYS = ("mode", "component", "components", "action", "purge", "remove_postgres", "with_data", "skip_preflight", "lines", "follow",
                   "install", "confirm_data_loss", "save", "id", "only", "dry_run", "staging", "confirm", "keep", "days", "with_cache")
 

@@ -2,7 +2,8 @@
 
 Every `deploy.deploy()` writes one record under `~/.gisstack/deployments/`: the state found before, the outcome, the health found after
 and a digest of the configuration.  The record itself holds **no secrets**; the configuration that was applied is kept in a separate
-0600 snapshot that only a rollback reads and that no API returns.
+0600 snapshot (WITHOUT any password / token / secret value: a rollback takes those from the current secret store) that only a rollback reads and
+that no API returns.
 
 What "rollback" means here, honestly: gis-stack cannot un-install packages or un-run a database migration.  The one recovery path it
 can *verify* is to re-apply the configuration of an earlier deployment that was healthy afterwards.  That re-application is the same
@@ -50,6 +51,36 @@ def _snap_path(rid: str) -> Path:
     return _dir() / f"{rid}.config"
 
 
+def strip_secrets(cfg: Any) -> Any:
+    """The configuration without the VALUE of any password / token / secret (they become empty strings).  A rollback takes every one of them from the
+    current secret store anyway (`with_current_secrets`), so a snapshot has no reason to keep a credential - and an old one would go stale after a
+    rotation.  An empty value means "use the stored secret" to `config.resolve`, so a stripped snapshot is still a valid configuration."""
+    def walk(o: Any, key: str = "") -> Any:
+        if isinstance(o, dict):
+            return {k: walk(v, str(k)) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(v, key) for v in o]
+        if isinstance(o, str) and o and any(w in key.lower() for w in SECRETISH):
+            return ""
+        return o
+    return walk(cfg)
+
+
+def scrub_snapshots() -> int:
+    """Remove credentials from snapshots written by earlier versions (idempotent; a damaged file is left alone).  Returns how many files changed."""
+    n = 0
+    for p in paths.deployments_dir().glob("*.config"):
+        try:
+            cfg = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        clean = strip_secrets(cfg)
+        if clean != cfg:
+            fsutil.write_private(p, json.dumps(clean, sort_keys=True, default=str))
+            n += 1
+    return n
+
+
 def digest(cfg: dict[str, Any]) -> str:
     """Stable fingerprint of a configuration with its secret values masked out (so it reveals nothing about them)."""
     mask = runner.redactor(runner.secrets_of(cfg))
@@ -91,7 +122,7 @@ def begin(cfg: dict[str, Any], target: str, mode: str, host: str, before: Option
     rec = {"id": uuid.uuid4().hex[:12], "ts": int(time.time()), "n": time.time_ns(), "kind": kind, "rollback_of": rollback_of, "project": cfg.get("project", ""),
            "target": target, "mode": mode, "host": host, "digest": digest(cfg), "before": state, "after": None, "outcome": "running", "error": "",
            "seconds": None}
-    fsutil.write_private(_snap_path(rec["id"]), json.dumps(cfg, sort_keys=True, default=str))
+    fsutil.write_private(_snap_path(rec["id"]), json.dumps(strip_secrets(cfg), sort_keys=True, default=str))
     _write(rec)
     return rec
 
@@ -129,6 +160,7 @@ def records(project: Optional[str] = None, limit: int = 50) -> list[dict[str, An
 
 def prune() -> None:
     """Bound the history.  Only deployment records and configuration snapshots are ever removed - never data or backups."""
+    scrub_snapshots()                                   # snapshots from before credentials were left out are cleaned the next time anything is recorded
     d = paths.deployments_dir()
     files = sorted(d.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     for i, p in enumerate(files):

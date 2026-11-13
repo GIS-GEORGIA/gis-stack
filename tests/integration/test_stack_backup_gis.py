@@ -107,11 +107,12 @@ def ports_free(*ports):
     return True
 
 
-@unittest.skipUnless(pulled("caddy:2") and ports_free(80, 443), "GISSTACK_TEST_INTEGRATION=1, docker, the Caddy image and free ports 80/443 needed")
+@unittest.skipUnless(pulled("caddy:2"), "GISSTACK_TEST_INTEGRATION=1, docker and the Caddy image needed")
 class CaddyBackupRestore(GisStack):
     components = {"caddy": True}
-    # gis-stack's public health probe uses the standard HTTPS port (a custom HTTPS_PORT in .env is not known to it), so Caddy runs on 80/443 here
-    standard_ports = True
+    # S-3: the host ports are random (HTTP_PORT / HTTPS_PORT in .env): the public health probe must read them from the engine, or the post-restore
+    # health check would call a healthy Caddy unhealthy and undo the restore
+    standard_ports = False
     ROOT = "/data/caddy/pki/authorities/local/root.crt"
 
     def root_sha(self):
@@ -165,6 +166,10 @@ class CaddyBackupRestore(GisStack):
 @unittest.skipUnless(ENABLED, "GISSTACK_TEST_INTEGRATION=1 and docker needed")
 class MapProxyBackupRestore(GisStack):
     components = {"mapproxy": True}
+
+    def exec(self, service, *args, user="mapproxy"):
+        """The MapProxy cache is owned by the unprivileged `mapproxy` user and the container has no capabilities (hardened): even root cannot write there, so the test acts as the owner."""
+        return super().exec(service, *args, user=user)
 
     def test_cache_is_backed_up_restored_and_config_is_backup_only(self):
         self.exec("mapproxy", "sh", "-c", "mkdir -p /var/lib/mapproxy/cache_data/sentinel && echo tile-v1 > /var/lib/mapproxy/cache_data/sentinel/0.png")

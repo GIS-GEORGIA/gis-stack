@@ -492,35 +492,44 @@ class BackupProvider:
             raise RestoreError("unsafe database name")
         self.psql(f"select pg_terminate_backend(pid) from pg_stat_activity where datname='{db}' and pid<>pg_backend_pid()")  # noqa: S608  # nosec B608 - identifier validated above
 
+    def _owner(self, name: str, path: str) -> str:
+        """`uid:gid` of a directory inside the workload (read as root: stat needs no capability); "root" when it cannot be read."""
+        try:
+            out = self.sh(name, "root", ["stat", "-c", "%u:%g", path], timeout=60)[1].strip()
+        except (BackupError, subprocess.TimeoutExpired):
+            return "root"
+        return out if re.fullmatch(r"[0-9]+:[0-9]+", out) else "root"
+
     # --- files in a volume: stage inside the same volume, validate, move aside + move in (all renames)
     def _restore_files(self, name: str, archive: Path, short: str, state: dict[str, Any], undo: list[Callable[[], None]]) -> Generator[str, None, str]:
         spec, d = COMPONENTS[name], self.paths[name]
+        owner = self._owner(name, d)                       # the restore works AS the owner of the directory: with every capability dropped (hardened containers) root no longer overrides file permissions
         stage, pre, failed = f"{d}/.gs-staging-{short}", f"{d}/.gs-pre-{short}", f"{d}/.gs-failed-{short}"
         marker = spec.get("marker")
-        self.sh(name, "root", ["sh", "-c", 'rm -rf "$1" && mkdir -p "$1"', "sh", stage])
+        self.sh(name, owner, ["sh", "-c", 'rm -rf "$1" && mkdir -p "$1"', "sh", stage])
         try:
-            self.feed(name, "root", ["tar", "xzf", "-", "--numeric-owner", "-C", stage], archive)
-            self.sh(name, "root", ["sh", "-c", '[ -n "$(ls -A "$1")" ] || { echo "restored archive is empty" >&2; exit 1; }; [ -z "$2" ] || [ -e "$1/$2" ] || { echo "expected file $2 is missing" >&2; exit 1; }',
+            self.feed(name, owner, ["tar", "xzf", "-", "--numeric-owner", "-C", stage], archive)
+            self.sh(name, owner, ["sh", "-c", '[ -n "$(ls -A "$1")" ] || { echo "restored archive is empty" >&2; exit 1; }; [ -z "$2" ] || [ -e "$1/$2" ] || { echo "expected file $2 is missing" >&2; exit 1; }',
                                    "sh", stage, marker or ""])
         except BaseException:
             with contextlib.suppress(BackupError):
-                self.sh(name, "root", ["rm", "-rf", stage])
+                self.sh(name, owner, ["rm", "-rf", stage])
             raise
         yield self.emit(f"   {name}: staged and validated")
-        state[name] = {"dir": d, "stage": stage, "pre": pre, "failed": failed, "swapped": False}
+        state[name] = {"dir": d, "stage": stage, "pre": pre, "failed": failed, "swapped": False, "user": owner}
         self.store.write_state(state)
 
         def undo_files() -> None:
             st = state[name]
             if st["swapped"]:
-                self.sh(name, "root", ["sh", "-c",
+                self.sh(name, owner, ["sh", "-c",
                                        'set -e; cd "$1"; mkdir -p "$3"; find . -mindepth 1 -maxdepth 1 ! -name ".gs-*" -exec mv {} "$3"/ \\; ; '
                                        'find "$2" -mindepth 1 -maxdepth 1 -exec mv {} . \\; ; rmdir "$2"', "sh", st["dir"], st["pre"], st["failed"]])
                 st["swapped"] = False
                 self.store.write_state(state)
-            self.sh(name, "root", ["rm", "-rf", st["stage"]])
+            self.sh(name, owner, ["rm", "-rf", st["stage"]])
         undo.append(undo_files)
-        self.sh(name, "root", ["sh", "-c",
+        self.sh(name, owner, ["sh", "-c",
                                'set -e; cd "$1"; mkdir "$3"; find . -mindepth 1 -maxdepth 1 ! -name ".gs-*" -exec mv {} "$3"/ \\; ; '
                                'find "$2" -mindepth 1 -maxdepth 1 -exec mv {} . \\; ; rmdir "$2"', "sh", d, stage, pre])
         state[name]["swapped"] = True
@@ -581,7 +590,7 @@ class BackupProvider:
     def _recover_files(self, name: str, st: dict[str, Any]) -> Iterator[str]:
         script = ('set -e; cd "$1"; if [ -d "$3" ]; then mkdir -p "$4"; find . -mindepth 1 -maxdepth 1 ! -name ".gs-*" -exec mv {} "$4"/ \\; ; '
                   'find "$3" -mindepth 1 -maxdepth 1 -exec mv {} . \\; ; rmdir "$3"; fi; rm -rf "$2"')
-        self.sh(name, "root", ["sh", "-c", script, "sh", st["dir"], st["stage"], st["pre"], st["failed"]])
+        self.sh(name, st.get("user", "root"), ["sh", "-c", script, "sh", st["dir"], st["stage"], st["pre"], st["failed"]])
         with contextlib.suppress(Exception):
             self.restart(name)
         yield self.emit(f"   {name}: original files in place")
@@ -598,7 +607,7 @@ class BackupProvider:
             else:
                 if not re.search(r"/\.gs-pre-r[0-9a-z]+$", where) or ".." in where:
                     raise RestoreError("refusing: that is not a restore-retained directory")
-                self.sh(name, "root", ["rm", "-rf", where])
+                self.sh(name, self._owner(name, where.rsplit("/", 1)[0]), ["rm", "-rf", where])
             yield self.emit(f"   removed {where}")
 
 

@@ -41,5 +41,6 @@ def logout(req: Req) -> Response:
         req.app.config["SESSIONS"].revoke(sid)
     resp = envelope({"revoked": revoked})
     if sid:
-        resp.delete_cookie(cookie)
+        https = req.app.config.get("HTTPS_REQUEST")
+        resp.delete_cookie(cookie, secure=bool(https and https()), httponly=True, samesite="Strict")
     return resp
