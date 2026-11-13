@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import shlex
 from typing import Any
 
 from .. import catalog, generate
@@ -45,6 +46,12 @@ PUBLIC_PATH = {"geoserver": "/geoserver/web/", "mapproxy": "/mapproxy/demo/",
                 "qgis_server": "/qgis/?SERVICE=WMS&REQUEST=GetCapabilities", "caddy": "/", "webmap": "/"}
 
 
+# A real answer from QGIS Server without a project is HTTP 500 carrying an OGC exception document ("ServerException ... Project file error").  A status code
+# alone cannot tell that from Apache's own 500 page when the FastCGI process behind it is dead (S-14: mod_fcgid could not bind its socket), so the
+# public probe also requires the body to contain the marker.
+BODY_MARKER = {"qgis_server": "Exception"}
+
+
 def urls(cfg: dict[str, Any], comp: str) -> list[str]:
     if comp not in PUBLIC_PATH or not cfg["components"].get("caddy"):
         return []
@@ -80,7 +87,10 @@ def checks(cfg: dict[str, Any], target: str, ids: list[str]) -> list[dict[str, A
                     resolve = f"{domain}:@PORT@:127.0.0.1"
                 else:
                     url, resolve = base + PUBLIC_PATH[comp], f"{domain}:{port}:127.0.0.1"
-                out.append({"comp": comp, "label": "public", "kind": "alive" if comp == "qgis_server" else "http", "url": url, "resolve": resolve})
+                chk = {"comp": comp, "label": "public", "kind": "alive" if comp == "qgis_server" else "http", "url": url, "resolve": resolve}
+                if comp in BODY_MARKER:
+                    chk["match"] = BODY_MARKER[comp]
+                out.append(chk)
     return out
 
 
@@ -110,18 +120,21 @@ def public_port_prelude(runtime: str, project_filter: str, tls: bool) -> str:
 def probe_script(checks: list[dict[str, Any]]) -> str:
     lines = [
         "http() { echo \"@@http $1 $(curl -sk -m 5 -o /dev/null -w '%{http_code}' \"${@:2}\" 2>/dev/null)\"; }",
+        # httpm <id> <marker> <curl args>: the status code counts only when the body contains <marker> (otherwise 000 = no real answer)
+        "httpm() { o=\"$(curl -sk -m 5 -w '\\n%{http_code}' \"${@:3}\" 2>/dev/null)\"; c=\"${o##*$'\\n'}\"; case \"${o%$'\\n'*}\" in *\"$2\"*) ;; *) c=000 ;; esac; echo \"@@http $1 ${c:-000}\"; }",
         "tcp() { if (exec 3<>/dev/tcp/127.0.0.1/$2) 2>/dev/null; then echo \"@@tcp $1 open\"; else echo \"@@tcp $1 closed\"; fi; }",
     ]
     for i, c in enumerate(checks):
         if c["kind"] == "tcp":
             lines.append(f"tcp {i} {int(c['port'])}")
         else:
+            fn = f"httpm {i} {shlex.quote(c['match'])}" if c.get("match") else f"http {i}"
             if "@PORT@" in c["url"] or "@PORT@" in (c.get("resolve") or ""):         # ports read from the engine: variable expansion, so double quotes (domain / path are validated)
                 res = f'--resolve "{c["resolve"].replace("@PORT@", "${GS_PUBLIC_PORT}")}" ' if c.get("resolve") else ""
-                lines.append(f'http {i} {res}"{c["url"].replace("@PORT@", "${GS_PUBLIC_PORT}")}"')
+                lines.append(f'{fn} {res}"{c["url"].replace("@PORT@", "${GS_PUBLIC_PORT}")}"')
             else:
                 res = f"--resolve {c['resolve']} " if c.get("resolve") else ""
-                lines.append(f"http {i} {res}'{c['url']}'")
+                lines.append(f"{fn} {res}'{c['url']}'")
     return "\n".join(lines) + "\n"
 
 

@@ -228,6 +228,9 @@ def download(cfg: dict[str, Any], mode: str, ssh: Optional[dict[str, Any]], bid:
         if p.returncode != 0 or out.stat().st_size == 0:
             raise DeployError("ჩამოტვირთვა ვერ მოხერხდა: " + p.stderr.decode(errors="replace").strip()[-200:])
         verify_archive(out)
+    except subprocess.TimeoutExpired as e:
+        out.unlink(missing_ok=True)
+        raise DeployError("ჩამოტვირთვა ვერ მოხერხდა: დრო ამოიწურა (1 საათი); ნაწილობრივი ფაილი წაიშალა") from e
     except BaseException:
         out.unlink(missing_ok=True)
         raise

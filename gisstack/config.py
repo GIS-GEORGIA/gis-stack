@@ -266,7 +266,7 @@ def resolve(user_cfg: dict[str, Any] | None, *, generate_secrets: bool = True,
     if comps["mapproxy"]:
         if "GLOBAL_GEODETIC" in mp["grids"]:
             meta_warnings.append("MapProxy: GLOBAL_GEODETIC (EPSG:4326) WMTS-ით ვერ მოემსახურება (MapProxy-ის შეზღუდვა: მხოლოდ TMS/WMS); ვებ რუკა WMTS REST-ს იყენებს")
-        if any(l.get("source") == "tiles" for l in mp["layers"]) and set(mp["grids"]) - {"GLOBAL_WEBMERCATOR"}:
+        if any(isinstance(l, dict) and l.get("source") == "tiles" for l in mp["layers"]) and set(mp["grids"]) - {"GLOBAL_WEBMERCATOR"}:
             meta_warnings.append("MapProxy: „tiles“ წყაროს ფენა მხოლოდ GLOBAL_WEBMERCATOR-ში მოემსახურება (მზა ფილების გადაპროექცია შეუძლებელია); სხვა ბადეებისთვის გამოიყენე WMS წყარო")
     known_grids = {g["id"] for g in catalog.GRIDS}
     if any(g not in known_grids for g in mp["grids"]):

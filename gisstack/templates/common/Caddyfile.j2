@@ -51,6 +51,16 @@
 {% if c.tomcat %}
 
 	# Other Tomcat web applications: /apps/<context>/ (manager is never exposed)
+	# Tomcat drops ";parameters" from every path segment, so "/apps/x/..;/manager/html" reaches the manager although Caddy sees no "manager" prefix
+	# (confirmed against real Caddy 2 + Tomcat 11: 401 from the manager instead of 403).  A segment that is empty, "." or ".." followed by ";" is
+	# only ever an attempt at that, so it is refused here.  Ordinary ";jsessionid=..." suffixes on a real name stay allowed.
+	@tomcat_path_trick {
+		path /apps/*
+		path_regexp (^|/)\.{0,2};
+	}
+	handle @tomcat_path_trick {
+		respond "Forbidden" 403
+	}
 	handle /apps/manager* {
 		respond "Forbidden" 403
 	}

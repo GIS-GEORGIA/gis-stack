@@ -368,12 +368,18 @@ def fetch_backup(mode: str, ssh: dict[str, Any] | None, ts: str, dest_dir: str |
         fd = os.open(out, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)        # never overwrites an existing backup
     except FileExistsError as e:
         raise deploy.DeployError(f"ბექაფის ფაილი უკვე არსებობს და არ გადაიწერება: {out}") from e
-    with os.fdopen(fd, "wb") as fh:
-        p = subprocess.run(transport.argv(mode, ssh, script, root=True), stdin=subprocess.DEVNULL, stdout=fh,
-                           stderr=subprocess.PIPE, timeout=900)
-    if p.returncode != 0 or out.stat().st_size == 0:
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            p = subprocess.run(transport.argv(mode, ssh, script, root=True), stdin=subprocess.DEVNULL, stdout=fh,
+                               stderr=subprocess.PIPE, timeout=900)
+        if p.returncode != 0 or out.stat().st_size == 0:
+            raise deploy.DeployError("ბექაფის ჩამოტვირთვა ვერ მოხერხდა: " + p.stderr.decode(errors="replace").strip()[-200:])
+    except subprocess.TimeoutExpired as e:
         out.unlink(missing_ok=True)
-        raise deploy.DeployError("ბექაფის ჩამოტვირთვა ვერ მოხერხდა: " + p.stderr.decode(errors="replace").strip()[-200:])
+        raise deploy.DeployError("ბექაფის ჩამოტვირთვა ვერ მოხერხდა: დრო ამოიწურა (15 წუთი); ნაწილობრივი ფაილი წაიშალა") from e
+    except BaseException:                  # Ctrl-C, a failed transfer: a half-written archive must neither look like a backup nor block the retry (O_EXCL above)
+        out.unlink(missing_ok=True)
+        raise
     return out
 
 

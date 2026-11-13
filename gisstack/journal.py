@@ -36,6 +36,12 @@ def record(event: dict[str, Any]) -> None:
         os.close(fd)
 
 
+def record_quietly(event: dict[str, Any]) -> None:
+    """`record`, but a journal that cannot be written (disk full, read-only home, permissions) never stops - or masks the error of - the operation it describes."""
+    with contextlib.suppress(OSError):
+        record(event)
+
+
 def tail(n: int = 50) -> list[dict[str, Any]]:
     p = path()
     if not p.exists():
@@ -80,7 +86,7 @@ class Operation:
 
     def __enter__(self) -> Operation:
         self.t0 = time.time()
-        record({"id": self.id, "ts": int(self.t0), "op": self.op, "event": "start", **self.meta})
+        record_quietly({"id": self.id, "ts": int(self.t0), "op": self.op, "event": "start", **self.meta})
         events.emit("operation.start", self.op, id=self.id, **self.meta)
         return self
 
@@ -91,8 +97,8 @@ class Operation:
             status, err = "aborted", ""            # the consumer stopped reading (cancelled)
         else:
             status, err = "error", self.redact(f"{type(ev).__name__}: {ev}")[:500]
-        record({"id": self.id, "ts": int(time.time()), "op": self.op, "event": "end", "status": status,
-                "seconds": round(time.time() - self.t0, 1), "error": err, **self.meta})
+        record_quietly({"id": self.id, "ts": int(time.time()), "op": self.op, "event": "end", "status": status,
+                        "seconds": round(time.time() - self.t0, 1), "error": err, **self.meta})
         events.emit("operation.end", self.op, id=self.id, status=status, error=err, **self.meta)
 
 

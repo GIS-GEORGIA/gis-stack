@@ -11,6 +11,7 @@ Every long-running or remote command goes through here so that it is
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import queue
 import shlex
@@ -18,6 +19,7 @@ import signal
 import subprocess
 import threading
 import time
+import urllib.parse
 from typing import Any, Callable, Iterable, Iterator, Optional, Sequence, Type
 
 from .core import log
@@ -51,7 +53,16 @@ def default_idle() -> Optional[float]:
 
 def redactor(secrets: Iterable[Any]) -> Callable[[str], str]:
     """Function that masks every given secret (longest first, so a secret that contains another is fully hidden)."""
-    values = sorted({str(s) for s in secrets if s and len(str(s)) >= 4}, key=len, reverse=True)
+    plain = {str(s) for s in secrets if s and len(str(s)) >= 4}
+    # The same secret also shows up escaped: inside JSON error bodies, in URLs, in shell-quoted command lines (audit 2026-11: only the raw text was masked).
+    forms = set(plain)
+    for v in plain:
+        forms.add(json.dumps(v, ensure_ascii=False)[1:-1])
+        forms.add(json.dumps(v)[1:-1])
+        forms.add(urllib.parse.quote(v, safe=""))
+        forms.add(urllib.parse.quote_plus(v))
+        forms.add(shlex.quote(v).strip("'") if any(c in v for c in "'") else v)
+    values = sorted((f for f in forms if len(f) >= 4), key=len, reverse=True)
 
     def mask(text: str) -> str:
         for v in values:

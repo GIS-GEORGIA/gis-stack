@@ -887,7 +887,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if a.cmd == "generate":
-        out = generate.generate_bundle(cfg, a.out)
+        try:
+            out = generate.generate_bundle(cfg, a.out)
+        except deploy.DeployError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
         print(f"bundle written to {out}")
         for w_ in cfg["_meta"]["warnings"]:
             print("note:", w_)

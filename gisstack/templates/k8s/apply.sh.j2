@@ -64,13 +64,18 @@ case "${1:-apply}" in
     ;;
   clean)
     # ./apply.sh clean [--purge] [component ...]
-    #   no component: delete everything incl. the namespace (and with it ALL volumes)
+    #   no component: without --purge every workload, service, configuration and secret is removed but the namespace and ALL volumes stay (like Compose);
+    #                 with --purge the namespace is deleted too, and with it every volume (`kubectl delete -k .`: the data is gone)
     #   components : delete just their workloads; --purge also deletes their volumes
     shift
     PURGE=0; WANT=""
     for a in "$@"; do case "$a" in --purge) PURGE=1 ;; *) WANT="$WANT $a" ;; esac; done
-    if [ -z "$WANT" ]; then
+    if [ -z "$WANT" ] && [ "$PURGE" = 1 ]; then
       kubectl delete -k . --ignore-not-found
+    elif [ -z "$WANT" ]; then
+      # The namespace owns the PersistentVolumeClaims (PostGIS: data-postgis-0, created by the StatefulSet) and the default reclaim policy deletes the volume
+      # with its claim: `kubectl delete -k .` here destroyed the database although no --purge was given (found with a real kind cluster, audit 2026-11).
+      kubectl -n "$NS" delete statefulset,deployment,daemonset,job,cronjob,service,ingress,configmap,secret --all --ignore-not-found
     else
       for c in $WANT; do
         [ "$c" = qgis_server ] && c=qgis

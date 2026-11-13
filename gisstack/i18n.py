@@ -1138,3 +1138,11 @@ EN.update({
     "✖ დაზიანებულია": "✖ Damaged",
     "🔒 დაშიფრული": "🔒 Encrypted",
 })
+
+# Audit 2026-11: a timed-out download removes its partial file
+EN.update({
+    "ბექაფის ჩამოტვირთვა ვერ მოხერხდა: დრო ამოიწურა (15 წუთი); ნაწილობრივი ფაილი წაიშალა":
+        "Backup download failed: timed out (15 minutes); the partial file was removed",
+    "ჩამოტვირთვა ვერ მოხერხდა: დრო ამოიწურა (1 საათი); ნაწილობრივი ფაილი წაიშალა":
+        "Download failed: timed out (1 hour); the partial file was removed",
+})

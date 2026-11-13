@@ -11,6 +11,7 @@ functions into a *sample* and then flattened into metrics.  Every number comes f
 If a source is unavailable the metric is simply absent and the failure is reported in `errors` - nothing is ever made up."""
 from __future__ import annotations
 
+import calendar
 import contextlib
 import re
 import shlex
@@ -72,6 +73,8 @@ def _unit_list(cfg: dict[str, Any]) -> list[tuple[str, str]]:
 def _probe_lines(cfg: dict[str, Any], target: str, ids: list[str]) -> str:
     lines = [
         "probe_http() { out=\"$(curl -sk -m 5 -o /dev/null -w '%{http_code} %{time_total}' \"${@:3}\" 2>/dev/null)\"; echo \"probe $1 ${out:-000 0} $2\"; }",
+        # probe_httpm <name> <kind> <marker> <curl args>: the code counts only when the body contains <marker> (QGIS: an OGC exception document, not Apache's own 500 page)
+        "probe_httpm() { o=\"$(curl -sk -m 5 -w '\\n%{http_code} %{time_total}' \"${@:4}\" 2>/dev/null)\"; r=\"${o##*$'\\n'}\"; case \"${o%$'\\n'*}\" in *\"$3\"*) ;; *) r=\"000 ${r#* }\" ;; esac; echo \"probe $1 ${r:-000 0} $2\"; }",
         "probe_tcp() { s=$(date +%s%N); if (exec 3<>/dev/tcp/127.0.0.1/$2) 2>/dev/null; then e=$(date +%s%N); echo \"probe $1 open $(awk -v a=$s -v b=$e 'BEGIN {printf \"%.4f\", (b-a)/1e9}') tcp\"; else echo \"probe $1 closed 0 tcp\"; fi; }",
         'echo "@@probes"',
     ]
@@ -81,7 +84,8 @@ def _probe_lines(cfg: dict[str, Any], target: str, ids: list[str]) -> str:
             lines.append(f"probe_tcp {shlex.quote(name)} {int(c['port'])}")
         else:
             res = f"--resolve {shlex.quote(c['resolve'])} " if c.get("resolve") else ""
-            lines.append(f"probe_http {shlex.quote(name)} {c['kind']} {res}{shlex.quote(c['url'])}")
+            fn = f"probe_httpm {shlex.quote(name)} {c['kind']} {shlex.quote(c['match'])}" if c.get("match") else f"probe_http {shlex.quote(name)} {c['kind']}"
+            lines.append(f"{fn} {res}{shlex.quote(c['url'])}")
     return "\n".join(lines) + "\n"
 
 
@@ -313,7 +317,7 @@ def backup_metrics(rows: list[list[str]], now: float) -> dict[str, Any]:
             count += 1
             newest_id = max(newest_id, r[1])
             try:
-                t = time.mktime(time.strptime(r[4], "%Y-%m-%dT%H:%M:%SZ")) - time.timezone
+                t = calendar.timegm(time.strptime(r[4], "%Y-%m-%dT%H:%M:%SZ"))
             except ValueError:
                 continue
             best = t if best is None or t > best else best
@@ -424,7 +428,7 @@ def stack_backup_stats(store_rows: list[dict[str, Any]], now: float) -> dict[str
     out["failed"] = float(sum(1 for r in store_rows if r.get("status") in ("partial", "failed", "damaged") and (not newest or _stamp(r["id"]) >= _stamp(newest))))
     for r in ok:
         with contextlib.suppress(ValueError):
-            out["last_age_seconds"] = max(0.0, now - (time.mktime(time.strptime(r["created"], "%Y-%m-%dT%H:%M:%SZ")) - time.timezone))
+            out["last_age_seconds"] = max(0.0, now - calendar.timegm(time.strptime(r["created"], "%Y-%m-%dT%H:%M:%SZ")))
             break
     return out
 

@@ -105,6 +105,17 @@ verify_pin() {      # verify_pin FILE NAME: SHA-256 must match the pin shipped i
   got="$(sha256sum "$f" | cut -d' ' -f1)"
   [ "$got" = "$want" ] || die "SHA-256 mismatch for $name (expected $want, got $got): download discarded"
 }
+extract_tree() {   # extract_tree <tarball> <parent-dir> <top-dir-name> <marker-file-inside-it>
+  # Unpack beside the final place and rename into it: an interrupted extraction (disk full, Ctrl-C, power loss) leaves nothing that a re-run would take for a
+  # finished installation.  A directory without its marker file is the leftover of such a run (or of an older installer): it is replaced.
+  local tgz="$1" parent="$2" name="$3" marker="$4" stage
+  if [ -d "$parent/$name" ] && [ -e "$parent/$name/$marker" ]; then return 0; fi
+  stage="$(mktemp -d "$parent/.gisstack-extract.XXXXXX")"
+  if ! tar -xzf "$tgz" -C "$stage" || [ ! -e "$stage/$name/$marker" ]; then rm -rf "$stage"; return 1; fi
+  rm -rf "${parent:?}/$name"
+  mv "$stage/$name" "$parent/$name"
+  rm -rf "$stage"
+}
 gs_newpass_body() { printf '{"newPassword":"%s"}' "$(cfgq "$1")"; }
 ensure_user() {    # ensure_user <name> <home>
   id "$1" >/dev/null 2>&1 || useradd --system --home-dir "$2" --create-home --shell /usr/sbin/nologin "$1"
@@ -235,7 +246,7 @@ step_tomcat() {
   log "Tomcat $ver"
 
   ensure_user tomcat /var/lib/tomcat
-  if [ ! -d "/opt/apache-tomcat-$ver" ]; then
+  if [ ! -e "/opt/apache-tomcat-$ver/lib/catalina.jar" ]; then
     local tmp; tmp="$(mktemp -d)"
     curl -fL --retry 3 -o "$tmp/tc.tgz" "$base/$dir/v$ver/bin/apache-tomcat-$ver.tar.gz"
     # the checksum comes from Apache's own distribution hosts, not from the (mirror) host that served the tarball
@@ -243,7 +254,7 @@ step_tomcat() {
       || curl -fsSL -o "$tmp/tc.tgz.sha512" "https://archive.apache.org/dist/tomcat/$dir/v$ver/bin/apache-tomcat-$ver.tar.gz.sha512" \
       || die "cannot fetch the official Tomcat checksum"
     (cd "$tmp" && echo "$(cut -d' ' -f1 tc.tgz.sha512)  tc.tgz" | sha512sum -c -)
-    tar -xzf "$tmp/tc.tgz" -C /opt
+    extract_tree "$tmp/tc.tgz" /opt "apache-tomcat-$ver" lib/catalina.jar || { rm -rf "$tmp"; die "Tomcat $ver: the archive could not be unpacked completely (disk full?) - nothing was installed"; }
     rm -rf "$tmp"
     rm -rf "/opt/apache-tomcat-$ver/webapps/"{docs,examples,manager,host-manager,ROOT}
   fi

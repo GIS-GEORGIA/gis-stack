@@ -4,6 +4,7 @@ One directory per backup below `<root>/<id>/`; everything owner-only.  A backup 
 directory, after the manifest and SHA256SUMS were written and the structure was re-checked."""
 from __future__ import annotations
 
+import calendar
 import hashlib
 import json
 import os
@@ -206,7 +207,7 @@ class Store:
             if days is None:
                 return True
             try:
-                t = time.mktime(time.strptime(r["id"].removeprefix("pre-")[:16], "%Y%m%dT%H%M%SZ"))
+                t = calendar.timegm(time.strptime(r["id"].removeprefix("pre-")[:16], "%Y%m%dT%H%M%SZ"))
             except ValueError:
                 return False
             return now - t > days * 86400

@@ -207,7 +207,12 @@ class CleanTests(unittest.TestCase):
             self.assertIn("rollout status deployment/mapproxy", c)
             self.assertIn("rollout status statefulset/postgis", c)
 
-            c = run("k8s/apply.sh", "clean")
+            c = run("k8s/apply.sh", "clean")                       # no purge: the namespace owns the volumes, so it must NOT be deleted (audit 2026-11, R-4)
+            self.assertNotIn("delete -k .", c)
+            self.assertIn("delete statefulset,deployment", c)
+            self.assertNotIn("pvc", c)
+            self.assertNotIn("namespace", c)
+            c = run("k8s/apply.sh", "clean", "--purge")            # purge: everything, volumes included
             self.assertIn("delete -k . --ignore-not-found", c)
             c = run("k8s/apply.sh", "clean", "geoserver")
             self.assertIn("delete deployment/geoserver service/geoserver", c)

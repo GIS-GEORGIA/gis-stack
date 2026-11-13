@@ -1,7 +1,8 @@
 {
+ ".gisstack-bundle": "38071f07f0905c7757fce8472ec2a05e44f2237e2834c73094567d212850402e",
  "README.md": "479c5c5976cbe587a079036fbd0dbb560f9a5e1ab35fcd78a898a271db0b0edb",
- "compose/.env": "22cc39bbb441b93e858446e896197eb80a711e7fed12d9cb255bf9fb53a4c0f5",
- "compose/caddy/Caddyfile": "4756cf468ee5d684c76c84ccd3b39cea4ef609e1a5434183e128d4749497d7bd",
+ "compose/.env": "51419faa2a6e9e1030bb29460b7aea8d55b1b7b4e46500996d0cc849fc93992c",
+ "compose/caddy/Caddyfile": "4cce8dab8b5f85b5d39c8ac74969af93d5ca62aae71dd674c499b74d50da6922",
  "compose/docker-compose.yml": "9c0c05b88c394a90d3b2726a67d196a81846674529673aabc35184a7816ba605",
  "compose/mapproxy/Dockerfile": "e68394a5e9292aeec54ba1b2e1fd7020b0ee3667138e6464ae8add117b80ce1c",
  "compose/mapproxy/app.py": "1f89e33887929dbfdfbbd49825e961916c4b24cc79b3aa0886843409f9a2e2c4",

@@ -181,7 +181,7 @@ $RUNAS "$VENV/bin/python" "$t/validate.py" "$t/mapproxy.yaml" $SEEDARG 2>"$t/err
 [ -s "$t/res" ] || fail "validator crashed: $(head -c 200 "$t/err" | tr -d '"\\\\' | tr '\\n' ' ')"
 cat "$t/res"
 if [ "$DRY" = 1 ] || ! grep -q '"ok": true' "$t/res"; then exit 0; fi
-id="$(date +%Y%m%d-%H%M%S)-$(head -c2 /dev/urandom | od -An -tx1 | tr -d ' \\n')"
+id="$(date -u +%Y%m%d-%H%M%S)-$(head -c2 /dev/urandom | od -An -tx1 | tr -d ' \\n')"
 install -d -m 700 "$BK/$id"
 for f in mapproxy.yaml seed.yaml; do if [ -f "$MP_DIR/$f" ]; then cp -p "$MP_DIR/$f" "$BK/$id/$f"; fi; done
 install -d "$MP_DIR"
@@ -415,7 +415,7 @@ done
 t="$(mktemp -d)" || exit 1; trap 'rm -rf "$t"' EXIT
 printf %s "$CB" | base64 -d > "$t/mapproxy.yaml" || { echo "BAD"; exit 0; }
 SEEDARG=""; [ "$SB" != "-" ] && { printf %s "$SB" | base64 -d > "$t/seed.yaml" || { echo "BAD"; exit 0; }; SEEDARG=1; }
-id="$(date +%Y%m%d-%H%M%S)-$(head -c2 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+id="$(date -u +%Y%m%d-%H%M%S)-$(head -c2 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 install -d -m 700 "$BK/$id"
 for f in mapproxy.yaml seed.yaml; do if [ -f "$MP_DIR/$f" ]; then cp -p "$MP_DIR/$f" "$BK/$id/$f"; fi; done
 install -m 644 "$t/mapproxy.yaml" "$MP_DIR/.mapproxy.yaml.new" && mv -f "$MP_DIR/.mapproxy.yaml.new" "$MP_DIR/mapproxy.yaml"

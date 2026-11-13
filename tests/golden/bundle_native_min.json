@@ -1,10 +1,11 @@
 {
+ ".gisstack-bundle": "38071f07f0905c7757fce8472ec2a05e44f2237e2834c73094567d212850402e",
  "README.md": "f80a48049f9d4614886961968b285636da7c8a24addee7afdad487e411661deb",
  "native/config/Caddyfile": "639743b5003e187572e23ad74e7e38dfe87db57b0e72dd329807ed749fe69764",
  "native/config/init-extensions.sql": "45262192416174d4ecd9c150105c39f8b3819ebf525b263d3b435bfe1c5446f1",
  "native/config/pins.sha256": "c27706d7569ff3631e5e61e7de0b98ec36c7fae76d5bfe28ea9ac57d2fb3d718",
  "native/gisstack-backup": "7c149639b2b87545d6f8f63cd59ce31971bf0c4c391717215fef94c718d3d41f",
- "native/install.sh": "cfa75f8dab15d94775ce8d68c8014d842e460dc16b41f8d54db1675684d9c296",
+ "native/install.sh": "c0d041dd3b35881d128a36e28dcbfd0d72a75c7e652ae9567fc54daf15bb9d73",
  "native/stack.env": "c3b1c053593778d62f20113db94fb494ad78203c603702a756126121e5d8851f",
  "native/uninstall.sh": "afdd8bf2b114f3342e8897f6174db25f2ed0bbad8aa6f4de29e4d8eb46a90e6a",
  "stack.json": "1c99b997e22baae4bbd9e5acc99a87ed960a7f96a5d6f5821edecb923d1ceca9"

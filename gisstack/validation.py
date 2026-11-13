@@ -242,6 +242,11 @@ def _set(d: dict[str, Any], path: str, value: Any) -> None:
     cur[path.split(".")[-1]] = value
 
 
+# List settings whose elements the rest of the code uses as text / as objects: a hand-written file with another element type is a clear error, not a traceback.
+TEXT_LISTS = frozenset({"targets", "postgres.extensions", "geoserver.extensions", "mapproxy.grids"})
+OBJECT_LISTS = frozenset({"mapproxy.layers"})
+
+
 def check_shape(cfg: Any, template: dict[str, Any], path: str = "") -> list[str]:
     """Sections must be objects and scalars must not be replaced by objects (prevents crashes on malformed files)."""
     errors: list[str] = []
@@ -259,6 +264,10 @@ def check_shape(cfg: Any, template: dict[str, Any], path: str = "") -> list[str]
                 errors += check_shape(v, tv, here + ".")
         elif isinstance(tv, list) and not isinstance(v, list):
             errors.append(f"{here}: must be a list")
+        elif isinstance(tv, list) and here in TEXT_LISTS and not all(isinstance(x, str) for x in v):
+            errors.append(f"{here}: must be a list of names (text)")
+        elif isinstance(tv, list) and here in OBJECT_LISTS and not all(isinstance(x, dict) for x in v):
+            errors.append(f"{here}: must be a list of objects")
         elif isinstance(tv, bool) and not isinstance(v, bool):
             errors.append(f"{here}: must be true or false")
         elif isinstance(tv, str) and not isinstance(v, str):
