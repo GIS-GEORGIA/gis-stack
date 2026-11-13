@@ -12,6 +12,24 @@ Statuses (used consistently):
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
 
+## 0000000000000000. Audit of `c68bfdf` (2026-11-13) - working tree, NOT committed, NOT run on GitHub
+
+Findings, reproductions and fixes: `docs/SECURITY-REVIEW-2026-11.md` ("Audit 2026-11-13"): R-4 (Kubernetes `clean` without `--purge` destroyed the namespace, volumes and data), R-5 (`generate --out` deleted any existing directory), S-18 (Tomcat manager reachable through `..;` paths), R-6 (interrupted Tomcat extraction trusted), R-7 (partial backup downloads), R-8/R-9 (time-zone dependent backup age/retention and MapProxy backup ids), R-10 (unwritable journal), R-11 (wrong-typed configuration), S-19 (secret redaction forms), G-1 (QGIS public probe), G-2 (custom ports, limitation only).
+
+Verification levels (each fix has a regression test that was seen to fail without the fix, except where stated):
+
+| Item | Level |
+|---|---|
+| R-4 | **verified, real**: kind v1.37 cluster, reproduced the data loss with the old script, new script keeps namespace/PVC/data (row survives a redeploy), `--purge` removes all; `tests/integration/test_k8s_clean_keeps_data.py` 1/1 OK locally through `deploy.clean`, fails on the old script. Not yet run on GitHub. |
+| S-18 | **verified, real**: real Caddy 2 + Tomcat 11 (`tests/integration/test_tomcat_manager_block.py` 4/4 OK locally, includes the control that shows the attack works without the rule). Not yet run on GitHub. |
+| R-5, R-6, R-7, R-8, R-9, R-10, R-11, S-19 | **verified, unit** with real bash/tar/curl where named (installer extraction, probes); no real remote server involved in the download tests (transport mocked). |
+| G-1 | **partially verified**: shell probes tested against a real HTTP server; a healthy real `camptocamp/qgis-server` answers 500 + `ServerException` (matches the marker); the *dead FastCGI* answer was simulated, not reproduced on the real image; the hardened real-Docker stack test (`tests/integration/test_hardening.py`, which runs the deployment verification with the new probe through Caddy against real QGIS) 12/12 OK locally. |
+| G-2 | **limitation**, not fixed. |
+
+Local test results on the final tree: full unit suite (`python -m unittest discover -s tests`) **1098 tests, OK, 299 skipped** (the opt-in integration suites); real Docker `test_hardening.py` 12/12 OK and `test_compose_exposure.py` 3/3 OK; real kind `test_k8s_clean_keeps_data.py` 1/1 OK; real Caddy + Tomcat `test_tomcat_manager_block.py` 4/4 OK. Python 3.9 was checked for syntax only (no 3.9 interpreter here); ruff, mypy and bandit were not available locally.
+
+Not done / not verified in this audit: Podman and Kubernetes behaviour of the new Caddyfile rule (same file, only Docker + native text checked); rpm upgrade; Windows/macOS; native `install.sh` end to end after the extraction change (the installer suite needs `GISSTACK_TEST_INSTALLER=1` and was **not** run - the change is covered by the extraction tests and `bash -n`); read-only root file system and resource limits (S-4 remainder); S-12.
+
 ## 000000000000000. GitHub results on `e397a9e` (PostgreSQL no-new-privileges fix) - verified from the run logs
 
 Each workflow dispatched once on `e397a9e`; `tests` and `codeql` (push) also green.

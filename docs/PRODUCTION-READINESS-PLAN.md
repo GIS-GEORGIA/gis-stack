@@ -22,3 +22,9 @@ Stages 1-8 above were executed (results: `docs/IMPLEMENTATION-STATUS.md`, sectio
 ## Hardening phase (2026-11-13) - outcome
 
 Closed (locally verified, not yet on GitHub): S-1 token rotation on upgrade (deb), S-2 network exposure (`network.bind`), S-3 Caddy ports, S-5 snapshot secrets, S-7 cookie `Secure`, S-16 restore under dropped capabilities, and two real-MapProxy GIS defects (tile-source layers in non-Web-Mercator grids; GLOBAL_GEODETIC over WMTS). S-4 container hardening is **partial** (capabilities, privilege gain, seccomp; no read-only root filesystems, no resource limits). Open: S-12 (Pillow on Python 3.10), rpm upgrade untested, new tests not yet in CI. Release decision: not before the working tree is committed and `tests`, `codeql`, `podman` and `integration` are green on it - see `docs/IMPLEMENTATION-STATUS.md`, section 000000000000.
+
+## Audit (2026-11-13) - outcome
+
+Details and evidence: `docs/SECURITY-REVIEW-2026-11.md` ("Audit 2026-11-13"), `docs/IMPLEMENTATION-STATUS.md` (newest section). Fixed locally (not committed, not yet run on GitHub): Kubernetes `clean` data loss (R-4), `generate --out` directory deletion (R-5), Tomcat manager path-parameter bypass (S-18), interrupted Tomcat extraction (R-6), partial backup downloads (R-7), time-zone dependent backup age/retention (R-8, R-9), journal write failures (R-10), wrong-typed configuration (R-11), secret redaction forms (S-19), QGIS public probe (G-1).
+
+Still before calling the stack production-ready: the new integration tests must run on GitHub (`integration` workflow: Tomcat block test; kubernetes job: clean test); S-4 remainder (read-only root file system, resource limits); S-12 (Pillow on Python 3.10); custom `HTTP(S)_PORT` redirect/advertised URLs (G-2); rpm upgrade path; PostGIS health beyond a TCP connect on native; reverse-proxy forwarded headers for GeoServer on Compose/native with non-standard ports. CI green is not the criterion.
