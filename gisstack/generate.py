@@ -167,6 +167,9 @@ def build_context(cfg: dict[str, Any], target: str) -> dict[str, Any]:
         "k8s": cfg["k8s"],
         "hard": {svc: hardening.compose_snippet(svc, bool(cfg["security"]["harden_containers"])) for svc in hardening.CAPS},
         "khard": {svc: hardening.k8s_container_snippet(svc, bool(cfg["security"]["harden_containers"])) for svc in hardening.CAPS},
+        "lim": {svc: hardening.limits_compose(svc, cfg["limits"]) for svc in hardening.CAPS},
+        "klim": {svc: hardening.limits_k8s(svc, cfg["limits"], 12, False) for svc in hardening.CAPS},
+        "kres": {svc: hardening.limits_k8s(svc, cfg["limits"], 12, True) for svc in hardening.CAPS},
         "khard_pod": hardening.k8s_pod_snippet(bool(cfg["security"]["harden_containers"])),
         "bind": f"[{cfg['network']['bind']}]" if ":" in cfg["network"]["bind"] else cfg["network"]["bind"],       # IPv6 needs brackets in a port mapping
         "target": target,

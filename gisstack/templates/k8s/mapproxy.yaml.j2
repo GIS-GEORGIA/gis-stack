@@ -67,6 +67,7 @@ spec:
             initialDelaySeconds: 40
             periodSeconds: 10
             failureThreshold: 20
+{{ kres.mapproxy }}
           volumeMounts:
             - name: config
               mountPath: /etc/mapproxy

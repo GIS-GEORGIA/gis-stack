@@ -74,6 +74,7 @@ spec:
           resources:
             requests:
               memory: {{ gs.heap_mb }}Mi
+{{ klim.geoserver }}
           volumeMounts:
             - name: data
               mountPath: /opt/geoserver_data

@@ -80,6 +80,8 @@ def default_config() -> dict[str, Any]:
         "components": {c["id"]: c["default"] for c in catalog.COMPONENTS},
         "tls": "internal",
         "security": {"harden_containers": True},   # drop all capabilities / no privilege gain for the generated containers (gisstack/hardening.py); false = off
+        # Optional CPU / memory limits per container (0 = no limit; they depend on the machine, so nothing is limited by default). Compose / Podman: mem_limit + cpus; Kubernetes: resources.limits
+        "limits": {svc: {"memory_mb": 0, "cpus": 0} for svc in ("postgis", "geoserver", "tomcat", "qgis", "mapproxy", "caddy")},
         "network": {"bind": "127.0.0.1"},   # host address of the ports published when Caddy is off (GeoServer, MapProxy, QGIS, Tomcat); 0.0.0.0 = every interface
         "postgres": {
             "version": "17",

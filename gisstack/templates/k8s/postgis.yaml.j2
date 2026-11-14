@@ -66,6 +66,7 @@ spec:
           resources:
             requests:
               memory: {{ [pg.ram_gb | int * 256, 512] | max }}Mi
+{{ klim.postgis }}
           volumeMounts:
             - name: data
               mountPath: {{ pgdir }}

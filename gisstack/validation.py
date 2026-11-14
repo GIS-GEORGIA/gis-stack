@@ -193,9 +193,29 @@ def _bind(v: Any) -> tuple[Any, str | None]:
     return v, None
 
 
+def _memory_mb(v: Any) -> tuple[Any, str | None]:
+    nv, err = _int(0, 1048576)(v)
+    if err is None and 0 < nv < 64:
+        return nv, "must be 0 (no limit) or at least 64"
+    return nv, err
+
+
+def _cpus(v: Any) -> tuple[Any, str | None]:
+    nv, err = _float(0, 256)(v)
+    if err is None and 0 < nv < 0.1:
+        return nv, "must be 0 (no limit) or at least 0.1"
+    return nv, err
+
+
+LIMITED = ("postgis", "geoserver", "tomcat", "qgis", "mapproxy", "caddy")
+JVM_OVERHEAD_MB = 256      # metaspace, thread stacks, direct buffers: a JVM needs more than -Xmx
+
+
 def schema(basemaps: list[str]) -> dict[str, Check]:
     t = _text
+    limits = {f"limits.{s}.{k}": chk for s in LIMITED for k, chk in (("memory_mb", _memory_mb), ("cpus", _cpus))}
     return {
+        **limits,
         "email": lambda v: (v, None) if v == "" else t(254, _EMAIL)(v),
         "network.bind": _bind,
         "security.harden_containers": _bool,
@@ -318,6 +338,10 @@ def validate(cfg: dict[str, Any], template: dict[str, Any], basemaps: list[str],
             errors.append(f"{path}: {err}")
         else:
             _set(cfg, path, nv)
+    for svc, heap in (("geoserver", cfg.get("geoserver", {}).get("heap_mb")), ("tomcat", cfg.get("tomcat", {}).get("heap_mb"))):
+        mem = cfg.get("limits", {}).get(svc, {}).get("memory_mb", 0)
+        if isinstance(mem, int) and isinstance(heap, int) and not isinstance(mem, bool) and 0 < mem < heap + JVM_OVERHEAD_MB:
+            errors.append(f"limits.{svc}.memory_mb: must be at least {svc}.heap_mb + {JVM_OVERHEAD_MB} ({heap + JVM_OVERHEAD_MB}) or the kernel kills the container")
     for i, layer in enumerate(cfg.get("mapproxy", {}).get("layers", [])):
         if isinstance(layer, dict):
             for k in layer:

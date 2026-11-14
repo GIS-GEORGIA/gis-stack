@@ -38,6 +38,7 @@ spec:
           readinessProbe:
             tcpSocket: {port: 8080}
             initialDelaySeconds: 10
+{{ kres.tomcat }}
           volumeMounts:
             - name: webapps
               mountPath: /usr/local/tomcat/webapps

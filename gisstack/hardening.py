@@ -15,7 +15,7 @@ Read-only root filesystem (Compose / Podman only), where measured to work with r
 volumes /data and /config) and postgis (tmpfs /tmp and /var/run/postgresql).  NOT done, with the measured reason: geoserver and tomcat (the startup script
 rewrites /usr/local/tomcat/conf/server.xml and Tomcat writes its logs below /usr/local/tomcat), qgis (the entrypoint `sed -i`s /etc/apache2 files),
 mapproxy (serves, but gunicorn logs `Read-only file system: /home/mapproxy/.gunicorn`).  Kubernetes: not done (needs emptyDir volumes per workload, not tested).
-Not done either: CPU / memory limits (they depend on the machine).  `security.harden_containers: false` switches the whole thing off for images that need more (custom images).
+CPU / memory limits are optional (`limits.<service>.memory_mb` / `cpus`, 0 = none; they depend on the machine, so nothing is limited by default).  `security.harden_containers: false` switches the whole thing off for images that need more (custom images).
 """
 from __future__ import annotations
 
@@ -55,6 +55,36 @@ def compose_snippet(service: str, enabled: bool) -> str:
         if READ_ONLY_TMPFS[service]:
             lines += ["    tmpfs:"] + [f"      - {t}" for t in READ_ONLY_TMPFS[service]]
     return "\n".join(lines)
+
+
+def _cpu_text(cpus: float) -> str:
+    return f"{cpus:g}"
+
+
+def limits_compose(service: str, limits: dict) -> str:
+    """`mem_limit` / `cpus` lines for a Compose service (empty when nothing is set for it)."""
+    lim = limits.get(service) or {}
+    lines = []
+    if lim.get("memory_mb"):
+        lines.append(f"    mem_limit: {int(lim['memory_mb'])}m")
+    if lim.get("cpus"):
+        lines.append(f"    cpus: {_cpu_text(float(lim['cpus']))}")
+    return "\n".join(lines)
+
+
+def limits_k8s(service: str, limits: dict, indent: int, wrap: bool) -> str:
+    """Kubernetes `limits:` (wrap=True: inside a fresh `resources:` block, else to be placed below an existing `requests:`)."""
+    lim = limits.get(service) or {}
+    items = []
+    if lim.get("memory_mb"):
+        items.append(f"memory: {int(lim['memory_mb'])}Mi")
+    if lim.get("cpus"):
+        items.append(f"cpu: \"{_cpu_text(float(lim['cpus']))}\"")
+    if not items:
+        return ""
+    pad = " " * indent
+    body = [f"{pad}limits:"] + [f"{pad}  {i}" for i in items]
+    return "\n".join([f"{' ' * (indent - 2)}resources:"] + body) if wrap else "\n".join(body)
 
 
 def k8s_container_snippet(service: str, enabled: bool, indent: int = 10) -> str:
