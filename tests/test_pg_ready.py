@@ -89,7 +89,7 @@ class Shell(unittest.TestCase):
         d.mkdir(parents=True)
         stub(d, 0)
         script = common.PG_READY_FN + "\necho \"@@tcp 0 $(pg_ready 5432)\"\n"
-        script = script.replace("/usr/pgsql-*/bin/pg_isready", f"{self.tmp}/usr/pgsql-*/bin/pg_isready")
+        script = script.replace("/usr/pgsql-*/bin/pg_isready", f"{self.tmp}/usr/pgsql-*/bin/pg_isready").replace("/usr/lib/postgresql/*/bin/pg_isready", f"{self.tmp}/none/*/bin/pg_isready")     # GitHub's runners have the real Debian path
         self.assertEqual(run(script).strip(), "@@tcp 0 open")
 
 
