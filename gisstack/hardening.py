@@ -37,7 +37,9 @@ CAPS: dict[str, tuple[str, ...]] = {
 NO_PRIVILEGE_LOCK = frozenset({"postgis"})
 
 
-READ_ONLY_TMPFS: dict[str, tuple[str, ...]] = {"caddy": (), "postgis": ("/tmp", "/var/run/postgresql")}
+# "/tmp" is a path INSIDE the container that gets a tmpfs mount; gis-stack never creates or opens a host temp file here (ruff S108 / bandit B108 are false positives).
+CONTAINER_TMP = "/tmp"  # noqa: S108  # nosec B108
+READ_ONLY_TMPFS: dict[str, tuple[str, ...]] = {"caddy": (), "postgis": (CONTAINER_TMP, "/var/run/postgresql")}
 
 
 def compose_snippet(service: str, enabled: bool) -> str:
