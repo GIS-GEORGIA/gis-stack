@@ -12,7 +12,7 @@ Statuses (used consistently):
 
 Verification levels: **unit** (fakes / local stand-ins), **real** (real Docker, kind, Chromium, PostgreSQL, GeoServer, gpg run in this phase), **CI** (GitHub Actions).
 
-## 0000000000000000. Audit of `c68bfdf` (2026-11-13) - working tree, NOT committed, NOT run on GitHub
+## 0000000000000000. Audit of `c68bfdf` (2026-11-13) - committed (`3b5a0c5`, `c3efa50`, `4e54842`), GitHub results below
 
 Findings, reproductions and fixes: `docs/SECURITY-REVIEW-2026-11.md` ("Audit 2026-11-13"): R-4 (Kubernetes `clean` without `--purge` destroyed the namespace, volumes and data), R-5 (`generate --out` deleted any existing directory), S-18 (Tomcat manager reachable through `..;` paths), R-6 (interrupted Tomcat extraction trusted), R-7 (partial backup downloads), R-8/R-9 (time-zone dependent backup age/retention and MapProxy backup ids), R-10 (unwritable journal), R-11 (wrong-typed configuration), S-19 (secret redaction forms), G-1 (QGIS public probe), G-2 (custom ports, limitation only).
 
@@ -29,6 +29,8 @@ Verification levels (each fix has a regression test that was seen to fail withou
 Local test results on the final tree: full unit suite (`python -m unittest discover -s tests`) **1098 tests, OK, 299 skipped** (the opt-in integration suites); real Docker `test_hardening.py` 12/12 OK and `test_compose_exposure.py` 3/3 OK; real kind `test_k8s_clean_keeps_data.py` 1/1 OK; real Caddy + Tomcat `test_tomcat_manager_block.py` 4/4 OK. Python 3.9 was checked for syntax only (no 3.9 interpreter here); ruff, mypy and bandit were not available locally.
 
 Not done / not verified in this audit: Podman and Kubernetes behaviour of the new Caddyfile rule (same file, only Docker + native text checked); rpm upgrade; Windows/macOS; native `install.sh` end to end after the extraction change (the installer suite needs `GISSTACK_TEST_INSTALLER=1` and was **not** run - the change is covered by the extraction tests and `bash -n`); read-only root file system and resource limits (S-4 remainder); S-12.
+
+Update 2026-11-14, GitHub results on `4e54842` (each workflow dispatched once; `tests` and `codeql` on push): `tests` run 43483624016 success, `codeql` run 43483624067 success (an earlier `tests` run on `c3efa50` failed on two lint findings in `tests/test_journal_unwritable.py`, fixed in `4e54842`), `podman` run 43484649906 success (rootless and rootful; rootful still skips `ProviderDiagnostic...without_a_socket`, so that check stays unverified on rootful Podman), `integration` run 43484655768 success in all 10 jobs, including `test_tomcat_manager_block.py` (4/4, S-18) and `test_k8s_clean_keeps_data.py` (R-4) on real kind. This supersedes "Not yet run on GitHub" in the table above. Skip counts of the other integration jobs were not inspected. The native `install.sh` extraction change was exercised only by the installer jobs passing (not individually inspected).
 
 ## 000000000000000. GitHub results on `e397a9e` (PostgreSQL no-new-privileges fix) - verified from the run logs
 
