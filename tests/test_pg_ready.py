@@ -2,6 +2,7 @@
 Pure bash with a stub `pg_isready` first on PATH; the real-PostgreSQL check is tests/integration/test_pg_ready.py."""
 import os
 import shlex
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -13,9 +14,24 @@ from gisstack.monitoring import collect
 from gisstack.providers import common
 
 
+TOOLS = ("ls", "tail", "awk", "date", "bash")
+
+
+def sandbox():
+    """A PATH that holds ONLY the few tools the probe needs - never the machine's own pg_isready (GitHub's runners ship PostgreSQL, so /usr/bin/pg_isready exists there)."""
+    d = tempfile.mkdtemp()
+    for t in TOOLS:
+        os.symlink(shutil.which(t), os.path.join(d, t))
+    return d
+
+
 def run(script, path_dir=None):
-    env = {"PATH": f"{path_dir}:/usr/bin:/bin" if path_dir else "/usr/bin:/bin", "HOME": "/tmp"}
-    return subprocess.run(["bash", "-c", script], capture_output=True, text=True, env=env, timeout=60).stdout
+    box = sandbox()
+    try:
+        env = {"PATH": f"{path_dir}:{box}" if path_dir else box, "HOME": "/tmp"}
+        return subprocess.run([shutil.which("bash"), "-c", script], capture_output=True, text=True, env=env, timeout=60).stdout
+    finally:
+        shutil.rmtree(box, True)
 
 
 def stub(directory, code, name="pg_isready"):
