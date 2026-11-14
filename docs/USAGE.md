@@ -308,7 +308,7 @@ gisstack backup schedule enable --calendar daily --keep 14 --days 30        # �
 | `security.harden_containers` | ნაგულისხმევი `true`: ყველა კონტეინერი კარგავს ყველა Linux capability-ს და `no-new-privileges`-ს იღებს (**PostgreSQL-ის გარდა**: მისი `gosu`-ით გადაცემა `no-new-privileges` + AppArmor-ის დროს რეალურ Podman 4.9-ზე (root) იჭედება — გაზომილია, `docs/SECURITY-REVIEW-2026-11.md` S-17) (Kubernetes: `allowPrivilegeEscalation: false`, `drop: [ALL]`, seccomp `RuntimeDefault`); იმ image-ს, რომელსაც მეტი სჭირდება, უბრუნდება მხოლოდ საჭირო (PostGIS: CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID; QGIS: CHOWN, SETGID, SETUID; Caddy: NET_BIND_SERVICE). საკუთარი image-ებისთვის `false` ცვლის ყველაფერს უკან. read-only root FS და რესურსის ლიმიტები **არ** არის დამატებული |
 | `GISSTACK_TRUSTED_PROXIES` (გარემოს ცვლადი ვებ სერვისზე) | მძიმით გამოყოფილი მისამართები, რომელთა `X-Forwarded-Proto: https` დაიჯერება: მხოლოდ მაშინ ეძლევა სესიის cookie-ს `Secure`. ნაგულისხმევად ცარიელია: კლიენტის გამოგზავნილ სათაურს არავინ არ ენდობა. პირდაპირი http (ან SSH ტუნელი) loopback-ზე უცვლელად მუშაობს (cookie `HttpOnly; SameSite=Strict`, `Secure`-ს გარეშე) |
 
-Caddy-ს HTTP/HTTPS პორტები `.env`-ში (`HTTP_PORT`, `HTTPS_PORT`) შეგიძლია შეცვალო: gis-stack-ის ჯანმრთელობის შემოწმება რეალურ გამოქვეყნებულ პორტს ძრავიდან კითხულობს. სურათზე მიმაგრებული ბმული (`https://დომენი/`) პორტს არ შეიცავს.
+Caddy-ს HTTP/HTTPS პორტები `.env`-ში (`HTTP_PORT`, `HTTPS_PORT`) შეგიძლია შეცვალო: gis-stack-ის ჯანმრთელობის შემოწმება რეალურ გამოქვეყნებულ პორტს ძრავიდან კითხულობს. http→https გადამისამართება და GeoServer-ის მისამართი პორტს შეიცავს (`https://დომენი:8443/`). სურათზე მიმაგრებული ბმული (`https://დომენი/`) პორტს არ შეიცავს.
 
 ### ბექაფის დაშიფვრა — როდის არის აუცილებელი
 

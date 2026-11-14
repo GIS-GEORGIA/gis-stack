@@ -94,6 +94,7 @@ jobs:
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_hardening.py' -v
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_web_behind_proxy.py' -v
           GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_tomcat_manager_block.py' -v
+          GISSTACK_TEST_INTEGRATION=1 python -m unittest discover -s tests -p 'test_custom_ports.py' -v
 
   browser:
     name: browser end-to-end (Playwright)
