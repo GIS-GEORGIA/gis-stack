@@ -88,6 +88,17 @@ class ModuleTests(unittest.TestCase):
     def test_every_generated_workload_has_an_entry(self):
         self.assertEqual(sorted(hardening.CAPS), ["caddy", "geoserver", "init", "mapproxy", "postgis", "qgis", "tomcat"])
 
+    def test_read_only_root_only_where_measured(self):
+        self.assertEqual(sorted(hardening.READ_ONLY_TMPFS), ["caddy", "postgis"])
+        pg = hardening.compose_snippet("postgis", True)
+        self.assertIn("    read_only: true", pg)
+        self.assertIn("      - /var/run/postgresql", pg)
+        self.assertIn("    read_only: true", hardening.compose_snippet("caddy", True))
+        for svc in ("geoserver", "tomcat", "qgis", "mapproxy"):          # their images write below / at start (see the module docstring)
+            self.assertNotIn("read_only", hardening.compose_snippet(svc, True), svc)
+        for svc in hardening.CAPS:
+            self.assertNotIn("readOnlyRootFilesystem", hardening.k8s_container_snippet(svc, True))
+
     def test_disabled_snippets_are_empty(self):
         self.assertEqual(hardening.compose_snippet("postgis", False), "")
         self.assertEqual(hardening.k8s_container_snippet("postgis", False), "")

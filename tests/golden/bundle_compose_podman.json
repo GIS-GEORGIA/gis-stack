@@ -3,7 +3,7 @@
  "README.md": "479c5c5976cbe587a079036fbd0dbb560f9a5e1ab35fcd78a898a271db0b0edb",
  "compose/.env": "64e8e8bbe68f403c21835601e8f1920c60ab12d2c8ffa164c78a9d2d88669908",
  "compose/caddy/Caddyfile": "4cce8dab8b5f85b5d39c8ac74969af93d5ca62aae71dd674c499b74d50da6922",
- "compose/docker-compose.yml": "a69f4a64e53dbef4386c94131e4831fb1d424499977b47d56a9bc2dee61d8191",
+ "compose/docker-compose.yml": "06d64d6dbdfb359148c9bd6f44a86590028a4c07ef4a5cff90a44564b8ff92f6",
  "compose/mapproxy/Dockerfile": "e68394a5e9292aeec54ba1b2e1fd7020b0ee3667138e6464ae8add117b80ce1c",
  "compose/mapproxy/app.py": "1f89e33887929dbfdfbbd49825e961916c4b24cc79b3aa0886843409f9a2e2c4",
  "compose/mapproxy/mapproxy.yaml": "47a6cb060c5788f7b02b9f154934547ee0421b646467824c48d972e192f8c90f",

@@ -104,6 +104,11 @@ class HardenedStack(unittest.TestCase):
             self.assertIn('["ALL"]', insp, service)
             if service not in hardening.NO_PRIVILEGE_LOCK:
                 self.assertIn("no-new-privileges", insp, service)
+            ro = sh("docker", "inspect", "--format", "{{.HostConfig.ReadonlyRootfs}}", self.ctr(service)).stdout.strip()
+            self.assertEqual(ro, "true" if service in hardening.READ_ONLY_TMPFS else "false", f"{service}: read-only root file system")
+            if service in hardening.READ_ONLY_TMPFS:                                # the kernel refuses the write (not just a flag in the manifest)
+                w = sh("docker", "exec", self.ctr(service), "sh", "-c", "touch /etc/gisstack-write-test")
+                self.assertNotEqual(w.returncode, 0, f"{service}: wrote to the root file system")
             st = self.proc_status(service)
             if service not in hardening.NO_PRIVILEGE_LOCK:                          # PostgreSQL: see hardening.NO_PRIVILEGE_LOCK (gosu hand-over breaks under no-new-privileges + AppArmor)
                 self.assertEqual(st.get("NoNewPrivs"), "1", f"{service}: the kernel flag")

@@ -11,8 +11,11 @@ docs/SECURITY-REVIEW-2026-11.md for the experiment):
 * caddy    - binds ports 80 / 443: NET_BIND_SERVICE
 * geoserver, tomcat, mapproxy - nothing (MapProxy already runs as an unprivileged user)
 
-Not done, on purpose: read-only root filesystems (every image writes to paths that would have to be found and verified one by one) and CPU / memory
-limits (they depend on the machine).  `security.harden_containers: false` switches the whole thing off for images that need more (custom images).
+Read-only root filesystem (Compose / Podman only), where measured to work with real images (`docker run --read-only`, 2026-11-14): caddy (writes only its
+volumes /data and /config) and postgis (tmpfs /tmp and /var/run/postgresql).  NOT done, with the measured reason: geoserver and tomcat (the startup script
+rewrites /usr/local/tomcat/conf/server.xml and Tomcat writes its logs below /usr/local/tomcat), qgis (the entrypoint `sed -i`s /etc/apache2 files),
+mapproxy (serves, but gunicorn logs `Read-only file system: /home/mapproxy/.gunicorn`).  Kubernetes: not done (needs emptyDir volumes per workload, not tested).
+Not done either: CPU / memory limits (they depend on the machine).  `security.harden_containers: false` switches the whole thing off for images that need more (custom images).
 """
 from __future__ import annotations
 
@@ -34,6 +37,9 @@ CAPS: dict[str, tuple[str, ...]] = {
 NO_PRIVILEGE_LOCK = frozenset({"postgis"})
 
 
+READ_ONLY_TMPFS: dict[str, tuple[str, ...]] = {"caddy": (), "postgis": ("/tmp", "/var/run/postgresql")}
+
+
 def compose_snippet(service: str, enabled: bool) -> str:
     """The YAML lines (indented for a Compose service) that go below `restart:`; empty when hardening is off."""
     if not enabled:
@@ -42,6 +48,10 @@ def compose_snippet(service: str, enabled: bool) -> str:
     caps = CAPS[service]
     if caps:
         lines += ["    cap_add:"] + [f"      - {c}" for c in caps]
+    if service in READ_ONLY_TMPFS:
+        lines.append("    read_only: true")
+        if READ_ONLY_TMPFS[service]:
+            lines += ["    tmpfs:"] + [f"      - {t}" for t in READ_ONLY_TMPFS[service]]
     return "\n".join(lines)
 
 
