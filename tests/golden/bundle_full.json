@@ -50,7 +50,7 @@
  "native/config/pins.sha256": "c27706d7569ff3631e5e61e7de0b98ec36c7fae76d5bfe28ea9ac57d2fb3d718",
  "native/config/tomcat/setenv.sh": "471627e8d2c87142da097ffa16bf05458edf3305483b961b378f95aa2588aa1a",
  "native/gisstack-backup": "7c149639b2b87545d6f8f63cd59ce31971bf0c4c391717215fef94c718d3d41f",
- "native/install.sh": "112a6d4b848997a9eb5a9d9898deaf670981a664ba1a971b4e61e44b25711cec",
+ "native/install.sh": "99b4519a4c241772ee8c1f8a5beb63d202949203cccf024ff21726e39c27773e",
  "native/stack.env": "b9c178fb6786aa6b514d4960a1efa4b2b45280b96909c4ca7a4a3101af292ead",
  "native/systemd/gisstack-mapproxy.service": "868319ebf9c8f428d05d1122546fd67a4cfa1e7d8845e867a4746852d94e87f3",
  "native/systemd/gisstack-qgis.service": "3b8d655757f8c59f1c976ec13bba96e248ff3715ec565033b4d2f3fb52cf93e8",

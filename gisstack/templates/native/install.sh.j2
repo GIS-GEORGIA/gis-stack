@@ -371,9 +371,36 @@ WRAP
 {% endif %}
 {% if c.mapproxy %}
 
+# Ubuntu 22.04 ships only Python 3.10, and Pillow 13 (the fixed one) needs 3.11 (audit S-12). The deadsnakes
+# PPA provides python3.11 there. Third-party source: the key is pinned by fingerprint, the source is limited to
+# this one key (signed-by), and GISSTACK_NO_THIRD_PARTY_REPOS=1 refuses it (the Pillow 12.3.0 fallback is used).
+DEADSNAKES_FPR=F23C5A6CF475977595C89F51BA6932366A755776
+python311_from_deadsnakes() {
+  [ "${GISSTACK_NO_THIRD_PARTY_REPOS:-0}" = 1 ] && return 1
+  [ "$ID" = ubuntu ] && [ -n "${VERSION_CODENAME:-}" ] || return 1
+  pkg_install gpg curl ca-certificates || return 1
+  local tmp; tmp="$(mktemp -d)"
+  if curl -fsSL --retry 3 -o "$tmp/key.asc" "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x$DEADSNAKES_FPR" \
+     && gpg --show-keys --with-colons "$tmp/key.asc" | awk -F: '/^fpr/{print $10}' | grep -qx "$DEADSNAKES_FPR" \
+     && gpg --dearmor < "$tmp/key.asc" > /usr/share/keyrings/gisstack-deadsnakes.gpg; then
+    echo "deb [signed-by=/usr/share/keyrings/gisstack-deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu $VERSION_CODENAME main" \
+      > /etc/apt/sources.list.d/gisstack-deadsnakes.list
+    rm -rf "$tmp"
+    apt-get update -qq && pkg_install python3.11 python3.11-venv
+  else
+    rm -rf "$tmp" /usr/share/keyrings/gisstack-deadsnakes.gpg
+    return 1
+  fi
+}
+
 step_mapproxy() {
   local PY=python3
-  if [ "$FAMILY" = deb ]; then pkg_install python3 python3-venv python3-pip
+  if [ "$FAMILY" = deb ]; then
+    pkg_install python3 python3-venv python3-pip
+    if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))'; then
+      if { command -v python3.11 >/dev/null 2>&1 && python3.11 -c 'import venv, ensurepip'; } 2>/dev/null || python311_from_deadsnakes; then PY=python3.11
+      else warn "could not get Python 3.11 (deadsnakes PPA unavailable or disabled)"; fi
+    fi
   else pkg_install python3.12 python3.12-pip; PY=python3.12; fi   # EL9's python3 is 3.9; MapProxy 7 needs 3.10+
   "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || die "MapProxy needs Python 3.10 or newer (found $("$PY" --version)); use the Compose target on this system"
   ensure_user mapproxy /var/lib/gisstack/mapproxy

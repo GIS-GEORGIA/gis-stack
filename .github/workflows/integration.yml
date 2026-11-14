@@ -49,6 +49,12 @@ jobs:
           GISSTACK_TEST_INSTALLER: "1"
           GISSTACK_TEST_DISTROS: ${{ matrix.distro }}
         run: python -m unittest discover -s tests -p 'test_installer.py' -v
+      - name: Native MapProxy on Ubuntu 22.04 (Python 3.11 from the pinned deadsnakes source, Pillow 13; opt-out fallback)
+        if: matrix.distro == 'ubuntu-22.04'
+        env:
+          GISSTACK_TEST_INSTALLER: "1"
+          GISSTACK_TEST_DISTROS: ${{ matrix.distro }}
+        run: python -m unittest discover -s tests -p 'test_mapproxy_python.py' -v
       - name: deb / rpm packages installed with apt / dnf
         env:
           GISSTACK_TEST_INSTALLER: "1"
