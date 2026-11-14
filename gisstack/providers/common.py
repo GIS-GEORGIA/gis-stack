@@ -42,6 +42,13 @@ def public(cfg: dict[str, Any]) -> tuple[str, str, int]:
     return f"{scheme}://{cfg['domain']}", cfg["domain"].split(":")[0], 80 if scheme == "http" else 443
 
 
+# Native PostgreSQL readiness: `pg_isready` asks the server itself (a server that is still starting, in recovery or hung accepts the TCP connection but does not
+# answer), so a bare port check says "healthy" too early.  The binary is not on PATH on every distribution (RPM: /usr/pgsql-*/bin, Debian: /usr/lib/postgresql/*/bin);
+# when it is nowhere to be found the check degrades to the port check instead of failing.  Prints "open" / "closed".
+PG_READY_FN = ("pg_ready() { b=\"$(command -v pg_isready || ls /usr/lib/postgresql/*/bin/pg_isready /usr/pgsql-*/bin/pg_isready 2>/dev/null | tail -n1)\"; "
+               "if [ -n \"$b\" ]; then if \"$b\" -q -h 127.0.0.1 -p \"$1\" -t 5 >/dev/null 2>&1; then echo open; else echo closed; fi; "
+               "elif (exec 3<>/dev/tcp/127.0.0.1/$1) 2>/dev/null; then echo open; else echo closed; fi; }")
+
 PUBLIC_PATH = {"geoserver": "/geoserver/web/", "mapproxy": "/mapproxy/demo/",
                 "qgis_server": "/qgis/?SERVICE=WMS&REQUEST=GetCapabilities", "caddy": "/", "webmap": "/"}
 
@@ -60,14 +67,14 @@ def urls(cfg: dict[str, Any], comp: str) -> list[str]:
 
 
 def checks(cfg: dict[str, Any], target: str, ids: list[str]) -> list[dict[str, Any]]:
-    """What to probe from the server itself.  kind: http (needs 2xx/3xx), alive (any real answer), tcp."""
+    """What to probe from the server itself.  kind: http (needs 2xx/3xx), alive (any real answer), tcp, pgready (pg_isready)."""
     out: list[dict[str, Any]] = []
     base, domain, port = public(cfg)
     edge = bool(generate.effective_components(cfg, target).get("caddy"))
     if target == "native":
         tp = int(cfg["tomcat"]["port"])
         if "postgis" in ids:
-            out.append({"comp": "postgis", "label": f"tcp {cfg['postgres']['port']}", "kind": "tcp", "port": int(cfg["postgres"]["port"])})
+            out.append({"comp": "postgis", "label": f"ready {cfg['postgres']['port']}", "kind": "pgready", "port": int(cfg["postgres"]["port"])})
         if "tomcat" in ids:
             out.append({"comp": "tomcat", "label": f"http :{tp}", "kind": "alive", "url": f"http://127.0.0.1:{tp}/"})
         if "geoserver" in ids:
@@ -95,7 +102,7 @@ def checks(cfg: dict[str, Any], target: str, ids: list[str]) -> list[dict[str, A
 
 
 def check_ok(kind: str, code: str) -> bool:
-    if kind == "tcp":
+    if kind in ("tcp", "pgready"):
         return code == "open"
     try:
         n = int(code)
@@ -123,10 +130,14 @@ def probe_script(checks: list[dict[str, Any]]) -> str:
         # httpm <id> <marker> <curl args>: the status code counts only when the body contains <marker> (otherwise 000 = no real answer)
         "httpm() { o=\"$(curl -sk -m 5 -w '\\n%{http_code}' \"${@:3}\" 2>/dev/null)\"; c=\"${o##*$'\\n'}\"; case \"${o%$'\\n'*}\" in *\"$2\"*) ;; *) c=000 ;; esac; echo \"@@http $1 ${c:-000}\"; }",
         "tcp() { if (exec 3<>/dev/tcp/127.0.0.1/$2) 2>/dev/null; then echo \"@@tcp $1 open\"; else echo \"@@tcp $1 closed\"; fi; }",
+        PG_READY_FN,
+        "pgready() { echo \"@@tcp $1 $(pg_ready \"$2\")\"; }",
     ]
     for i, c in enumerate(checks):
         if c["kind"] == "tcp":
             lines.append(f"tcp {i} {int(c['port'])}")
+        elif c["kind"] == "pgready":
+            lines.append(f"pgready {i} {int(c['port'])}")
         else:
             fn = f"httpm {i} {shlex.quote(c['match'])}" if c.get("match") else f"http {i}"
             if "@PORT@" in c["url"] or "@PORT@" in (c.get("resolve") or ""):         # ports read from the engine: variable expansion, so double quotes (domain / path are validated)

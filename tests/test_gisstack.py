@@ -380,8 +380,9 @@ class OpsTests(unittest.TestCase):
         ids = common.components(cfg, "native", None)
         checks = common.checks(cfg, "native", ids)
         # answer the probes: everything fine except the public QGIS check
-        http = {i: ("open" if c["kind"] == "tcp" else "200") for i, c in enumerate(checks)}
-        out = NATIVE_OUT + "".join(f"@@{'tcp' if checks[i]['kind'] == 'tcp' else 'http'} {i} {v}\n" for i, v in http.items())
+        portish = ("tcp", "pgready")                                       # the probe script reports both as "@@tcp <i> open|closed"
+        http = {i: ("open" if c["kind"] in portish else "200") for i, c in enumerate(checks)}
+        out = NATIVE_OUT + "".join(f"@@{'tcp' if checks[i]['kind'] in portish else 'http'} {i} {v}\n" for i, v in http.items())
         rows = {r["id"]: r for r in native.rows(cfg, ids, ops.parse_native(out), checks)}
         self.assertEqual(rows["postgis"]["state"], "running")
         self.assertEqual(rows["postgis"]["listen"], ["127.0.0.1:5432"])

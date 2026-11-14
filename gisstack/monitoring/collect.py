@@ -76,12 +76,16 @@ def _probe_lines(cfg: dict[str, Any], target: str, ids: list[str]) -> str:
         # probe_httpm <name> <kind> <marker> <curl args>: the code counts only when the body contains <marker> (QGIS: an OGC exception document, not Apache's own 500 page)
         "probe_httpm() { o=\"$(curl -sk -m 5 -w '\\n%{http_code} %{time_total}' \"${@:4}\" 2>/dev/null)\"; r=\"${o##*$'\\n'}\"; case \"${o%$'\\n'*}\" in *\"$3\"*) ;; *) r=\"000 ${r#* }\" ;; esac; echo \"probe $1 ${r:-000 0} $2\"; }",
         "probe_tcp() { s=$(date +%s%N); if (exec 3<>/dev/tcp/127.0.0.1/$2) 2>/dev/null; then e=$(date +%s%N); echo \"probe $1 open $(awk -v a=$s -v b=$e 'BEGIN {printf \"%.4f\", (b-a)/1e9}') tcp\"; else echo \"probe $1 closed 0 tcp\"; fi; }",
+        common.PG_READY_FN,
+        "probe_pgready() { s=$(date +%s%N); r=$(pg_ready \"$2\"); e=$(date +%s%N); echo \"probe $1 $r $(awk -v a=$s -v b=$e 'BEGIN {printf \"%.4f\", (b-a)/1e9}') tcp\"; }",
         'echo "@@probes"',
     ]
     for c in common.checks(cfg, target, ids):
         name = f"{c['comp']}:{re.sub(r'[^a-z0-9]+', '_', c['label'].lower()).strip('_')}"
         if c["kind"] == "tcp":
             lines.append(f"probe_tcp {shlex.quote(name)} {int(c['port'])}")
+        elif c["kind"] == "pgready":
+            lines.append(f"probe_pgready {shlex.quote(name)} {int(c['port'])}")
         else:
             res = f"--resolve {shlex.quote(c['resolve'])} " if c.get("resolve") else ""
             fn = f"probe_httpm {shlex.quote(name)} {c['kind']} {shlex.quote(c['match'])}" if c.get("match") else f"probe_http {shlex.quote(name)} {c['kind']}"

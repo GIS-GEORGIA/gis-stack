@@ -14,6 +14,7 @@ These install real software in throw-away containers, so they are opt-in and run
 
 | Suite | Switch | What it proves |
 | --- | --- | --- |
+| `tests/integration/test_pg_ready.py` | `GISSTACK_TEST_INTEGRATION=1` (Docker) | the generated native PostgreSQL readiness function against a real postgis container: running = open, closed port = closed, a listener that accepts TCP but never answers = closed (a port check calls it healthy) |
 | `tests/integration/test_installer.py` | `GISSTACK_TEST_INSTALLER=1`, `GISSTACK_TEST_DISTROS=ubuntu-22.04,ubuntu-24.04,debian-12,rocky-9,alma-9` (or `all`; default `ubuntu-24.04`) | generated `install.sh --only postgis` in a systemd container; gis-stack's own `ops.status` and PostGIS manager against that installation; re-run is harmless; uninstall keeps data, `--purge` removes it |
 | `tests/integration/test_packages.py` | same | the `.deb` / `.rpm` install with apt / dnf, `gisstack --version`, `generate`, the web unit, removal (a format whose builder `dpkg-deb`/`rpmbuild` is missing is skipped) |
 | `tests/integration/test_compose.py` | `GISSTACK_TEST_DOCKER=1` | a real Compose PostGIS stack: up, healthy, status, restart through gis-stack's control script, down |
