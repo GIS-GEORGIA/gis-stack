@@ -12,9 +12,10 @@ docs/SECURITY-REVIEW-2026-11.md for the experiment):
 * geoserver, tomcat, mapproxy - nothing (MapProxy already runs as an unprivileged user)
 
 Read-only root filesystem (Compose / Podman only), where measured to work with real images (`docker run --read-only`, 2026-11-14): caddy (writes only its
-volumes /data and /config) and postgis (tmpfs /tmp and /var/run/postgresql).  NOT done, with the measured reason: geoserver and tomcat (the startup script
-rewrites /usr/local/tomcat/conf/server.xml and Tomcat writes its logs below /usr/local/tomcat), qgis (the entrypoint `sed -i`s /etc/apache2 files),
-mapproxy (serves, but gunicorn logs `Read-only file system: /home/mapproxy/.gunicorn`).  Kubernetes: not done (needs emptyDir volumes per workload, not tested).
+volumes /data and /config) and postgis (tmpfs /tmp and /var/run/postgresql) and mapproxy (tmpfs /tmp for the gunicorn workers and `HOME=/tmp`, because gunicorn's control socket lives in
+`~/.gunicorn`: without it the log shows `Read-only file system: /home/mapproxy/.gunicorn`, with a root-owned tmpfs on the home `Permission denied`; the cache volume stays writable).
+NOT done, with the measured reason: geoserver and tomcat (the startup script
+rewrites /usr/local/tomcat/conf/server.xml and Tomcat writes its logs below /usr/local/tomcat), qgis (the entrypoint `sed -i`s /etc/apache2 files).  Kubernetes: not done (needs emptyDir volumes per workload, not tested).
 CPU / memory limits are optional (`limits.<service>.memory_mb` / `cpus`, 0 = none; they depend on the machine, so nothing is limited by default).  `security.harden_containers: false` switches the whole thing off for images that need more (custom images).
 """
 from __future__ import annotations
@@ -39,7 +40,10 @@ NO_PRIVILEGE_LOCK = frozenset({"postgis"})
 
 # "/tmp" is a path INSIDE the container that gets a tmpfs mount; gis-stack never creates or opens a host temp file here (ruff S108 / bandit B108 are false positives).
 CONTAINER_TMP = "/tmp"  # noqa: S108  # nosec B108
-READ_ONLY_TMPFS: dict[str, tuple[str, ...]] = {"caddy": (), "postgis": (CONTAINER_TMP, "/var/run/postgresql")}
+READ_ONLY_TMPFS: dict[str, tuple[str, ...]] = {"caddy": (), "postgis": (CONTAINER_TMP, "/var/run/postgresql"), "mapproxy": (CONTAINER_TMP,)}
+# gunicorn needs a writable temp dir for its workers and a home for its control socket (`~/.gunicorn`); HOME=/tmp puts the socket in the tmpfs and works with every
+# gunicorn version (`--no-control-socket` exists only in new ones, and the image installs gunicorn unpinned).
+READ_ONLY_ENV: dict[str, dict[str, str]] = {"mapproxy": {"HOME": CONTAINER_TMP}}
 
 
 def compose_snippet(service: str, enabled: bool) -> str:
@@ -54,6 +58,8 @@ def compose_snippet(service: str, enabled: bool) -> str:
         lines.append("    read_only: true")
         if READ_ONLY_TMPFS[service]:
             lines += ["    tmpfs:"] + [f"      - {t}" for t in READ_ONLY_TMPFS[service]]
+        if READ_ONLY_ENV.get(service):
+            lines += ["    environment:"] + [f"      {k}: {v}" for k, v in READ_ONLY_ENV[service].items()]
     return "\n".join(lines)
 
 
