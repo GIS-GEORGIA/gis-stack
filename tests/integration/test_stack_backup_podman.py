@@ -62,6 +62,7 @@ class PodmanStackBase(unittest.TestCase):
                                   "components": comps}, generate_secrets=True, persist_secrets=True)
         cls.out = Path(tempfile.mkdtemp())
         generate.generate_bundle(cfg=cls.cfg, out_dir=cls.out)
+        cls.prepare_bundle()
         lines: list[str] = []
         try:
             for line in deploy.deploy(cls.cfg, cls.out, "compose", "local"):
@@ -75,6 +76,10 @@ class PodmanStackBase(unittest.TestCase):
             info = cls.engine_diagnostics()
             cls.tearDownClass()
             raise AssertionError(f"deployment on Podman is {rec['outcome']}:\n" + "\n".join(lines[-12:]) + info)
+
+    @classmethod
+    def prepare_bundle(cls) -> None:
+        """Hook: adjust the generated bundle (for example the host ports in compose/.env) before it is deployed."""
 
     @classmethod
     def engine_diagnostics(cls) -> str:
