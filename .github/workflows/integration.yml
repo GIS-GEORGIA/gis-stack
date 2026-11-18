@@ -140,7 +140,7 @@ jobs:
       - id: gsimg
         run: echo "image=$(python -c 'from tests.integration import images; print(images.geoserver_image())')" >> "$GITHUB_OUTPUT"
       - name: Cached copy of the GeoServer image (survives a registry outage; bump the -v1 suffix to refresh it)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: /tmp/geoserver-image.tar
           key: geoserver-image-${{ steps.gsimg.outputs.image }}-v1
